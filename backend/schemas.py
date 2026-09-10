@@ -22,3 +22,5 @@ class TradeResponse(TradeBase):
 
     class Config:
         from_attributes = True
+        class TradeClose(BaseModel):
+    exit_price: float

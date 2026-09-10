@@ -53,3 +53,14 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
     trade_query.delete(synchronize_session=False)
     db.commit()
     return None
+@app.put("/api/trades/{trade_id}/close", response_model=schemas.TradeResponse, tags=["Trades"])
+def close_trade(trade_id: int, trade_close: schemas.TradeClose, db: Session = Depends(get_db)):
+    db_trade = db.query(models.Trade).filter(models.Trade.id == trade_id).first()
+    if not db_trade:
+        raise HTTPException(status_code=404, detail="معامله یافت نشد")
+    
+    db_trade.exit_price = trade_close.exit_price
+    db_trade.status = "CLOSED"
+    db.commit()
+    db.refresh(db_trade)
+    return db_trade

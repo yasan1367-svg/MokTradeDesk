@@ -68,13 +68,38 @@ export default function App() {
     }
   };
 
+  const handleCloseTrade = async (id: number) => {
+    const exitPriceStr = prompt("لطفاً قیمت خروج را وارد کنید:");
+    if (!exitPriceStr) return;
+    const exitPrice = parseFloat(exitPriceStr);
+    if (isNaN(exitPrice)) return alert("قیمت نامعتبر است");
+
+    try {
+      const res = await fetch(`http://127.0.0.1:8000/api/trades/${id}/close`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ exit_price: exitPrice })
+      });
+      if (res.ok) fetchTrades();
+    } catch (err) {
+      console.error("خطا در بستن معامله:", err);
+    }
+  };
+
   const handleDelete = async (id: number) => {
+    if (!confirm("آیا از حذف این معامله مطمئن هستید؟")) return;
     try {
       await fetch(`http://127.0.0.1:8000/api/trades/${id}`, { method: 'DELETE' });
       fetchTrades();
     } catch (err) {
       console.error("خطا در حذف معامله:", err);
     }
+  };
+
+  const calculatePnL = (t: Trade) => {
+    if (!t.exit_price) return null;
+    const diff = t.trade_type === 'BUY' ? t.exit_price - t.entry_price : t.entry_price - t.exit_price;
+    return diff * t.quantity;
   };
 
   const inputStyle: React.CSSProperties = {
@@ -88,7 +113,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '900px', margin: '0 auto', direction: 'rtl', color: '#18181b' }}>
+    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', direction: 'rtl', color: '#18181b' }}>
       <h1>📊 MokTradeDesk - ژورنال معاملات</h1>
 
       {/* فرم ثبت معامله */}
@@ -118,29 +143,41 @@ export default function App() {
             <th>نماد</th>
             <th>نوع</th>
             <th>ورود</th>
+            <th>خروج</th>
             <th>حجم</th>
-            <th>SL</th>
-            <th>TP</th>
+            <th>PnL (سود/زیان)</th>
             <th>وضعیت</th>
             <th>عملیات</th>
           </tr>
         </thead>
         <tbody>
-          {trades.map(t => (
-            <tr key={t.id} style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-              <td>{t.id}</td>
-              <td><strong>{t.symbol}</strong></td>
-              <td style={{ color: t.trade_type === 'BUY' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>{t.trade_type}</td>
-              <td>{t.entry_price}</td>
-              <td>{t.quantity}</td>
-              <td>{t.stop_loss || '-'}</td>
-              <td>{t.take_profit || '-'}</td>
-              <td>{t.status}</td>
-              <td>
-                <button onClick={() => handleDelete(t.id)} style={{ color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>حذف</button>
-              </td>
-            </tr>
-          ))}
+          {trades.map(t => {
+            const pnl = calculatePnL(t);
+            return (
+              <tr key={t.id} style={{ backgroundColor: '#ffffff', color: '#000000' }}>
+                <td>{t.id}</td>
+                <td><strong>{t.symbol}</strong></td>
+                <td style={{ color: t.trade_type === 'BUY' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>{t.trade_type}</td>
+                <td>{t.entry_price}</td>
+                <td>{t.exit_price || '-'}</td>
+                <td>{t.quantity}</td>
+                <td style={{ color: pnl !== null ? (pnl >= 0 ? '#16a34a' : '#dc2626') : '#000000', fontWeight: 'bold' }}>
+                  {pnl !== null ? `${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}` : '-'}
+                </td>
+                <td>
+                  <span style={{ padding: '2px 8px', borderRadius: '4px', backgroundColor: t.status === 'OPEN' ? '#fef08a' : '#e4e4e7', fontSize: '12px' }}>
+                    {t.status}
+                  </span>
+                </td>
+                <td>
+                  {t.status === 'OPEN' && (
+                    <button onClick={() => handleCloseTrade(t.id)} style={{ color: '#2563eb', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold', marginLeft: '8px' }}>بستن</button>
+                  )}
+                  <button onClick={() => handleDelete(t.id)} style={{ color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>حذف</button>
+                </td>
+              </tr>
+            );
+          })}
         </tbody>
       </table>
     </div>
