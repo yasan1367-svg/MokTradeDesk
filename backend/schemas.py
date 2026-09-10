@@ -16,11 +16,12 @@ class TradeBase(BaseModel):
 class TradeCreate(TradeBase):
     pass
 
+class TradeClose(BaseModel):
+    exit_price: float
+
 class TradeResponse(TradeBase):
     id: int
     created_at: datetime
 
     class Config:
         from_attributes = True
-        class TradeClose(BaseModel):
-    exit_price: float
