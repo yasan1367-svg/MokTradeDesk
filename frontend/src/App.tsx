@@ -1,66 +1,168 @@
 import React, { useState, useEffect } from 'react';
 
+interface Strategy {
+  id: number;
+  name: string;
+  description?: string;
+}
+
 interface Trade {
   id: number;
   symbol: string;
   trade_type: string;
-  entry_price: number;
   quantity: number;
+  entry_price: number;
+  exit_price?: number;
   stop_loss?: number;
   take_profit?: number;
-  exit_price?: number;
+  commission: number;
+  swap: number;
+  profit?: number;
+  pips?: number;
   status: string;
-  notes?: string;
-  created_at: string;
+  strategy_id?: number;
+  open_time: string;
+  close_time?: string;
 }
 
-export default function App() {
-  const [trades, setTrades] = useState<Trade[]>([]);
-  const [form, setForm] = useState({
-    symbol: '',
-    trade_type: 'BUY',
-    entry_price: '',
-    quantity: '',
-    stop_loss: '',
-    take_profit: '',
-    notes: ''
-  });
+const inputStyle = {
+  padding: '8px 12px',
+  borderRadius: '6px',
+  border: '1px solid #cbd5e1',
+  fontSize: '14px',
+  outline: 'none',
+};
 
+function App() {
+  // 🟢 ۱. تمام useState ها در بالاترین سطح کامپوننت
+  const [trades, setTrades] = useState<Trade[]>([]);
+  const [strategies, setStrategies] = useState<Strategy[]>([]);
+
+  // استیک آپلود فایل
+  const [selectedStrategyForImport, setSelectedStrategyForImport] = useState<string>('');
+
+  // استیت فرم استراتژی جدید
+  const [newStratName, setNewStratName] = useState('');
+  const [newStratDesc, setNewStratDesc] = useState('');
+
+  // استیت فرم معامله جدید
+  const [symbol, setSymbol] = useState('XAUUSD');
+  const [tradeType, setTradeType] = useState('BUY');
+  const [quantity, setQuantity] = useState('0.01');
+  const [entryPrice, setEntryPrice] = useState('');
+  const [stopLoss, setStopLoss] = useState('');
+  const [takeProfit, setTakeProfit] = useState('');
+  const [selectedStrategyId, setSelectedStrategyId] = useState('');
+
+  // استیت فرم بستن معامله
+  const [closingTrade, setClosingTrade] = useState<Trade | null>(null);
+  const [exitPrice, setExitPrice] = useState('');
+  const [commission, setCommission] = useState('0');
+  const [swap, setSwap] = useState('0');
+  const [manualProfit, setManualProfit] = useState('');
+
+  // 🟢 ۲. توابع دریافت اطلاعات از بک‌اند
   const fetchTrades = async () => {
     try {
       const res = await fetch('http://127.0.0.1:8000/api/trades/');
       const data = await res.json();
       setTrades(data);
     } catch (err) {
-      console.error("خطا در دریافت لیست معاملات:", err);
+      console.error("خطا در دریافت معاملات:", err);
+    }
+  };
+
+  const fetchStrategies = async () => {
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/strategies/');
+      const data = await res.json();
+      setStrategies(data);
+    } catch (err) {
+      console.error("خطا در دریافت استراتژی‌ها:", err);
     }
   };
 
   useEffect(() => {
     fetchTrades();
+    fetchStrategies();
   }, []);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    const payload = {
-      symbol: form.symbol.toUpperCase(),
-      trade_type: form.trade_type,
-      entry_price: parseFloat(form.entry_price),
-      quantity: parseFloat(form.quantity),
-      stop_loss: form.stop_loss ? parseFloat(form.stop_loss) : null,
-      take_profit: form.take_profit ? parseFloat(form.take_profit) : null,
-      notes: form.notes || null,
-      status: 'OPEN'
-    };
+  // 🟢 ۳. هندلرهای عملیات
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    let url = 'http://127.0.0.1:8000/api/trades/import-csv';
+    if (selectedStrategyForImport) {
+      url += `?strategy_id=${selectedStrategyForImport}`;
+    }
 
     try {
+      const res = await fetch(url, {
+        method: 'POST',
+        body: formData,
+      });
+      const data = await res.json();
+      if (res.ok) {
+        alert(`تعداد ${data.imported_trades} معامله با موفقیت وارد شد.`);
+        fetchTrades();
+        e.target.value = '';
+      } else {
+        alert("خطا در پردازش فایل");
+      }
+    } catch (err) {
+      console.error("خطا در آپلود فایل:", err);
+    }
+  };
+
+  const handleCreateStrategy = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!newStratName) return;
+    try {
+      const res = await fetch('http://127.0.0.1:8000/api/strategies/', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: newStratName, description: newStratDesc }),
+      });
+      if (res.ok) {
+        setNewStratName('');
+        setNewStratDesc('');
+        fetchStrategies();
+      } else {
+        const err = await res.json();
+        alert(err.detail || "خطا در ثبت استراتژی");
+      }
+    } catch (err) {
+      console.error("خطا:", err);
+    }
+  };
+
+  const handleCreateTrade = async (e: React.FormEvent) => {
+    e.preventDefault();
+    try {
+      const bodyData = {
+        symbol,
+        trade_type: tradeType,
+        quantity: parseFloat(quantity),
+        entry_price: parseFloat(entryPrice),
+        stop_loss: stopLoss ? parseFloat(stopLoss) : null,
+        take_profit: takeProfit ? parseFloat(takeProfit) : null,
+        strategy_id: selectedStrategyId ? parseInt(selectedStrategyId) : null,
+      };
+
       const res = await fetch('http://127.0.0.1:8000/api/trades/', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload)
+        body: JSON.stringify(bodyData),
       });
+
       if (res.ok) {
-        setForm({ symbol: '', trade_type: 'BUY', entry_price: '', quantity: '', stop_loss: '', take_profit: '', notes: '' });
+        setEntryPrice('');
+        setStopLoss('');
+        setTakeProfit('');
         fetchTrades();
       }
     } catch (err) {
@@ -68,118 +170,187 @@ export default function App() {
     }
   };
 
-  const handleCloseTrade = async (id: number) => {
-    const exitPriceStr = prompt("لطفاً قیمت خروج را وارد کنید:");
-    if (!exitPriceStr) return;
-    const exitPrice = parseFloat(exitPriceStr);
-    if (isNaN(exitPrice)) return alert("قیمت نامعتبر است");
+  const handleCloseTradeSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!closingTrade) return;
 
     try {
-      const res = await fetch(`http://127.0.0.1:8000/api/trades/${id}/close`, {
+      const bodyData = {
+        exit_price: parseFloat(exitPrice),
+        commission: parseFloat(commission || '0'),
+        swap: parseFloat(swap || '0'),
+        profit: manualProfit ? parseFloat(manualProfit) : null,
+      };
+
+      const res = await fetch(`http://127.0.0.1:8000/api/trades/${closingTrade.id}/close`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ exit_price: exitPrice })
+        body: JSON.stringify(bodyData),
       });
-      if (res.ok) fetchTrades();
+
+      if (res.ok) {
+        setClosingTrade(null);
+        setExitPrice('');
+        setCommission('0');
+        setSwap('0');
+        setManualProfit('');
+        fetchTrades();
+      }
     } catch (err) {
       console.error("خطا در بستن معامله:", err);
     }
   };
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("آیا از حذف این معامله مطمئن هستید؟")) return;
+  const handleDeleteTrade = async (id: number) => {
+    if (!window.confirm("آیا از حذف این معامله اطمینان دارید؟")) return;
     try {
-      await fetch(`http://127.0.0.1:8000/api/trades/${id}`, { method: 'DELETE' });
-      fetchTrades();
+      const res = await fetch(`http://127.0.0.1:8000/api/trades/${id}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) fetchTrades();
     } catch (err) {
       console.error("خطا در حذف معامله:", err);
     }
   };
 
-  const calculatePnL = (t: Trade) => {
-    if (!t.exit_price) return null;
-    const diff = t.trade_type === 'BUY' ? t.exit_price - t.entry_price : t.entry_price - t.exit_price;
-    return diff * t.quantity;
-  };
-
-  const inputStyle: React.CSSProperties = {
-    padding: '8px 12px',
-    borderRadius: '6px',
-    border: '1px solid #d1d5db',
-    backgroundColor: '#ffffff',
-    color: '#000000',
-    fontSize: '14px',
-    outline: 'none'
-  };
-
+  // 🟢 ۴. بخش UI (رندر)
   return (
-    <div style={{ padding: '20px', fontFamily: 'sans-serif', maxWidth: '1000px', margin: '0 auto', direction: 'rtl', color: '#18181b' }}>
-      <h1>📊 MokTradeDesk - ژورنال معاملات</h1>
+    <div style={{ maxWidth: '1200px', margin: '0 auto', padding: '20px', fontFamily: 'IRANSans, Tahoma, sans-serif', direction: 'rtl' }}>
+      <h1 style={{ color: '#1e293b', textAlign: 'center', marginBottom: '30px' }}>📊 MokTradeDesk - ژورنال معاملاتی</h1>
 
-      {/* فرم ثبت معامله */}
-      <form onSubmit={handleSubmit} style={{ background: '#f4f4f5', padding: '20px', borderRadius: '8px', marginBottom: '20px', border: '1px solid #e4e4e7' }}>
-        <h3 style={{ marginTop: 0 }}>ثبت معامله جدید</h3>
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '10px', marginBottom: '10px' }}>
-          <input style={inputStyle} placeholder="نماد (مثلاً XAUUSD)" value={form.symbol} onChange={e => setForm({...form, symbol: e.target.value})} required />
-          <select style={inputStyle} value={form.trade_type} onChange={e => setForm({...form, trade_type: e.target.value})}>
-            <option value="BUY">خرید (BUY)</option>
-            <option value="SELL">فروش (SELL)</option>
+      {/* 📥 کادر ورود خودکار از Soft4FX / متاتریدر */}
+      <div style={{ background: '#eff6ff', padding: '15px 20px', borderRadius: '8px', marginBottom: '25px', border: '1px solid #bfdbfe' }}>
+        <h3 style={{ marginTop: 0, color: '#1e40af' }}>📥 ورود خودکار معاملات از Soft4FX / متاتریدر</h3>
+        <div style={{ display: 'flex', gap: '15px', alignItems: 'center', flexWrap: 'wrap' }}>
+          <select style={inputStyle} value={selectedStrategyForImport} onChange={e => setSelectedStrategyForImport(e.target.value)}>
+            <option value="">-- اختصاص به استراتژی (اختیاری) --</option>
+            {strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
           </select>
-          <input style={inputStyle} type="number" step="any" placeholder="قیمت ورود" value={form.entry_price} onChange={e => setForm({...form, entry_price: e.target.value})} required />
-          <input style={inputStyle} type="number" step="any" placeholder="حجم (Quantity)" value={form.quantity} onChange={e => setForm({...form, quantity: e.target.value})} required />
-          <input style={inputStyle} type="number" step="any" placeholder="حد ضرر (SL)" value={form.stop_loss} onChange={e => setForm({...form, stop_loss: e.target.value})} />
-          <input style={inputStyle} type="number" step="any" placeholder="حد سود (TP)" value={form.take_profit} onChange={e => setForm({...form, take_profit: e.target.value})} />
+          <input type="file" accept=".csv, .txt" onChange={handleFileUpload} style={{ fontSize: '14px' }} />
         </div>
-        <input style={{ ...inputStyle, width: '100%', marginBottom: '10px', boxSizing: 'border-box' }} placeholder="یادداشت / استراتژی" value={form.notes} onChange={e => setForm({...form, notes: e.target.value})} />
-        <button type="submit" style={{ padding: '10px 20px', backgroundColor: '#10b981', color: '#ffffff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>ثبت پوزیشن</button>
-      </form>
+      </div>
 
-      {/* جدول معاملات */}
-      <h3>لیست معاملات ثبت‌شده</h3>
-      <table border={1} cellPadding={10} style={{ width: '100%', borderCollapse: 'collapse', textAlign: 'center', borderColor: '#e4e4e7' }}>
-        <thead>
-          <tr style={{ background: '#e4e4e7', color: '#000000' }}>
-            <th>ID</th>
-            <th>نماد</th>
-            <th>نوع</th>
-            <th>ورود</th>
-            <th>خروج</th>
-            <th>حجم</th>
-            <th>PnL (سود/زیان)</th>
-            <th>وضعیت</th>
-            <th>عملیات</th>
-          </tr>
-        </thead>
-        <tbody>
-          {trades.map(t => {
-            const pnl = calculatePnL(t);
-            return (
-              <tr key={t.id} style={{ backgroundColor: '#ffffff', color: '#000000' }}>
-                <td>{t.id}</td>
-                <td><strong>{t.symbol}</strong></td>
-                <td style={{ color: t.trade_type === 'BUY' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>{t.trade_type}</td>
-                <td>{t.entry_price}</td>
-                <td>{t.exit_price || '-'}</td>
-                <td>{t.quantity}</td>
-                <td style={{ color: pnl !== null ? (pnl >= 0 ? '#16a34a' : '#dc2626') : '#000000', fontWeight: 'bold' }}>
-                  {pnl !== null ? `${pnl > 0 ? '+' : ''}${pnl.toFixed(2)}` : '-'}
-                </td>
-                <td>
-                  <span style={{ padding: '2px 8px', borderRadius: '4px', backgroundColor: t.status === 'OPEN' ? '#fef08a' : '#e4e4e7', fontSize: '12px' }}>
-                    {t.status}
-                  </span>
-                </td>
-                <td>
-                  {t.status === 'OPEN' && (
-                    <button onClick={() => handleCloseTrade(t.id)} style={{ color: '#2563eb', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold', marginLeft: '8px' }}>بستن</button>
-                  )}
-                  <button onClick={() => handleDelete(t.id)} style={{ color: '#dc2626', border: 'none', background: 'none', cursor: 'pointer', fontWeight: 'bold' }}>حذف</button>
-                </td>
+      <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '20px', marginBottom: '30px' }}>
+        {/* 🎯 کادر تعریف استراتژی */}
+        <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginTop: 0, color: '#334155' }}>➕ تعریف استراتژی جدید</h3>
+          <form onSubmit={handleCreateStrategy} style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
+            <input style={inputStyle} placeholder="نام استراتژی (مثلاً Breakout)" value={newStratName} onChange={e => setNewStratName(e.target.value)} required />
+            <input style={inputStyle} placeholder="توضیحات (اختیاری)" value={newStratDesc} onChange={e => setNewStratDesc(e.target.value)} />
+            <button type="submit" style={{ padding: '8px 15px', background: '#3b82f6', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>ثبت استراتژی</button>
+          </form>
+        </div>
+
+        {/* 📝 کادر ثبت پوزیشن جدید */}
+        <div style={{ background: '#f8fafc', padding: '20px', borderRadius: '8px', border: '1px solid #e2e8f0' }}>
+          <h3 style={{ marginTop: 0, color: '#334155' }}>➕ ثبت معامله دستی</h3>
+          <form onSubmit={handleCreateTrade} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '10px' }}>
+            <input style={inputStyle} placeholder="نماد (XAUUSD)" value={symbol} onChange={e => setSymbol(e.target.value)} required />
+            <select style={inputStyle} value={tradeType} onChange={e => setTradeType(e.target.value)}>
+              <option value="BUY">BUY</option>
+              <option value="SELL">SELL</option>
+            </select>
+            <input style={inputStyle} type="number" step="0.01" placeholder="حجم (لات)" value={quantity} onChange={e => setQuantity(e.target.value)} required />
+            <input style={inputStyle} type="number" step="any" placeholder="قیمت ورود" value={entryPrice} onChange={e => setEntryPrice(e.target.value)} required />
+            <input style={inputStyle} type="number" step="any" placeholder="حد ضرر (SL)" value={stopLoss} onChange={e => setStopLoss(e.target.value)} />
+            <input style={inputStyle} type="number" step="any" placeholder="حد سود (TP)" value={takeProfit} onChange={e => setTakeProfit(e.target.value)} />
+            <select style={{ ...inputStyle, gridColumn: 'span 2' }} value={selectedStrategyId} onChange={e => setSelectedStrategyId(e.target.value)}>
+              <option value="">-- انتخاب استراتژی --</option>
+              {strategies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
+            </select>
+            <button type="submit" style={{ gridColumn: 'span 2', padding: '10px', background: '#10b981', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>ثبت معامله</button>
+          </form>
+        </div>
+      </div>
+
+      {/* ✖️ کادر بستن معامله */}
+      {closingTrade && (
+        <div style={{ background: '#fffbe3', padding: '20px', borderRadius: '8px', border: '1px solid #fde047', marginBottom: '25px' }}>
+          <h3 style={{ marginTop: 0, color: '#854d0e' }}>بستن معامله #{closingTrade.id} ({closingTrade.symbol} - {closingTrade.trade_type})</h3>
+          <form onSubmit={handleCloseTradeSubmit} style={{ display: 'grid', gridTemplateColumns: '1fr 1fr 1fr 1fr', gap: '10px' }}>
+            <div>
+              <label style={{ fontSize: '12px' }}>قیمت خروج:</label>
+              <input style={inputStyle} type="number" step="any" value={exitPrice} onChange={e => setExitPrice(e.target.value)} required />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px' }}>کمیسیون ($):</label>
+              <input style={inputStyle} type="number" step="any" value={commission} onChange={e => setCommission(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px' }}>سواپ ($):</label>
+              <input style={inputStyle} type="number" step="any" value={swap} onChange={e => setSwap(e.target.value)} />
+            </div>
+            <div>
+              <label style={{ fontSize: '12px' }}>سود دستی (اختیاری):</label>
+              <input style={inputStyle} type="number" step="any" placeholder="محاسبه خودکار" value={manualProfit} onChange={e => setManualProfit(e.target.value)} />
+            </div>
+            <div style={{ gridColumn: 'span 4', display: 'flex', gap: '10px', marginTop: '10px' }}>
+              <button type="submit" style={{ padding: '8px 20px', background: '#eab308', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer', fontWeight: 'bold' }}>بستن پوزیشن</button>
+              <button type="button" onClick={() => setClosingTrade(null)} style={{ padding: '8px 20px', background: '#94a3b8', color: '#fff', border: 'none', borderRadius: '6px', cursor: 'pointer' }}>انصراف</button>
+            </div>
+          </form>
+        </div>
+      )}
+
+      {/* 📋 جدول معاملات */}
+      <h2 style={{ color: '#334155' }}>لیست معاملات</h2>
+      <div style={{ overflowX: 'auto' }}>
+        <table style={{ width: '100%', borderCollapse: 'collapse', background: '#fff', boxShadow: '0 1px 3px rgba(0,0,0,0.1)', borderRadius: '8px', overflow: 'hidden' }}>
+          <thead>
+            <tr style={{ background: '#f1f5f9', textAlign: 'right', borderBottom: '2px solid #e2e8f0' }}>
+              <th style={{ padding: '12px' }}>شناسه</th>
+              <th style={{ padding: '12px' }}>نماد</th>
+              <th style={{ padding: '12px' }}>نوع</th>
+              <th style={{ padding: '12px' }}>حجم</th>
+              <th style={{ padding: '12px' }}>ورود</th>
+              <th style={{ padding: '12px' }}>خروج</th>
+              <th style={{ padding: '12px' }}>پیپ</th>
+              <th style={{ padding: '12px' }}>سود ($)</th>
+              <th style={{ padding: '12px' }}>وضعیت</th>
+              <th style={{ padding: '12px' }}>عملیات</th>
+            </tr>
+          </thead>
+          <tbody>
+            {trades.length === 0 ? (
+              <tr>
+                <td colSpan={10} style={{ textAlign: 'center', padding: '20px', color: '#94a3b8' }}>هیچ معامله‌ای ثبت نشده است</td>
               </tr>
-            );
-          })}
-        </tbody>
-      </table>
+            ) : (
+              trades.map(t => (
+                <tr key={t.id} style={{ borderBottom: '1px solid #f1f5f9' }}>
+                  <td style={{ padding: '12px' }}>#{t.id}</td>
+                  <td style={{ padding: '12px', fontWeight: 'bold' }}>{t.symbol}</td>
+                  <td style={{ padding: '12px', color: t.trade_type === 'BUY' ? '#16a34a' : '#dc2626', fontWeight: 'bold' }}>{t.trade_type}</td>
+                  <td style={{ padding: '12px' }}>{t.quantity}</td>
+                  <td style={{ padding: '12px' }}>{t.entry_price}</td>
+                  <td style={{ padding: '12px' }}>{t.exit_price ?? '-'}</td>
+                  <td style={{ padding: '12px' }}>{t.pips ?? '-'}</td>
+                  <td style={{ padding: '12px', fontWeight: 'bold', color: (t.profit ?? 0) >= 0 ? '#16a34a' : '#dc2626' }}>
+                    {t.profit !== null && t.profit !== undefined ? `${t.profit} $` : '-'}
+                  </td>
+                  <td style={{ padding: '12px' }}>
+                    <span style={{ padding: '4px 8px', borderRadius: '4px', fontSize: '12px', background: t.status === 'OPEN' ? '#dcfce7' : '#f1f5f9', color: t.status === 'OPEN' ? '#15803d' : '#64748b' }}>
+                      {t.status === 'OPEN' ? 'باز' : 'بسته شده'}
+                    </span>
+                  </td>
+                  <td style={{ padding: '12px', display: 'flex', gap: '8px' }}>
+                    {t.status === 'OPEN' && (
+                      <button onClick={() => { setClosingTrade(t); setExitPrice(t.entry_price.toString()); }} style={{ padding: '4px 8px', background: '#eab308', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
+                        بستن
+                      </button>
+                    )}
+                    <button onClick={() => handleDeleteTrade(t.id)} style={{ padding: '4px 8px', background: '#ef4444', color: '#fff', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '12px' }}>
+                      حذف
+                    </button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
     </div>
   );
 }
+
+export default App;
