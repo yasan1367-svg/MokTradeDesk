@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, and_
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 import os
 import hashlib
 
 from ..core.database import get_db
 from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion, Strategy
-from ..models.personal import Screenshot
+from ..models.personal import Screenshot, PersonalAccount
+from ..models.prop import PropStage
 from ..utils.trade_metrics import calculate_r_multiple
 from ..utils.trade_validator import TradeValidator
 
@@ -23,7 +25,32 @@ os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
 # Schemas
 # ═════════════════════════════════════════════
 class TradeUpdate(BaseModel):
+    """ویرایش کنترل‌شده‌ی معامله (Classification + اطلاعات اصلی + note)"""
     note: Optional[str] = None
+
+    # Classification
+    test_type: Optional[str] = None
+    version_id: Optional[int] = None
+    personal_account_id: Optional[int] = None
+    prop_stage_id: Optional[int] = None
+
+    # Execution
+    symbol: Optional[str] = None
+    direction: Optional[str] = None
+    open_time: Optional[str] = None
+    close_time: Optional[str] = None
+    open_price: Optional[float] = None
+    close_price: Optional[float] = None
+    size: Optional[float] = None
+
+    # Risk
+    sl: Optional[float] = None
+    tp: Optional[float] = None
+
+    # Financial
+    pnl: Optional[float] = None
+    commission: Optional[float] = None
+    swap: Optional[float] = None
 
 
 class ManualTradeCreate(BaseModel):
@@ -40,136 +67,113 @@ class ManualTradeCreate(BaseModel):
     r_multiple: Optional[float] = None  # اگه خالی بمونه و SL وارد شده باشه، خودکار محاسبه می‌شه
     commission: Optional[float] = 0.0
     swap: Optional[float] = 0.0
+
+    # Classification
+    test_type: str = "backtest"
     version_id: Optional[int] = None
     personal_account_id: Optional[int] = None
     prop_stage_id: Optional[int] = None
-    test_type: str = "backtest"
+
     note: Optional[str] = None
 
 
 # ═════════════════════════════════════════════
-# List & Filter Trades
+# Helpers
 # ═════════════════════════════════════════════
-@router.get("/")
-def get_trades(
-    version_id: Optional[int] = None,
-    prop_stage_id: Optional[int] = None,
-    symbol: Optional[str] = None,
-    test_type: Optional[str] = None,
-    source: Optional[str] = None,
-    search: Optional[str] = None,
-    limit: int = 100,
-    offset: int = 0,
-    db: Session = Depends(get_db),
-):
-    """لیست معاملات با فیلتر"""
-    query = db.query(Trade)
+def _parse_iso_datetime(value: Optional[str], field_name: str = "تاریخ") -> Optional[datetime]:
+    """تبدیل رشته‌ی ISO به datetime با timezone-aware (UTC اگه بدون tz بود)"""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+        # اگه naive بود، UTC فرض کن
+        if dt.tzinfo is None:
+            dt = dt.replace(tzinfo=timezone.utc)
+        return dt
+    except Exception:
+        raise HTTPException(status_code=400, detail=f"فرمت {field_name} نامعتبر است")
 
-    if version_id:
-        query = query.filter(Trade.version_id == version_id)
-    if prop_stage_id:
-        query = query.filter(Trade.prop_stage_id == prop_stage_id)
-    if symbol:
-        query = query.filter(Trade.symbol == symbol)
-    if test_type:
-        query = query.filter(Trade.test_type == test_type)
-    if source:
-        query = query.filter(Trade.source == source)
-    if search:
-        query = query.filter(Trade.note.like(f"%{search}%"))
 
-    total = query.count()
-    trades = query.order_by(Trade.close_time.desc()).offset(offset).limit(limit).all()
-
-    result = []
-    for t in trades:
-        screenshots_count = db.query(Screenshot).filter(
+def _get_screenshots_count_map(db: Session, trade_ids: List[int]) -> dict:
+    """تعداد اسکرین‌شات هر trade رو در یه query جمع می‌کنه (حل N+1)"""
+    if not trade_ids:
+        return {}
+    rows = (
+        db.query(Screenshot.entity_id, func.count(Screenshot.id))
+        .filter(
             Screenshot.entity_type == "trade",
-            Screenshot.entity_id == t.id,
-        ).count()
-
-        version_name = None
-        strategy_name = None
-        personal_account_name = None
-        if t.version_id:
-            version = db.query(StrategyVersion).filter(StrategyVersion.id == t.version_id).first()
-            if version:
-                version_name = version.version_name
-                strategy = db.query(Strategy).filter(Strategy.id == version.strategy_id).first()
-                strategy_name = strategy.name if strategy else None
-        if t.personal_account_id:
-            personal_account = db.query(Trade.__table__.metadata.tables['personal_accounts']).filter_by(id=t.personal_account_id).first() if False else None
-            # fallback to ORM relationship when available
-            personal_account = t.personal_account
-            personal_account_name = personal_account.name if personal_account else None
-
-        result.append({
-            "id": t.id,
-            "symbol": t.symbol,
-            "direction": t.direction,
-            "open_time": t.open_time,
-            "close_time": t.close_time,
-            "open_price": t.open_price,
-            "close_price": t.close_price,
-            "size": t.size,
-            "pnl": t.pnl,
-            "commission": t.commission,
-            "swap": t.swap,
-            "source": t.source.value if t.source else None,
-            "test_type": t.test_type.value if t.test_type else None,
-            "note": t.note,
-            "version_id": t.version_id,
-            "version_name": version_name,
-            "strategy_name": strategy_name,
-            "personal_account_id": t.personal_account_id,
-            "personal_account_name": personal_account_name,
-            "prop_stage_id": t.prop_stage_id,
-            "screenshots_count": screenshots_count,
-            "created_at": t.created_at,
-        })
-
-    return {"total": total, "trades": result}
+            Screenshot.entity_id.in_(trade_ids),
+        )
+        .group_by(Screenshot.entity_id)
+        .all()
+    )
+    return {entity_id: count for entity_id, count in rows}
 
 
-# ═════════════════════════════════════════════
-# Get Single Trade
-# ═════════════════════════════════════════════
-@router.get("/{trade_id}")
-def get_trade(trade_id: int, db: Session = Depends(get_db)):
-    """جزئیات یک معامله"""
-    trade = db.query(Trade).filter(Trade.id == trade_id).first()
-    if not trade:
-        raise HTTPException(status_code=404, detail="معامله پیدا نشد")
+def _serialize_trade_summary(t: Trade, screenshots_count: int) -> dict:
+    """خروجی خلاصه برای لیست"""
+    version_name = None
+    strategy_name = None
+    if t.version:
+        version_name = t.version.version_name
+        if t.version.strategy:
+            strategy_name = t.version.strategy.name
 
-    screenshots = db.query(Screenshot).filter(
-        Screenshot.entity_type == "trade",
-        Screenshot.entity_id == trade_id,
-    ).all()
-
-    personal_account_name = trade.personal_account.name if trade.personal_account else None
+    personal_account_name = t.personal_account.name if t.personal_account else None
 
     return {
-        "id": trade.id,
-        "symbol": trade.symbol,
-        "direction": trade.direction,
-        "open_time": trade.open_time,
-        "close_time": trade.close_time,
-        "open_price": trade.open_price,
-        "close_price": trade.close_price,
-        "size": trade.size,
-        "sl": trade.sl,
-        "tp": trade.tp,
-        "pnl": trade.pnl,
-        "commission": trade.commission,
-        "swap": trade.swap,
-        "source": trade.source.value if trade.source else None,
-        "test_type": trade.test_type.value if trade.test_type else None,
-        "note": trade.note,
-        "version_id": trade.version_id,
-        "personal_account_id": trade.personal_account_id,
+        "id": t.id,
+        "symbol": t.symbol,
+        "direction": t.direction,
+        "open_time": t.open_time,
+        "close_time": t.close_time,
+        "open_price": t.open_price,
+        "close_price": t.close_price,
+        "size": t.size,
+        "pnl": t.pnl,
+        "commission": t.commission,
+        "swap": t.swap,
+        "source": t.source.value if t.source else None,
+        "test_type": t.test_type.value if t.test_type else None,
+        "note": t.note,
+        "version_id": t.version_id,
+        "version_name": version_name,
+        "strategy_name": strategy_name,
+        "personal_account_id": t.personal_account_id,
         "personal_account_name": personal_account_name,
-        "prop_stage_id": trade.prop_stage_id,
-        "raw_data": trade.raw_data,
+        "prop_stage_id": t.prop_stage_id,
+        "screenshots_count": screenshots_count,
+        "created_at": t.created_at,
+    }
+
+
+def _serialize_trade_detail(t: Trade, screenshots: List[Screenshot]) -> dict:
+    """خروجی کامل یک معامله"""
+    personal_account_name = t.personal_account.name if t.personal_account else None
+
+    return {
+        "id": t.id,
+        "symbol": t.symbol,
+        "direction": t.direction,
+        "open_time": t.open_time,
+        "close_time": t.close_time,
+        "open_price": t.open_price,
+        "close_price": t.close_price,
+        "size": t.size,
+        "sl": t.sl,
+        "tp": t.tp,
+        "pnl": t.pnl,
+        "commission": t.commission,
+        "swap": t.swap,
+        "r_multiple": t.r_multiple,
+        "source": t.source.value if t.source else None,
+        "test_type": t.test_type.value if t.test_type else None,
+        "note": t.note,
+        "version_id": t.version_id,
+        "personal_account_id": t.personal_account_id,
+        "personal_account_name": personal_account_name,
+        "prop_stage_id": t.prop_stage_id,
+        "raw_data": t.raw_data,
         "screenshots": [
             {
                 "id": s.id,
@@ -183,19 +187,228 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
 
 
 # ═════════════════════════════════════════════
-# Update Trade (only note)
+# List & Filter Trades
+# ═════════════════════════════════════════════
+@router.get("/")
+def get_trades(
+    version_id: Optional[int] = None,
+    strategy_id: Optional[int] = None,
+    personal_account_id: Optional[int] = None,
+    prop_stage_id: Optional[int] = None,
+    symbol: Optional[str] = None,
+    test_type: Optional[str] = None,
+    source: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    search: Optional[str] = None,
+    limit: int = 100,
+    offset: int = 0,
+    db: Session = Depends(get_db),
+):
+    """لیست معاملات با فیلترهای پیشرفته"""
+    query = db.query(Trade)
+
+    if version_id:
+        query = query.filter(Trade.version_id == version_id)
+    if strategy_id:
+        query = query.join(StrategyVersion, Trade.version_id == StrategyVersion.id).filter(
+            StrategyVersion.strategy_id == strategy_id
+        )
+    if personal_account_id:
+        query = query.filter(Trade.personal_account_id == personal_account_id)
+    if prop_stage_id:
+        query = query.filter(Trade.prop_stage_id == prop_stage_id)
+    if symbol:
+        query = query.filter(Trade.symbol == symbol)
+    if test_type:
+        query = query.filter(Trade.test_type == test_type)
+    if source:
+        query = query.filter(Trade.source == source)
+    if search:
+        query = query.filter(Trade.note.like(f"%{search}%"))
+    if date_from:
+        dt_from = _parse_iso_datetime(date_from, "تاریخ شروع")
+        if dt_from:
+            query = query.filter(Trade.open_time >= dt_from)
+    if date_to:
+        dt_to = _parse_iso_datetime(date_to, "تاریخ پایان")
+        if dt_to:
+            query = query.filter(Trade.open_time <= dt_to)
+
+    total = query.count()
+
+    # ✅ حل N+1: eager load روابط
+    trades = (
+        query
+        .options(
+            joinedload(Trade.version).joinedload(StrategyVersion.strategy),
+            joinedload(Trade.personal_account),
+        )
+        .order_by(Trade.close_time.desc().nullslast(), Trade.open_time.desc())
+        .offset(offset)
+        .limit(limit)
+        .all()
+    )
+
+    # ✅ حل N+1: یه query برای همه‌ی screenshots_count ها
+    trade_ids = [t.id for t in trades]
+    screenshots_count_map = _get_screenshots_count_map(db, trade_ids)
+
+    result = [
+        _serialize_trade_summary(t, screenshots_count_map.get(t.id, 0))
+        for t in trades
+    ]
+
+    return {"total": total, "trades": result}
+
+
+# ═════════════════════════════════════════════
+# Get Single Trade
+# ═════════════════════════════════════════════
+@router.get("/{trade_id}")
+def get_trade(trade_id: int, db: Session = Depends(get_db)):
+    """جزئیات یک معامله"""
+    trade = (
+        db.query(Trade)
+        .options(
+            joinedload(Trade.version).joinedload(StrategyVersion.strategy),
+            joinedload(Trade.personal_account),
+        )
+        .filter(Trade.id == trade_id)
+        .first()
+    )
+    if not trade:
+        raise HTTPException(status_code=404, detail="معامله پیدا نشد")
+
+    screenshots = db.query(Screenshot).filter(
+        Screenshot.entity_type == "trade",
+        Screenshot.entity_id == trade_id,
+    ).all()
+
+    return _serialize_trade_detail(trade, screenshots)
+
+
+# ═════════════════════════════════════════════
+# Update Trade (controlled edit)
 # ═════════════════════════════════════════════
 @router.patch("/{trade_id}")
 def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)):
-    """ویرایش یادداشت معامله"""
+    """ویرایش کنترل‌شده‌ی معامله (Classification + Execution + note)"""
     trade = db.query(Trade).filter(Trade.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
+    # ── ۱. تعیین مقادیر نهایی برای validation ──
+    new_test_type = data.test_type if data.test_type is not None else (
+        trade.test_type.value if trade.test_type else "backtest"
+    )
+    new_version_id = data.version_id if data.version_id is not None else trade.version_id
+    new_personal_account_id = (
+        data.personal_account_id if data.personal_account_id is not None else trade.personal_account_id
+    )
+    new_prop_stage_id = (
+        data.prop_stage_id if data.prop_stage_id is not None else trade.prop_stage_id
+    )
+
+    # ── ۲. validation Classification ──
+    is_valid, error_message = TradeValidator.validate_classification(
+        new_test_type,
+        new_version_id,
+        new_personal_account_id,
+        new_prop_stage_id,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # ── ۳. validation اعداد (اگه تغییر کردن) ──
+    is_valid, error_message = TradeValidator.validate_numbers(
+        size=data.size if data.size is not None else trade.size,
+        open_price=data.open_price if data.open_price is not None else trade.open_price,
+        close_price=data.close_price if data.close_price is not None else trade.close_price,
+        sl=data.sl if data.sl is not None else trade.sl,
+        tp=data.tp if data.tp is not None else trade.tp,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # ── ۴. validation تاریخ‌ها ──
+    new_open_time = trade.open_time
+    new_close_time = trade.close_time
+    if data.open_time is not None:
+        new_open_time = _parse_iso_datetime(data.open_time, "زمان باز شدن")
+    if data.close_time is not None:
+        new_close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن")
+
+    is_valid, error_message = TradeValidator.validate_dates(new_open_time, new_close_time)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # ── ۵. اعمال تغییرات ──
     if data.note is not None:
         trade.note = data.note
 
+    # Classification
+    if data.test_type is not None:
+        test_type_map = {
+            "backtest": TestType.BACKTEST,
+            "forward": TestType.FORWARD,
+            "real": TestType.REAL,
+        }
+        new_tt = test_type_map.get(data.test_type)
+        if not new_tt:
+            raise HTTPException(status_code=400, detail="نوع تست نامعتبر")
+        trade.test_type = new_tt
+    if data.version_id is not None:
+        trade.version_id = data.version_id
+    if data.personal_account_id is not None:
+        trade.personal_account_id = data.personal_account_id or None
+    if data.prop_stage_id is not None:
+        trade.prop_stage_id = data.prop_stage_id or None
+
+    # Execution
+    if data.symbol is not None:
+        trade.symbol = data.symbol
+    if data.direction is not None:
+        direction = data.direction.lower()
+        if direction not in ["buy", "sell"]:
+            raise HTTPException(status_code=400, detail="جهت باید buy یا sell باشد")
+        trade.direction = direction
+    if data.open_time is not None:
+        trade.open_time = new_open_time
+    if data.close_time is not None:
+        trade.close_time = new_close_time
+    if data.open_price is not None:
+        trade.open_price = data.open_price
+    if data.close_price is not None:
+        trade.close_price = data.close_price
+    if data.size is not None:
+        trade.size = data.size
+
+    # Risk
+    if data.sl is not None:
+        trade.sl = data.sl
+    if data.tp is not None:
+        trade.tp = data.tp
+
+    # Financial
+    if data.pnl is not None:
+        trade.pnl = data.pnl
+    if data.commission is not None:
+        trade.commission = data.commission
+    if data.swap is not None:
+        trade.swap = data.swap
+
+    # ✅ محاسبه‌ی مجدد R-Multiple اگه SL/قیمت‌ها تغییر کرده
+    if any(x is not None for x in [data.sl, data.open_price, data.close_price, data.direction]):
+        trade.r_multiple = calculate_r_multiple(
+            trade.direction,
+            trade.open_price,
+            trade.close_price,
+            trade.sl,
+        )
+
     db.commit()
+    db.refresh(trade)
     return {"message": "معامله به‌روزرسانی شد"}
 
 
@@ -223,7 +436,7 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
         if os.path.exists(s.file_path):
             try:
                 os.remove(s.file_path)
-            except:
+            except Exception:
                 pass
         db.delete(s)
 
@@ -238,17 +451,11 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
 @router.post("/manual")
 def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     """افزودن معامله‌ی دستی"""
-    try:
-        open_time = datetime.fromisoformat(data.open_time)
-    except:
-        raise HTTPException(status_code=400, detail="فرمت تاریخ نامعتبر")
+    open_time = _parse_iso_datetime(data.open_time, "زمان باز شدن")
+    if not open_time:
+        raise HTTPException(status_code=400, detail="زمان باز شدن الزامی است")
 
-    close_time = None
-    if data.close_time:
-        try:
-            close_time = datetime.fromisoformat(data.close_time)
-        except:
-            raise HTTPException(status_code=400, detail="فرمت تاریخ بسته شدن نامعتبر")
+    close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن")
 
     direction = data.direction.lower()
     if direction not in ["buy", "sell"]:
@@ -259,14 +466,33 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         "forward": TestType.FORWARD,
         "real": TestType.REAL,
     }
-    test_type = test_type_map.get(data.test_type, TestType.BACKTEST)
+    test_type = test_type_map.get(data.test_type)
+    if not test_type:
+        raise HTTPException(status_code=400, detail="نوع تست نامعتبر")
 
+    # ✅ Validation Classification
     is_valid, error_message = TradeValidator.validate_classification(
-        test_type.value if hasattr(test_type, 'value') else str(test_type),
+        test_type.value,
         data.version_id,
         data.personal_account_id,
         data.prop_stage_id,
     )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # ✅ Validation اعداد
+    is_valid, error_message = TradeValidator.validate_numbers(
+        size=data.size,
+        open_price=data.open_price,
+        close_price=data.close_price,
+        sl=data.sl,
+        tp=data.tp,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
+    # ✅ Validation تاریخ‌ها
+    is_valid, error_message = TradeValidator.validate_dates(open_time, close_time)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
 
@@ -335,12 +561,12 @@ async def upload_screenshot(
     file_hash = hashlib.md5(content).hexdigest()
 
     screenshot = Screenshot(
-    entity_type="trade",
-    entity_id=trade_id,
-    file_path=file_path,
-    file_hash=file_hash,
-    description=description,
-)
+        entity_type="trade",
+        entity_id=trade_id,
+        file_path=file_path,
+        file_hash=file_hash,
+        description=description,
+    )
     db.add(screenshot)
     db.commit()
     db.refresh(screenshot)
@@ -382,7 +608,7 @@ def delete_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
     if os.path.exists(screenshot.file_path):
         try:
             os.remove(screenshot.file_path)
-        except:
+        except Exception:
             pass
 
     db.delete(screenshot)
