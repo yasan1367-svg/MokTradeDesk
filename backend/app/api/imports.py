@@ -7,6 +7,7 @@ from typing import Optional
 from ..core.database import get_db
 from ..services.import_service import Soft4XImporter, MT4Importer
 from ..models.strategy import StrategyVersion
+from ..utils.trade_validator import TradeValidator
 
 router = APIRouter()
 
@@ -16,12 +17,22 @@ async def import_soft4x(
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
+    personal_account_id: Optional[int] = Form(None),
     symbol: Optional[str] = Form("XAUUSD"),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith('.xlsx'):
         raise HTTPException(status_code=400, detail="فایل باید با فرمت xlsx باشد")
+
+    valid, error = TradeValidator.validate_classification(
+        test_type or "backtest",
+        version_id,
+        personal_account_id,
+        prop_stage_id,
+    )
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_file:
         content = await file.read()
@@ -36,14 +47,29 @@ async def import_soft4x(
             version = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
             if not version:
                 raise HTTPException(status_code=404, detail="نسخه استراتژی پیدا نشد")
-            saved_trades = importer.save_trades(trades, version_id=version_id)
+            saved_trades = importer.save_trades(
+                trades,
+                version_id=version_id,
+                prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
+            )
             message = f"{len(saved_trades)} معامله با موفقیت وارد شد (استراتژی)"
         elif prop_stage_id:
-            saved_trades = importer.save_trades(trades, prop_stage_id=prop_stage_id)
+            saved_trades = importer.save_trades(
+                trades,
+                prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
+            )
             message = f"{len(saved_trades)} معامله با موفقیت وارد شد (پراپ)"
+        elif personal_account_id:
+            saved_trades = importer.save_trades(
+                trades,
+                personal_account_id=personal_account_id,
+            )
+            message = f"{len(saved_trades)} معامله با موفقیت وارد شد (حساب شخصی)"
         else:
             saved_trades = []
-            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id یا prop_stage_id را وارد کنید."
+            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id، prop_stage_id یا personal_account_id را وارد کنید."
 
         return {
             "message": message,
@@ -65,11 +91,21 @@ async def import_mt4(
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
+    personal_account_id: Optional[int] = Form(None),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
 ):
     if not file.filename.endswith('.html'):
         raise HTTPException(status_code=400, detail="فایل باید با فرمت html باشد")
+
+    valid, error = TradeValidator.validate_classification(
+        test_type or "backtest",
+        version_id,
+        personal_account_id,
+        prop_stage_id,
+    )
+    if not valid:
+        raise HTTPException(status_code=400, detail=error)
 
     content = await file.read()
 
@@ -95,11 +131,26 @@ async def import_mt4(
             version = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
             if not version:
                 raise HTTPException(status_code=404, detail="نسخه استراتژی پیدا نشد")
-            saved = importer.save_trades(trades, version_id=version_id)
+            saved = importer.save_trades(
+                trades,
+                version_id=version_id,
+                prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
+            )
             message = f"{len(saved)} معامله با موفقیت وارد شد (استراتژی)"
         elif prop_stage_id:
-            saved = importer.save_trades(trades, prop_stage_id=prop_stage_id)
+            saved = importer.save_trades(
+                trades,
+                prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
+            )
             message = f"{len(saved)} معامله با موفقیت وارد شد (پراپ)"
+        elif personal_account_id:
+            saved = importer.save_trades(
+                trades,
+                personal_account_id=personal_account_id,
+            )
+            message = f"{len(saved)} معامله با موفقیت وارد شد (حساب شخصی)"
         else:
             saved = []
             message = f"{len(trades)} معامله شناسایی شد."

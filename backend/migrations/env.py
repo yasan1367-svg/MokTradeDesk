@@ -28,8 +28,6 @@ from app.models.prop import (
     PropWithdrawal,
     PropCost,
     PropAlert,
-    Tag,
-    PropAccountTag,
 )
 
 # Personal Models

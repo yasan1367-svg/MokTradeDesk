@@ -245,9 +245,8 @@ def get_all_stages(db: Session = Depends(get_db)):
 @router.get("/stages/{stage_id}/check-pass")
 def check_pass_ready(stage_id: int, db: Session = Depends(get_db)):
     """بررسی وضعیت مرحله قبل از پاس کردن"""
-    from ..services.analysis_service import AnalysisService
-    service = AnalysisService(db)
-    return service.calculate_stage_progress(stage_id)
+    from ..services.prop_rule_engine import PropRuleEngine
+    return PropRuleEngine.evaluate_stage(db, stage_id)
 
 
 @router.post("/stages/{stage_id}/pass")
@@ -385,7 +384,6 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
     if stage.stage_type != StageType.FUNDED_REAL:
         raise HTTPException(status_code=400, detail="برداشت فقط در مرحله رییل مجاز است")
 
-    # ثبت برداشت
     withdrawal = PropWithdrawal(
         prop_stage_id=stage_id,
         amount=request.amount,
@@ -396,46 +394,6 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
     stage.total_withdrawn = (stage.total_withdrawn or 0) + request.amount
     stage.current_profit = (stage.current_profit or 0) - request.amount
 
-    # ثبت در دفتر کل (به‌عنوان درآمد)
-    try:
-        from ..models.personal import LedgerTransaction, TransactionType
-        ledger = LedgerTransaction(
-            transaction_type=TransactionType.PROP_PAYOUT,
-            source_type="prop_stage",
-            source_id=stage_id,
-            amount=request.amount,
-            description=f"برداشت از {stage.stage_type.value} - {request.note or ''}",
-        )
-        db.add(ledger)
-    except Exception as e:
-        print(f"⚠️ خطا در ثبت Ledger: {e}")
-
-    db.commit()
-
-    return {"message": f"{request.amount} دلار برداشت ثبت شد و به درآمد اضافه شد"}
-
-
-@router.post("/stages/{stage_id}/withdraw")
-def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get_db)):
-    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
-    if not stage:
-        raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
-
-    if stage.stage_type != StageType.FUNDED_REAL:
-        raise HTTPException(status_code=400, detail="برداشت فقط در مرحله رییل مجاز است")
-
-    # ثبت برداشت
-    withdrawal = PropWithdrawal(
-        prop_stage_id=stage_id,
-        amount=request.amount,
-        note=request.note,
-    )
-    db.add(withdrawal)
-
-    stage.total_withdrawn = (stage.total_withdrawn or 0) + request.amount
-    stage.current_profit = (stage.current_profit or 0) - request.amount
-
-    # ثبت در دفتر کل
     try:
         from ..models.personal import LedgerTransaction, TransactionType
         account = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
@@ -449,7 +407,7 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
             source_type="prop_stage",
             source_id=stage_id,
             prop_account_id=stage.prop_account_id,
-            personal_account_id=request.target_personal_account_id,  # ← اکانت شخصی مقصد
+            personal_account_id=request.target_personal_account_id,
             amount=request.amount,
             description=description,
         )

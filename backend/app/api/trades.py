@@ -41,6 +41,7 @@ class ManualTradeCreate(BaseModel):
     commission: Optional[float] = 0.0
     swap: Optional[float] = 0.0
     version_id: Optional[int] = None
+    personal_account_id: Optional[int] = None
     prop_stage_id: Optional[int] = None
     test_type: str = "backtest"
     note: Optional[str] = None
@@ -89,12 +90,18 @@ def get_trades(
 
         version_name = None
         strategy_name = None
+        personal_account_name = None
         if t.version_id:
             version = db.query(StrategyVersion).filter(StrategyVersion.id == t.version_id).first()
             if version:
                 version_name = version.version_name
                 strategy = db.query(Strategy).filter(Strategy.id == version.strategy_id).first()
                 strategy_name = strategy.name if strategy else None
+        if t.personal_account_id:
+            personal_account = db.query(Trade.__table__.metadata.tables['personal_accounts']).filter_by(id=t.personal_account_id).first() if False else None
+            # fallback to ORM relationship when available
+            personal_account = t.personal_account
+            personal_account_name = personal_account.name if personal_account else None
 
         result.append({
             "id": t.id,
@@ -114,6 +121,8 @@ def get_trades(
             "version_id": t.version_id,
             "version_name": version_name,
             "strategy_name": strategy_name,
+            "personal_account_id": t.personal_account_id,
+            "personal_account_name": personal_account_name,
             "prop_stage_id": t.prop_stage_id,
             "screenshots_count": screenshots_count,
             "created_at": t.created_at,
@@ -137,6 +146,8 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
         Screenshot.entity_id == trade_id,
     ).all()
 
+    personal_account_name = trade.personal_account.name if trade.personal_account else None
+
     return {
         "id": trade.id,
         "symbol": trade.symbol,
@@ -155,6 +166,8 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
         "test_type": trade.test_type.value if trade.test_type else None,
         "note": trade.note,
         "version_id": trade.version_id,
+        "personal_account_id": trade.personal_account_id,
+        "personal_account_name": personal_account_name,
         "prop_stage_id": trade.prop_stage_id,
         "raw_data": trade.raw_data,
         "screenshots": [
@@ -248,6 +261,15 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     }
     test_type = test_type_map.get(data.test_type, TestType.BACKTEST)
 
+    is_valid, error_message = TradeValidator.validate_classification(
+        test_type.value if hasattr(test_type, 'value') else str(test_type),
+        data.version_id,
+        data.personal_account_id,
+        data.prop_stage_id,
+    )
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error_message)
+
     r_multiple = data.r_multiple
     if r_multiple is None:
         r_multiple = calculate_r_multiple(direction, data.open_price, data.close_price, data.sl)
@@ -267,6 +289,7 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         commission=data.commission or 0,
         swap=data.swap or 0,
         version_id=data.version_id,
+        personal_account_id=data.personal_account_id,
         prop_stage_id=data.prop_stage_id,
         source=TradeSource.MANUAL,
         test_type=test_type,

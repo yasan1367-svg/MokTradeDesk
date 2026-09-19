@@ -49,7 +49,7 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
           ]}
         />
         <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-          {chartData.map((entry, index) => (
+          {chartData.map((_, index) => (
             <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
           ))}
         </Bar>

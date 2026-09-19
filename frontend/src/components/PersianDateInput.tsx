@@ -22,7 +22,6 @@ export default function PersianDateInput({
     if (value) {
       try {
         const date = new Date(value);
-        const jy = date.getFullYear() - 621;
         // تبدیل دقیق‌تر
         const persian = gregorianToJalali(
           date.getFullYear(),

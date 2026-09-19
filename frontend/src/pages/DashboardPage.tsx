@@ -6,14 +6,12 @@ import ProgressBar from '../components/ui/ProgressBar';
 import {
   getAllVersions,
   getVersionAnalysis,
-  getVersionTrades,
   getPropAccounts,
   getActivePropStages,
   checkPassReady,
 } from '../api/client';
 
 export default function DashboardPage() {
-  const [versions, setVersions] = useState<any[]>([]);
   const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [propAccounts, setPropAccounts] = useState<any[]>([]);
@@ -22,7 +20,6 @@ const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
 
   useEffect(() => {
   getAllVersions().then((res) => {
-    setVersions(res.data);
     if (res.data.length > 0) setSelectedVersionId(res.data[0].id);
   });
 

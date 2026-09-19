@@ -24,9 +24,11 @@ interface PropStage {
 export default function ImportPage() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [propStages, setPropStages] = useState<PropStage[]>([]);
+  const [personalAccounts, setPersonalAccounts] = useState<any[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [selectedPropStage, setSelectedPropStage] = useState<number | null>(null);
-  const [importTarget, setImportTarget] = useState<'strategy' | 'prop'>('strategy');
+  const [selectedPersonalAccount, setSelectedPersonalAccount] = useState<number | null>(null);
+  const [importTarget, setImportTarget] = useState<'strategy' | 'prop' | 'personal'>('strategy');
   const [fileType, setFileType] = useState<'soft4x' | 'mt4'>('soft4x');
   const [symbol, setSymbol] = useState<string>('XAUUSD');
   const [testType, setTestType] = useState<'backtest' | 'forward' | 'real'>('backtest');
@@ -53,6 +55,11 @@ export default function ImportPage() {
     getAllPropStages()
       .then((res) => setPropStages(res.data))
       .catch((err) => console.error('خطا در دریافت مراحل پراپ:', err));
+
+    import('../api/client')
+      .then(({ getPersonalAccounts }) => getPersonalAccounts())
+      .then((res) => setPersonalAccounts(res.data))
+      .catch((err) => console.error('خطا در دریافت حساب‌های شخصی:', err));
   }, []);
 
   // ═════════════════════════════════════════════
@@ -99,15 +106,19 @@ export default function ImportPage() {
       let response;
       if (fileType === 'soft4x') {
         if (importTarget === 'strategy') {
-          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType);
+          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, undefined, selectedPersonalAccount || undefined);
+        } else if (importTarget === 'prop') {
+          response = await importSoft4X(file, undefined, symbol, testType, selectedPropStage || undefined, undefined);
         } else {
-          response = await importSoft4X(file, undefined, symbol, testType, selectedPropStage || undefined);
+          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, undefined, selectedPersonalAccount || undefined);
         }
       } else {
         if (importTarget === 'strategy') {
-          response = await importMT4(file, selectedVersion || undefined, testType);
+          response = await importMT4(file, selectedVersion || undefined, testType, undefined, selectedPersonalAccount || undefined);
+        } else if (importTarget === 'prop') {
+          response = await importMT4(file, undefined, testType, selectedPropStage || undefined, undefined);
         } else {
-          response = await importMT4(file, undefined, testType, selectedPropStage || undefined);
+          response = await importMT4(file, selectedVersion || undefined, testType, undefined, selectedPersonalAccount || undefined);
         }
       }
       setResult(response.data);
@@ -240,10 +251,10 @@ export default function ImportPage() {
           {/* مقصد */}
           <div className="mb-5">
             <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🎯 مقصد واردات</label>
-            <div className="flex gap-2">
+            <div className="flex gap-2 flex-wrap">
               <button
                 onClick={() => setImportTarget('strategy')}
-                className={`flex-1 py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
+                className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
                   importTarget === 'strategy'
                     ? 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
                     : 'bg-[#F8FAFF] border-2 border-[#E5EBF3] text-[#6B7A94] hover:border-[#A9C1FA]'
@@ -253,8 +264,19 @@ export default function ImportPage() {
                 🎯 استراتژی
               </button>
               <button
+                onClick={() => setImportTarget('personal')}
+                className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
+                  importTarget === 'personal'
+                    ? 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
+                    : 'bg-[#F8FAFF] border-2 border-[#E5EBF3] text-[#6B7A94] hover:border-[#A9C1FA]'
+                }`}
+                style={importTarget === 'personal' ? { background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' } : {}}
+              >
+                💼 شخصی
+              </button>
+              <button
                 onClick={() => setImportTarget('prop')}
-                className={`flex-1 py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
+                className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
                   importTarget === 'prop'
                     ? 'text-white shadow-[0_6px_16px_rgba(121,89,214,0.3)]'
                     : 'bg-[#F8FAFF] border-2 border-[#E5EBF3] text-[#6B7A94] hover:border-[#A9C1FA]'
@@ -310,7 +332,7 @@ export default function ImportPage() {
           </div>
 
           {/* مقصد انتخابی */}
-          {importTarget === 'strategy' ? (
+          {importTarget === 'strategy' && (
             <div className="mb-2">
               <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
                 📌 نسخه‌ی استراتژی <span className="text-[#E45D72]">*</span>
@@ -328,7 +350,29 @@ export default function ImportPage() {
                 ))}
               </select>
             </div>
-          ) : (
+          )}
+
+          {importTarget === 'personal' && (
+            <div className="mb-2">
+              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+                💼 حساب شخصی <span className="text-[#E45D72]">*</span>
+              </label>
+              <select
+                value={selectedPersonalAccount || ''}
+                onChange={(e) => setSelectedPersonalAccount(e.target.value ? Number(e.target.value) : null)}
+                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-bold focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all cursor-pointer"
+              >
+                <option value="">— انتخاب حساب —</option>
+                {personalAccounts.map((acc) => (
+                  <option key={acc.id} value={acc.id}>
+                    {acc.name} ({acc.broker_name})
+                  </option>
+                ))}
+              </select>
+            </div>
+          )}
+
+          {importTarget === 'prop' && (
             <div className="mb-2">
               <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
                 📌 مرحله‌ی پراپ <span className="text-[#E45D72]">*</span>

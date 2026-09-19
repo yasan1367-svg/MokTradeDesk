@@ -50,7 +50,7 @@ export default function ComparisonBarChart({ items, metric, height = 250 }: Comp
           formatter={(value: any) => [value, metricLabels[metric]]}
         />
         <Bar dataKey="value" radius={[8, 8, 0, 0]}>
-          {data.map((entry, index) => (
+          {data.map((_, index) => (
             <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
           ))}
         </Bar>

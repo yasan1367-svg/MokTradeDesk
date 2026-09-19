@@ -48,6 +48,9 @@ class Soft4XImporter:
                 continue
 
             direction = self._get_direction(self._get_value(row, col_index.get("Type")))
+            if direction is None:
+                continue
+
             open_price = float(self._get_value(row, col_index.get("Open Price"), 0) or 0)
             close_price = float(self._get_value(row, col_index.get("Close Price"), 0) or 0)
             sl = self._to_float(self._get_value(row, col_index.get("SL")))
@@ -82,12 +85,14 @@ class Soft4XImporter:
         trades: List[Dict[str, Any]],
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
+        personal_account_id: Optional[int] = None,
     ) -> List[Trade]:
         db_trades = []
         for trade_data in trades:
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
                 **trade_data
             )
             self.db.add(db_trade)
@@ -138,9 +143,14 @@ class Soft4XImporter:
             return default
 
     def _get_direction(self, value):
-        if value:
-            return "buy" if str(value).lower() == "buy" else "sell"
-        return "sell"
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        if normalized == "buy":
+            return "buy"
+        if normalized == "sell":
+            return "sell"
+        return None
 
     def _to_float(self, value):
         if value is None:
@@ -255,7 +265,12 @@ class MT4Importer:
             if open_time is None:
                 return None
 
-            direction = "buy" if "buy" in direction_raw else "sell"
+            if "buy" in direction_raw:
+                direction = "buy"
+            elif "sell" in direction_raw:
+                direction = "sell"
+            else:
+                return None
 
             return {
                 "symbol": self._apply_symbol_mapping(symbol),
@@ -288,12 +303,14 @@ class MT4Importer:
         trades: List[Dict[str, Any]],
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
+        personal_account_id: Optional[int] = None,
     ) -> List[Trade]:
         db_trades = []
         for trade_data in trades:
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_account_id=personal_account_id,
                 **trade_data
             )
             self.db.add(db_trade)

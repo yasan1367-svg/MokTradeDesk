@@ -1,12 +1,14 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
+import os
+import hashlib
 
 from ..core.database import get_db
 from ..models.personal import (
-    PersonalAccount, LedgerTransaction, JournalReview,
+    PersonalAccount, LedgerTransaction, JournalReview, Screenshot,
     TransactionType
 )
 from ..models.strategy import Trade
@@ -333,6 +335,87 @@ def create_review(data: JournalReviewCreate, db: Session = Depends(get_db)):
     return {"id": review.id, "message": "مرور ثبت شد"}
 
 
+@router.post("/journal/reviews/{review_id}/screenshots")
+async def upload_review_screenshot(
+    review_id: int,
+    file: UploadFile = File(...),
+    description: Optional[str] = Form(None),
+    db: Session = Depends(get_db),
+):
+    """آپلود اسکرین‌شات برای یک مرور معامله"""
+    review = db.query(JournalReview).filter(JournalReview.id == review_id).first()
+    if not review:
+        raise HTTPException(status_code=404, detail="مرور پیدا نشد")
+
+    allowed_extensions = [".png", ".jpg", ".jpeg", ".gif", ".webp"]
+    ext = os.path.splitext(file.filename)[1].lower()
+    if ext not in allowed_extensions:
+        raise HTTPException(status_code=400, detail="فرمت فایل پشتیبانی نمی‌شود")
+
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    file_name = f"review_{review_id}_{timestamp}{ext}"
+    file_path = f"storage/screenshots/{file_name}"
+
+    content = await file.read()
+    with open(file_path, "wb") as f:
+        f.write(content)
+
+    file_hash = hashlib.md5(content).hexdigest()
+    screenshot = Screenshot(
+        entity_type="review",
+        entity_id=review_id,
+        review_id=review_id,
+        file_path=file_path,
+        file_hash=file_hash,
+        description=description,
+    )
+    db.add(screenshot)
+    db.commit()
+    db.refresh(screenshot)
+
+    return {
+        "id": screenshot.id,
+        "file_path": screenshot.file_path,
+        "message": "اسکرین‌شات مرور آپلود شد",
+    }
+
+
+@router.get("/journal/reviews/{review_id}/screenshots")
+def get_review_screenshots(review_id: int, db: Session = Depends(get_db)):
+    """لیست اسکرین‌شات‌های یک مرور"""
+    screenshots = db.query(Screenshot).filter(
+        Screenshot.entity_type == "review",
+        Screenshot.entity_id == review_id,
+    ).all()
+    return [
+        {
+            "id": s.id,
+            "file_path": s.file_path,
+            "description": s.description,
+            "uploaded_at": s.uploaded_at,
+        }
+        for s in screenshots
+    ]
+
+
+@router.delete("/journal/reviews/screenshots/{screenshot_id}")
+def delete_review_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
+    """حذف اسکرین‌شات مرور"""
+    screenshot = db.query(Screenshot).filter(Screenshot.id == screenshot_id).first()
+    if not screenshot:
+        raise HTTPException(status_code=404, detail="اسکرین‌شات پیدا نشد")
+
+    if os.path.exists(screenshot.file_path):
+        try:
+            os.remove(screenshot.file_path)
+        except:
+            pass
+
+    db.delete(screenshot)
+    db.commit()
+    return {"message": "اسکرین‌شات حذف شد"}
+
+
 @router.get("/journal/reviews")
 def get_reviews(db: Session = Depends(get_db)):
     """لیست همه‌ی مرورها"""
@@ -340,6 +423,10 @@ def get_reviews(db: Session = Depends(get_db)):
     result = []
     for r in reviews:
         trade = db.query(Trade).filter(Trade.id == r.trade_id).first()
+        screenshots = db.query(Screenshot).filter(
+            Screenshot.entity_type == "review",
+            Screenshot.entity_id == r.id,
+        ).all()
         result.append({
             "id": r.id,
             "trade_id": r.trade_id,
@@ -351,6 +438,7 @@ def get_reviews(db: Session = Depends(get_db)):
             "notes": r.notes,
             "lessons": r.lessons,
             "rating": r.rating,
+            "screenshots_count": len(screenshots),
             "created_at": r.created_at,
         })
     return result
@@ -362,6 +450,18 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
     review = db.query(JournalReview).filter(JournalReview.id == review_id).first()
     if not review:
         raise HTTPException(status_code=404, detail="مرور پیدا نشد")
+
+    screenshots = db.query(Screenshot).filter(
+        Screenshot.entity_type == "review",
+        Screenshot.entity_id == review_id,
+    ).all()
+    for screenshot in screenshots:
+        if os.path.exists(screenshot.file_path):
+            try:
+                os.remove(screenshot.file_path)
+            except:
+                pass
+        db.delete(screenshot)
 
     db.delete(review)
     db.commit()

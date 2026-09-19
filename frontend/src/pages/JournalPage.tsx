@@ -4,6 +4,9 @@ import {
   createJournalReview,
   deleteJournalReview,
   getTrades,
+  uploadReviewScreenshot,
+  getReviewScreenshots,
+  deleteReviewScreenshot,
 } from '../api/client';
 
 const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number) => void }) => {
@@ -28,6 +31,7 @@ const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number)
 export default function JournalPage() {
   const [reviews, setReviews] = useState<any[]>([]);
   const [trades, setTrades] = useState<any[]>([]);
+  const [reviewScreenshots, setReviewScreenshots] = useState<Record<number, any[]>>({});
   const [showForm, setShowForm] = useState(false);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -53,8 +57,12 @@ export default function JournalPage() {
         getJournalReviews().catch(() => ({ data: [] })),
         getTrades({ limit: 200 }).catch(() => ({ data: { trades: [] } })),
       ]);
-      setReviews(reviewsRes.data);
+      const nextReviews = reviewsRes.data || [];
+      setReviews(nextReviews);
       setTrades(tradesRes.data.trades || []);
+      for (const review of nextReviews) {
+        await loadReviewScreenshots(review.id);
+      }
     } catch (err) {
       console.error('خطا:', err);
     } finally {
@@ -102,6 +110,39 @@ export default function JournalPage() {
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا');
+    }
+  };
+
+  const loadReviewScreenshots = async (reviewId: number) => {
+    try {
+      const res = await getReviewScreenshots(reviewId);
+      setReviewScreenshots((prev) => ({ ...prev, [reviewId]: res.data }));
+    } catch (err) {
+      console.error('خطا در بارگذاری اسکرین‌شات‌های مرور:', err);
+      setReviewScreenshots((prev) => ({ ...prev, [reviewId]: [] }));
+    }
+  };
+
+  const handleUploadReviewScreenshot = async (reviewId: number, file: File) => {
+    try {
+      await uploadReviewScreenshot(reviewId, file);
+      await loadReviewScreenshots(reviewId);
+      setSuccessMessage('اسکرین‌شات مرور آپلود شد');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'خطا در آپلود اسکرین‌شات مرور');
+    }
+  };
+
+  const handleDeleteReviewScreenshot = async (screenshotId: number, reviewId: number) => {
+    if (!confirm('حذف این اسکرین‌شات؟')) return;
+    try {
+      await deleteReviewScreenshot(screenshotId);
+      await loadReviewScreenshots(reviewId);
+      setSuccessMessage('اسکرین‌شات حذف شد');
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'خطا در حذف اسکرین‌شات');
     }
   };
 
@@ -319,6 +360,49 @@ export default function JournalPage() {
                     {review.lessons}
                   </div>
                 )}
+
+                <div className="mt-4 border-t border-[#E5EBF3] pt-4">
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="text-[12px] text-[#6B7A94] font-bold">📷 اسکرین‌شات‌های مرور</div>
+                    <label className="cursor-pointer text-[11px] font-bold text-[#3F7CFF] hover:text-[#2C63D6]">
+                      + آپلود عکس
+                      <input
+                        type="file"
+                        accept="image/*"
+                        className="hidden"
+                        onChange={(e) => {
+                          const file = e.target.files?.[0];
+                          if (file) handleUploadReviewScreenshot(review.id, file);
+                          e.target.value = '';
+                        }}
+                      />
+                    </label>
+                  </div>
+
+                  {reviewScreenshots[review.id] && reviewScreenshots[review.id].length > 0 ? (
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                      {reviewScreenshots[review.id].map((screenshot) => (
+                        <div key={screenshot.id} className="relative group">
+                          <img
+                            src={`http://localhost:8000/${screenshot.file_path}`}
+                            alt="review screenshot"
+                            className="w-full h-28 object-cover rounded-[10px] border border-[#E5EBF3]"
+                          />
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteReviewScreenshot(screenshot.id, review.id)}
+                            className="absolute top-2 left-2 bg-[#1A2B47]/75 text-white rounded-full w-7 h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                            title="حذف"
+                          >
+                            ×
+                          </button>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="text-[12px] text-[#9AA8BF]">هنوز اسکرین‌شاتی برای این مرور آپلود نشده است.</div>
+                  )}
+                </div>
               </div>
             ))}
           </div>

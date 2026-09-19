@@ -11,6 +11,7 @@ import {
   deleteScreenshot,
   getAllVersions,
   getAllPropStages,
+  getPersonalAccounts,
 } from '../api/client';
 
 interface Trade {
@@ -37,6 +38,7 @@ export default function TradesPage() {
   const [total, setTotal] = useState(0);
   const [versions, setVersions] = useState<any[]>([]);
   const [propStages, setPropStages] = useState<any[]>([]);
+  const [personalAccounts, setPersonalAccounts] = useState<any[]>([]);
 
   const [filterVersion, setFilterVersion] = useState<number | null>(null);
   const [filterSymbol, setFilterSymbol] = useState('');
@@ -67,8 +69,10 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     tp: '',
     pnl: '',
     test_type: 'backtest',
+    account_type: 'personal',
     note: '',
     version_id: '',
+    personal_account_id: '',
     prop_stage_id: '',
   });
 
@@ -97,12 +101,14 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
 
   const loadFilters = async () => {
     try {
-      const [versionsRes, stagesRes] = await Promise.all([
+      const [versionsRes, stagesRes, personalRes] = await Promise.all([
         getAllVersions(),
         getAllPropStages(),
+        getPersonalAccounts(),
       ]);
       setVersions(versionsRes.data);
       setPropStages(stagesRes.data);
+      setPersonalAccounts(personalRes.data);
     } catch (err) {
       console.error('خطا:', err);
     }
@@ -229,8 +235,10 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       tp: '',
       pnl: '',
       test_type: 'backtest',
+      account_type: 'personal',
       note: '',
       version_id: '',
+      personal_account_id: '',
       prop_stage_id: '',
     });
     setShowManualModal(true);
@@ -241,6 +249,24 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       setError('نماد، قیمت باز شدن و حجم الزامی هستند');
       return;
     }
+
+    if (!manualTrade.version_id) {
+      setError('برای تمام معاملات، نسخه‌ی استراتژی الزامی است');
+      return;
+    }
+
+    if (manualTrade.test_type === 'real') {
+      const hasPersonal = !!manualTrade.personal_account_id;
+      const hasProp = !!manualTrade.prop_stage_id;
+      if (hasPersonal === hasProp) {
+        setError('برای معامله‌ی REAL باید دقیقاً یکی از حساب شخصی یا مرحله‌ی پراپ انتخاب شود');
+        return;
+      }
+    } else if (manualTrade.personal_account_id || manualTrade.prop_stage_id) {
+      setError('برای Backtest و Forward، نباید حساب شخصی یا پراپ انتخاب شود');
+      return;
+    }
+
     try {
       await createManualTrade({
         symbol: manualTrade.symbol,
@@ -255,7 +281,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         pnl: manualTrade.pnl ? parseFloat(manualTrade.pnl) : undefined,
         test_type: manualTrade.test_type,
         note: manualTrade.note || undefined,
-        version_id: manualTrade.version_id ? parseInt(manualTrade.version_id) : undefined,
+        version_id: parseInt(manualTrade.version_id),
+        personal_account_id: manualTrade.personal_account_id ? parseInt(manualTrade.personal_account_id) : undefined,
         prop_stage_id: manualTrade.prop_stage_id ? parseInt(manualTrade.prop_stage_id) : undefined,
       });
       setSuccessMessage('معامله‌ی دستی ثبت شد');
@@ -720,13 +747,13 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-text-secondary text-xs block mb-1">نسخه (اختیاری)</label>
+                <label className="text-text-secondary text-xs block mb-1">نسخه *</label>
                 <select
                   value={manualTrade.version_id}
                   onChange={(e) => setManualTrade({ ...manualTrade, version_id: e.target.value })}
                   className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
                 >
-                  <option value="">— بدون نسخه —</option>
+                  <option value="">انتخاب نسخه</option>
                   {versions.map((v) => (
                     <option key={v.id} value={v.id}>
                       {v.strategy_name} / {v.version_name}
@@ -736,7 +763,64 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">مرحله‌ی پراپ (اختیاری)</label>
+                <label className="text-text-secondary text-xs block mb-1">نوع حساب</label>
+                <select
+                  value={manualTrade.account_type}
+                  onChange={(e) => {
+                    const nextAccountType = e.target.value;
+                    setManualTrade({
+                      ...manualTrade,
+                      account_type: nextAccountType,
+                      personal_account_id: nextAccountType === 'personal' ? manualTrade.personal_account_id : '',
+                      prop_stage_id: nextAccountType === 'prop' ? manualTrade.prop_stage_id : '',
+                    });
+                  }}
+                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  disabled={manualTrade.test_type !== 'real'}
+                >
+                  <option value="personal">حساب شخصی</option>
+                  <option value="prop">پراپ</option>
+                </select>
+              </div>
+            </div>
+
+            {manualTrade.test_type === 'real' && (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+                <div>
+                  <label className="text-text-secondary text-xs block mb-1">حساب شخصی</label>
+                  <select
+                    value={manualTrade.personal_account_id}
+                    onChange={(e) => setManualTrade({ ...manualTrade, personal_account_id: e.target.value, prop_stage_id: '' })}
+                    className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                    disabled={manualTrade.account_type !== 'personal'}
+                  >
+                    <option value="">انتخاب حساب شخصی</option>
+                    {personalAccounts.map((acc) => (
+                      <option key={acc.id} value={acc.id}>{acc.name} ({acc.broker_name})</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="text-text-secondary text-xs block mb-1">مرحله‌ی پراپ</label>
+                  <select
+                    value={manualTrade.prop_stage_id}
+                    onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value, personal_account_id: '' })}
+                    className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                    disabled={manualTrade.account_type !== 'prop'}
+                  >
+                    <option value="">انتخاب مرحله‌ی پراپ</option>
+                    {propStages.map((s) => (
+                      <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            )}
+
+            {manualTrade.test_type !== 'real' && (
+              <div className="mb-3">
+                <label className="text-text-secondary text-xs block mb-1">مرحله‌ی پراپ</label>
                 <select
                   value={manualTrade.prop_stage_id}
                   onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value })}
@@ -744,11 +828,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 >
                   <option value="">— بدون پراپ —</option>
                   {propStages.map((s) => (
-                    <option key={s.id} value={s.id}>{s.display_name}</option>
+                    <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
                   ))}
                 </select>
               </div>
-            </div>
+            )}
 
             <div className="mb-5">
               <label className="text-text-secondary text-xs block mb-1">یادداشت</label>

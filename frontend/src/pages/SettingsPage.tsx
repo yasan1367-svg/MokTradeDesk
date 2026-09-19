@@ -11,7 +11,7 @@ export default function SettingsPage() {
   useEffect(() => {
     getSettings()
       .then((res) => setSettings(res.data))
-      .catch((err) => setError('خطا در بارگذاری تنظیمات'))
+      .catch(() => setError('خطا در بارگذاری تنظیمات'))
       .finally(() => setLoading(false));
   }, []);
 

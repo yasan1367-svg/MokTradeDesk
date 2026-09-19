@@ -43,12 +43,14 @@ export const importSoft4X = (
   versionId?: number,
   symbol?: string,
   testType?: string,
-  propStageId?: number
+  propStageId?: number,
+  personalAccountId?: number,
 ) => {
   const formData = new FormData();
   formData.append('file', file);
   if (versionId) formData.append('version_id', versionId.toString());
   if (propStageId) formData.append('prop_stage_id', propStageId.toString());
+  if (personalAccountId) formData.append('personal_account_id', personalAccountId.toString());
   if (symbol) formData.append('symbol', symbol);
   if (testType) formData.append('test_type', testType);
 
@@ -61,12 +63,14 @@ export const importMT4 = (
   file: File,
   versionId?: number,
   testType?: string,
-  propStageId?: number
+  propStageId?: number,
+  personalAccountId?: number,
 ) => {
   const formData = new FormData();
   formData.append('file', file);
   if (versionId) formData.append('version_id', versionId.toString());
   if (propStageId) formData.append('prop_stage_id', propStageId.toString());
+  if (personalAccountId) formData.append('personal_account_id', personalAccountId.toString());
   if (testType) formData.append('test_type', testType);
 
   return api.post('/api/imports/mt4', formData, {
@@ -229,6 +233,7 @@ export const createManualTrade = (data: {
   commission?: number;
   swap?: number;
   version_id?: number;
+  personal_account_id?: number;
   prop_stage_id?: number;
   test_type?: string;
   note?: string;
@@ -312,6 +317,21 @@ export const createJournalReview = (data: {
 }) => api.post('/api/personal/journal/review', data);
 
 export const getJournalReviews = () => api.get('/api/personal/journal/reviews');
+
+export const uploadReviewScreenshot = (reviewId: number, file: File, description?: string) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  if (description) formData.append('description', description);
+  return api.post(`/api/personal/journal/reviews/${reviewId}/screenshots`, formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+};
+
+export const getReviewScreenshots = (reviewId: number) =>
+  api.get(`/api/personal/journal/reviews/${reviewId}/screenshots`);
+
+export const deleteReviewScreenshot = (screenshotId: number) =>
+  api.delete(`/api/personal/journal/reviews/screenshots/${screenshotId}`);
 
 export const deleteJournalReview = (reviewId: number) =>
   api.delete(`/api/personal/journal/reviews/${reviewId}`);
