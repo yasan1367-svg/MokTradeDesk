@@ -106,13 +106,13 @@ export default function PropPage() {
   const [passingStage, setPassingStage] = useState<Stage | null>(null);
   const [passProgress, setPassProgress] = useState<any>(null);
   const [nextStageRules, setNextStageRules] = useState({
-    profit_target: '',
-    max_daily_dd: '',
-    max_total_dd: '',
-    min_trading_days: '',
-    initial_balance: '',
-    profit_share_percentage: '',
-  });
+  profit_target_percent: '',
+  max_daily_dd_percent: '',
+  max_total_dd_percent: '',
+  min_trading_days: '',
+  initial_balance: '',
+  profit_share_percentage: '',
+});
 const [showProgressModal, setShowProgressModal] = useState(false);
 const [progressStage, setProgressStage] = useState<Stage | null>(null);
 const [stageProgressData, setStageProgressData] = useState<any>(null);
@@ -252,13 +252,13 @@ const [stageProgressData, setStageProgressData] = useState<any>(null);
       setPassProgress(res.data);
       setPassingStage(stage);
       setNextStageRules({
-        profit_target: '',
-        max_daily_dd: '',
-        max_total_dd: '',
-        min_trading_days: '',
-        initial_balance: (stage.final_balance || stage.initial_balance || 10000).toString(),
-        profit_share_percentage: stage.stage_type === 'stage_2' ? '80' : '',
-      });
+  profit_target_percent: '',
+  max_daily_dd_percent: '',
+  max_total_dd_percent: '',
+  min_trading_days: '',
+  initial_balance: (stage.final_balance || stage.initial_balance || 10000).toString(),
+  profit_share_percentage: stage.stage_type === 'stage_2' ? '80' : '',
+});
       setShowPassModal(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در بررسی مرحله');
@@ -278,18 +278,28 @@ const handleOpenProgressModal = async (stage: Stage) => {
     if (!passingStage || !passProgress) return;
     try {
       const finalBalance = (passingStage.initial_balance || 0) + (passProgress.current_profit || 0);
-      await passStageWithRules(
-        passingStage.id,
-        finalBalance,
-        {
-          profit_target: nextStageRules.profit_target ? parseFloat(nextStageRules.profit_target) : undefined,
-          max_daily_dd: nextStageRules.max_daily_dd ? parseFloat(nextStageRules.max_daily_dd) : undefined,
-          max_total_dd: nextStageRules.max_total_dd ? parseFloat(nextStageRules.max_total_dd) : undefined,
-          min_trading_days: nextStageRules.min_trading_days ? parseInt(nextStageRules.min_trading_days) : undefined,
-          initial_balance: nextStageRules.initial_balance ? parseFloat(nextStageRules.initial_balance) : undefined,
-          profit_share_percentage: nextStageRules.profit_share_percentage ? parseFloat(nextStageRules.profit_share_percentage) : undefined,
-        }
-      );
+      const nextInitialBalance = nextStageRules.initial_balance
+  ? parseFloat(nextStageRules.initial_balance)
+  : finalBalance;
+
+await passStageWithRules(
+  passingStage.id,
+  finalBalance,
+  {
+    profit_target: nextStageRules.profit_target_percent
+      ? (parseFloat(nextStageRules.profit_target_percent) / 100) * nextInitialBalance
+      : undefined,
+    max_daily_dd: nextStageRules.max_daily_dd_percent
+      ? (parseFloat(nextStageRules.max_daily_dd_percent) / 100) * nextInitialBalance
+      : undefined,
+    max_total_dd: nextStageRules.max_total_dd_percent
+      ? (parseFloat(nextStageRules.max_total_dd_percent) / 100) * nextInitialBalance
+      : undefined,
+    min_trading_days: nextStageRules.min_trading_days ? parseInt(nextStageRules.min_trading_days) : undefined,
+    initial_balance: nextStageRules.initial_balance ? parseFloat(nextStageRules.initial_balance) : undefined,
+    profit_share_percentage: nextStageRules.profit_share_percentage ? parseFloat(nextStageRules.profit_share_percentage) : undefined,
+  }
+);
       setSuccessMessage('مرحله با موفقیت پاس شد. مرحله‌ی بعدی ایجاد شد.');
       setShowPassModal(false);
       if (selectedAccount) await loadAccountDetail(selectedAccount.id);
@@ -1010,23 +1020,32 @@ const handleOpenProgressModal = async (stage: Stage) => {
                   <h4 className="text-[14px] font-extrabold text-[#1A2B47] mb-4">⚙️ قوانین مرحله‌ی بعدی</h4>
                   <div className="grid grid-cols-2 gap-3">
                     <div>
-                      <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">هدف سود ($)</label>
-                      <input type="number" value={nextStageRules.profit_target}
-                        onChange={(e) => setNextStageRules({ ...nextStageRules, profit_target: e.target.value })}
-                        className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه ($)</label>
-                      <input type="number" value={nextStageRules.max_daily_dd}
-                        onChange={(e) => setNextStageRules({ ...nextStageRules, max_daily_dd: e.target.value })}
-                        className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
-                    </div>
-                    <div>
-                      <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD کلی ($)</label>
-                      <input type="number" value={nextStageRules.max_total_dd}
-                        onChange={(e) => setNextStageRules({ ...nextStageRules, max_total_dd: e.target.value })}
-                        className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
-                    </div>
+  <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">هدف سود (%)</label>
+  <input type="number" step="0.1" value={nextStageRules.profit_target_percent}
+    onChange={(e) => setNextStageRules({ ...nextStageRules, profit_target_percent: e.target.value })}
+    className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+  <div className="text-[10px] text-[#13AE81] font-bold mt-1">
+    = {((parseFloat(nextStageRules.profit_target_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+  </div>
+</div>
+<div>
+  <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه (%)</label>
+  <input type="number" step="0.1" value={nextStageRules.max_daily_dd_percent}
+    onChange={(e) => setNextStageRules({ ...nextStageRules, max_daily_dd_percent: e.target.value })}
+    className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+  <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+    = {((parseFloat(nextStageRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+  </div>
+</div>
+<div>
+  <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD کلی (%)</label>
+  <input type="number" step="0.1" value={nextStageRules.max_total_dd_percent}
+    onChange={(e) => setNextStageRules({ ...nextStageRules, max_total_dd_percent: e.target.value })}
+    className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+  <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+    = {((parseFloat(nextStageRules.max_total_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+  </div>
+</div>
                     <div>
                       <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">حداقل روزها</label>
                       <input type="number" value={nextStageRules.min_trading_days}
