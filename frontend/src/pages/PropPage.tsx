@@ -962,7 +962,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[#1A2B47] font-bold">🎯 هدف سود</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.target_reached ? 'text-[#13AE81]' : 'text-[#1A2B47]'}`}>
-                      {passProgress.current_profit_percent}٪ / {passProgress.profit_target_percent}٪
+                      {passProgress.current_profit} $ / {passProgress.profit_target} $
                     </span>
                   </div>
                   <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -975,7 +975,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[#1A2B47] font-bold">⚠️ DD روزانه</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.daily_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'}`}>
-                      {passProgress.max_daily_dd_percent}٪ / {passProgress.max_daily_dd_limit}٪
+                      {passProgress.max_daily_loss} $ / {passProgress.max_daily_dd_limit} $
                     </span>
                   </div>
                   <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -988,7 +988,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[#1A2B47] font-bold">📉 DD کلی</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.total_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'}`}>
-                      {passProgress.max_total_dd_percent}٪ / {passProgress.max_total_dd_limit}٪
+                      {passProgress.max_total_dd} $ / {passProgress.max_total_dd_limit} $
                     </span>
                   </div>
                   <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -1186,7 +1186,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[#1A2B47] font-bold">🎯 هدف سود</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.target_reached ? 'text-[#13AE81]' : 'text-[#1A2B47]'}`}>
-                    {stageProgressData.current_profit_percent}٪ / {stageProgressData.profit_target_percent}٪
+                    {stageProgressData.current_profit} $ / {stageProgressData.profit_target} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -1202,7 +1202,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[#1A2B47] font-bold">⚠️ DD روزانه</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.daily_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'}`}>
-                    {stageProgressData.max_daily_dd_percent}٪ / {stageProgressData.max_daily_dd_limit}٪
+                    {stageProgressData.max_daily_loss} $ / {stageProgressData.max_daily_dd_limit} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -1218,7 +1218,7 @@ const handleOpenProgressModal = async (stage: Stage) => {
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[#1A2B47] font-bold">📉 DD کلی</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.total_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'}`}>
-                    {stageProgressData.max_total_dd_percent}٪ / {stageProgressData.max_total_dd_limit}٪
+                    {stageProgressData.max_total_dd} $ / {stageProgressData.max_total_dd_limit} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">
