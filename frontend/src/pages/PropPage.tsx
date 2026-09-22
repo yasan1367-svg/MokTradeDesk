@@ -133,8 +133,9 @@ const [stageProgressData, setStageProgressData] = useState<any>(null);
   const [propAnalytics, setPropAnalytics] = useState<any>(null);
   const [showAnalytics, setShowAnalytics] = useState(false);
 
-  const [error, setError] = useState<string | null>(null);
+    const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [modalError, setModalError] = useState<string | null>(null);
 
   useEffect(() => {
     loadData();
@@ -250,25 +251,27 @@ const [stageProgressData, setStageProgressData] = useState<any>(null);
     }
   };
 
-  const handleOpenPassModal = async (stage: Stage) => {
+   
+    const handleOpenPassModal = async (stage: Stage) => {
+    setModalError(null);
     try {
       const res = await checkPassReady(stage.id);
       setPassProgress(res.data);
       setPassingStage(stage);
       setNextStageRules({
-  profit_target_percent: '',
-  max_daily_dd_percent: '',
-  max_total_dd_percent: '',
-  min_trading_days: '',
-  initial_balance: (stage.final_balance || stage.initial_balance || 10000).toString(),
-  profit_share_percentage: stage.stage_type === 'stage_2' ? '80' : '',
-});
+        profit_target_percent: '',
+        max_daily_dd_percent: '',
+        max_total_dd_percent: '',
+        min_trading_days: '',
+        initial_balance: (stage.final_balance || stage.initial_balance || 10000).toString(),
+        profit_share_percentage: stage.stage_type === 'stage_2' ? '80' : '',
+      });
       setShowPassModal(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در بررسی مرحله');
     }
   };
-const handleOpenProgressModal = async (stage: Stage) => {
+   const handleOpenProgressModal = async (stage: Stage) => {
   try {
     const res = await checkPassReady(stage.id);
     setStageProgressData(res.data);
@@ -278,8 +281,9 @@ const handleOpenProgressModal = async (stage: Stage) => {
     setError(err.response?.data?.detail || 'خطا در بررسی مرحله');
   }
 };
-  const handleConfirmPass = async () => {
+     const handleConfirmPass = async () => {
     if (!passingStage || !passProgress) return;
+    setModalError(null);
     try {
       const finalBalance = (passingStage.initial_balance || 0) + (passProgress.current_profit || 0);
       const nextInitialBalance = nextStageRules.initial_balance
@@ -309,10 +313,10 @@ await passStageWithRules(
       if (selectedAccount) await loadAccountDetail(selectedAccount.id);
       setTimeout(() => setSuccessMessage(null), 4000);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'خطا در پاس کردن');
+                 setModalError(err.response?.data?.detail || 'خطا در پاس کردن');
     }
   };
-
+   
   const handleOpenFailModal = (stage: Stage) => {
     setFailingStage(stage);
     setFailReason('max_daily_dd_exceeded');
@@ -985,8 +989,13 @@ await passStageWithRules(
               </div>
               <button onClick={() => setShowPassModal(false)} className="text-[#6B7A94] text-xl w-9 h-9 rounded-lg hover:bg-[#F5F7FB]">✕</button>
             </div>
-
             <div className="p-6 space-y-4">
+              {modalError && (
+                <div className="bg-[#FFEDF0] border-2 border-[#F0A6B2] text-[#E45D72] p-4 rounded-[14px] text-[14px] font-bold">
+                  ❌ {modalError}
+                </div>
+              )}
+
               <div className={`rounded-[14px] p-4 border-2 ${
                 passProgress.suggested_status === 'ready_to_pass'
                   ? 'bg-[#E5F8F1] border-[#A8E6CF]'

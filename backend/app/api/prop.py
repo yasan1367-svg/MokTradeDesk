@@ -252,6 +252,8 @@ def check_pass_ready(stage_id: int, db: Session = Depends(get_db)):
 @router.post("/stages/{stage_id}/pass")
 def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = Depends(get_db)):
     """پاس کردن مرحله با قوانین مرحله‌ی بعدی"""
+    from ..services.prop_rule_engine import PropRuleEngine
+
     stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
     if not stage:
         raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
@@ -259,10 +261,25 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     if stage.stage_type == StageType.FUNDED_REAL:
         raise HTTPException(status_code=400, detail="مرحله رییل قابل پاس شدن نیست")
 
-    # محاسبه‌ی موجودی نهایی از معاملات
+    # ✅ چک آمادگی با PropRuleEngine
+    evaluation = PropRuleEngine.evaluate_stage(db, stage_id)
+    if "error" in evaluation:
+        raise HTTPException(status_code=404, detail=evaluation["error"])
+
+    if not evaluation.get("ready_to_pass"):
+        violations = evaluation.get("violations", [])
+        detail = "مرحله آماده‌ی پاس شدن نیست"
+        if violations:
+            detail += f". دلایل: {', '.join(violations)}"
+        raise HTTPException(status_code=400, detail=detail)
+
+    # محاسبه‌ی موجودی نهایی از معاملات (با commission)
     from ..models.strategy import Trade
     trades = db.query(Trade).filter(Trade.prop_stage_id == stage_id).all()
-    total_pnl = sum(t.pnl or 0 for t in trades)
+    total_pnl = sum(
+        (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
+        for t in trades
+    )
     final_balance = (stage.initial_balance or 0) + total_pnl
 
     # به‌روزرسانی مرحله‌ی فعلی
@@ -278,7 +295,7 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     elif stage.stage_type == StageType.STAGE_2:
         next_stage_type = StageType.FUNDED_REAL
 
-    # ایجاد مرحله‌ی بعدی با قوانین وارد شده
+    # ایجاد مرحله‌ی بعدی
     if next_stage_type:
         rules = request.next_stage_rules or StageRules()
         next_stage = PropStage(
@@ -377,12 +394,19 @@ def get_stage_trades(stage_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 @router.post("/stages/{stage_id}/withdraw")
 def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get_db)):
+    from ..services.prop_rule_engine import PropRuleEngine
+
     stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
     if not stage:
         raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
 
     if stage.stage_type != StageType.FUNDED_REAL:
         raise HTTPException(status_code=400, detail="برداشت فقط در مرحله رییل مجاز است")
+
+    # ✅ چک مجاز بودن برداشت با PropRuleEngine
+    is_valid, error = PropRuleEngine.validate_withdrawal(db, stage_id, request.amount)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
 
     withdrawal = PropWithdrawal(
         prop_stage_id=stage_id,
@@ -391,8 +415,9 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
     )
     db.add(withdrawal)
 
+    # ✅ فقط total_withdrawn افزایش می‌یابد
+    # current_profit دست نمی‌خورد (چون از روی trades محاسبه می‌شود)
     stage.total_withdrawn = (stage.total_withdrawn or 0) + request.amount
-    stage.current_profit = (stage.current_profit or 0) - request.amount
 
     try:
         from ..models.personal import LedgerTransaction, TransactionType
