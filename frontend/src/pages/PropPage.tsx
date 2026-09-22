@@ -93,12 +93,11 @@ export default function PropPage() {
   const [accountLabel, setAccountLabel] = useState('');
   const [accountNumber, setAccountNumber] = useState('');
 
-  const [initialBalance, setInitialBalance] = useState('10000');
-  const [profitTarget, setProfitTarget] = useState('800');
-  const [maxDailyDd, setMaxDailyDd] = useState('500');
-  const [maxTotalDd, setMaxTotalDd] = useState('1000');
+    const [initialBalance, setInitialBalance] = useState('10000');
+  const [profitTargetPercent, setProfitTargetPercent] = useState('8');
+  const [maxDailyDdPercent, setMaxDailyDdPercent] = useState('5');
+  const [maxTotalDdPercent, setMaxTotalDdPercent] = useState('10');
   const [minTradingDays, setMinTradingDays] = useState('5');
-
   const [stageTrades, setStageTrades] = useState<any[]>([]);
   const [selectedStage, setSelectedStage] = useState<number | null>(null);
 
@@ -117,10 +116,10 @@ const [showProgressModal, setShowProgressModal] = useState(false);
 const [progressStage, setProgressStage] = useState<Stage | null>(null);
 const [stageProgressData, setStageProgressData] = useState<any>(null);
   const [editingStage, setEditingStage] = useState<number | null>(null);
-  const [editRules, setEditRules] = useState({
-    profit_target: '',
-    max_daily_dd: '',
-    max_total_dd: '',
+    const [editRules, setEditRules] = useState({
+    profit_target_percent: '',
+    max_daily_dd_percent: '',
+    max_total_dd_percent: '',
     min_trading_days: '',
     initial_balance: '',
     profit_share_percentage: '',
@@ -222,17 +221,22 @@ const [stageProgressData, setStageProgressData] = useState<any>(null);
     }
   };
 
-  const handleCreateAccount = async () => {
+    const handleCreateAccount = async () => {
     if (!selectedFirmId || !accountLabel.trim()) return;
     try {
+      const initialBalanceNum = parseFloat(initialBalance) || 10000;
+      const profitTargetAmount = (parseFloat(profitTargetPercent) || 0) / 100 * initialBalanceNum;
+      const maxDailyDdAmount = (parseFloat(maxDailyDdPercent) || 0) / 100 * initialBalanceNum;
+      const maxTotalDdAmount = (parseFloat(maxTotalDdPercent) || 0) / 100 * initialBalanceNum;
+
       await createPropAccount({
         prop_firm_id: selectedFirmId,
         account_label: accountLabel,
         account_number: accountNumber,
-        initial_balance: parseFloat(initialBalance) || 10000,
-        profit_target: parseFloat(profitTarget) || 800,
-        max_daily_dd: parseFloat(maxDailyDd) || 500,
-        max_total_dd: parseFloat(maxTotalDd) || 1000,
+        initial_balance: initialBalanceNum,
+        profit_target: profitTargetAmount,
+        max_daily_dd: maxDailyDdAmount,
+        max_total_dd: maxTotalDdAmount,
         min_trading_days: parseInt(minTradingDays) || 5,
       });
       setAccountLabel('');
@@ -329,28 +333,44 @@ await passStageWithRules(
     }
   };
 
-  const startEditStage = (stage: Stage) => {
+    const startEditStage = (stage: Stage) => {
     setEditingStage(stage.id);
+    const initial = stage.initial_balance || 10000;
     setEditRules({
-      profit_target: stage.profit_target?.toString() || '',
-      max_daily_dd: stage.max_daily_dd?.toString() || '',
-      max_total_dd: stage.max_total_dd?.toString() || '',
+      profit_target_percent: stage.profit_target
+        ? ((stage.profit_target / initial) * 100).toFixed(2)
+        : '',
+      max_daily_dd_percent: stage.max_daily_dd
+        ? ((stage.max_daily_dd / initial) * 100).toFixed(2)
+        : '',
+      max_total_dd_percent: stage.max_total_dd
+        ? ((stage.max_total_dd / initial) * 100).toFixed(2)
+        : '',
       min_trading_days: stage.min_trading_days?.toString() || '',
       initial_balance: stage.initial_balance?.toString() || '',
       profit_share_percentage: stage.profit_share_percentage?.toString() || '',
     });
   };
 
+
   const cancelEditStage = () => {
     setEditingStage(null);
   };
 
-  const handleSaveStageRules = async (stageId: number) => {
+    const handleSaveStageRules = async (stageId: number) => {
     try {
+      const initialBalanceNum = parseFloat(editRules.initial_balance) || 10000;
+
       await updateStageRules(stageId, {
-        profit_target: editRules.profit_target ? parseFloat(editRules.profit_target) : undefined,
-        max_daily_dd: editRules.max_daily_dd ? parseFloat(editRules.max_daily_dd) : undefined,
-        max_total_dd: editRules.max_total_dd ? parseFloat(editRules.max_total_dd) : undefined,
+        profit_target: editRules.profit_target_percent
+          ? (parseFloat(editRules.profit_target_percent) / 100) * initialBalanceNum
+          : undefined,
+        max_daily_dd: editRules.max_daily_dd_percent
+          ? (parseFloat(editRules.max_daily_dd_percent) / 100) * initialBalanceNum
+          : undefined,
+        max_total_dd: editRules.max_total_dd_percent
+          ? (parseFloat(editRules.max_total_dd_percent) / 100) * initialBalanceNum
+          : undefined,
         min_trading_days: editRules.min_trading_days ? parseInt(editRules.min_trading_days) : undefined,
         initial_balance: editRules.initial_balance ? parseFloat(editRules.initial_balance) : undefined,
         profit_share_percentage: editRules.profit_share_percentage ? parseFloat(editRules.profit_share_percentage) : undefined,
@@ -559,26 +579,35 @@ await passStageWithRules(
             </div>
           </div>
 
-          <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
+                    <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
             <div>
               <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">موجودی اولیه ($)</label>
               <input type="number" value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
             </div>
             <div>
-              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">هدف سود ($)</label>
-              <input type="number" value={profitTarget} onChange={(e) => setProfitTarget(e.target.value)}
+              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">هدف سود (%)</label>
+              <input type="number" step="0.1" value={profitTargetPercent} onChange={(e) => setProfitTargetPercent(e.target.value)}
                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+              <div className="text-[10px] text-[#13AE81] font-bold mt-1">
+                = {((parseFloat(profitTargetPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+              </div>
             </div>
             <div>
-              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه ($)</label>
-              <input type="number" value={maxDailyDd} onChange={(e) => setMaxDailyDd(e.target.value)}
+              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه (%)</label>
+              <input type="number" step="0.1" value={maxDailyDdPercent} onChange={(e) => setMaxDailyDdPercent(e.target.value)}
                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+              <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+                = {((parseFloat(maxDailyDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+              </div>
             </div>
             <div>
-              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">DD کلی ($)</label>
-              <input type="number" value={maxTotalDd} onChange={(e) => setMaxTotalDd(e.target.value)}
+              <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">DD کلی (%)</label>
+              <input type="number" step="0.1" value={maxTotalDdPercent} onChange={(e) => setMaxTotalDdPercent(e.target.value)}
                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2.5 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none" />
+              <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+                = {((parseFloat(maxTotalDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+              </div>
             </div>
             <div>
               <label className="text-[12px] text-[#6B7A94] font-bold block mb-1.5">حداقل روزها</label>
@@ -809,23 +838,32 @@ await passStageWithRules(
                         <div className="mt-5 bg-white border-2 border-[#7959D6] rounded-[14px] p-5">
                           <h4 className="text-[14px] font-extrabold text-[#1A2B47] mb-4">✏️ ویرایش قوانین مرحله</h4>
                           <div className="grid grid-cols-2 md:grid-cols-3 gap-3 mb-4">
-                            <div>
-                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">هدف سود ($)</label>
-                              <input type="number" value={editRules.profit_target}
-                                onChange={(e) => setEditRules({ ...editRules, profit_target: e.target.value })}
+                                                        <div>
+                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">هدف سود (%)</label>
+                              <input type="number" step="0.1" value={editRules.profit_target_percent}
+                                onChange={(e) => setEditRules({ ...editRules, profit_target_percent: e.target.value })}
                                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none" />
+                              <div className="text-[10px] text-[#13AE81] font-bold mt-1">
+                                = {((parseFloat(editRules.profit_target_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                              </div>
                             </div>
                             <div>
-                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه ($)</label>
-                              <input type="number" value={editRules.max_daily_dd}
-                                onChange={(e) => setEditRules({ ...editRules, max_daily_dd: e.target.value })}
+                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD روزانه (%)</label>
+                              <input type="number" step="0.1" value={editRules.max_daily_dd_percent}
+                                onChange={(e) => setEditRules({ ...editRules, max_daily_dd_percent: e.target.value })}
                                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none" />
+                              <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+                                = {((parseFloat(editRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                              </div>
                             </div>
                             <div>
-                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD کلی ($)</label>
-                              <input type="number" value={editRules.max_total_dd}
-                                onChange={(e) => setEditRules({ ...editRules, max_total_dd: e.target.value })}
+                              <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">DD کلی (%)</label>
+                              <input type="number" step="0.1" value={editRules.max_total_dd_percent}
+                                onChange={(e) => setEditRules({ ...editRules, max_total_dd_percent: e.target.value })}
                                 className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[10px] px-3 py-2 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none" />
+                              <div className="text-[10px] text-[#E45D72] font-bold mt-1">
+                                = {((parseFloat(editRules.max_total_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                              </div>
                             </div>
                             <div>
                               <label className="text-[11px] text-[#6B7A94] font-bold block mb-1.5">حداقل روزها</label>
