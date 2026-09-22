@@ -1,10 +1,30 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
 from typing import List, Dict, Any, Optional
+import hashlib
 from bs4 import BeautifulSoup
 
 from ..models.strategy import Trade, TradeSource, TestType
 from ..utils.trade_metrics import calculate_r_multiple
+
+
+# ═════════════════════════════════════════════
+# Helpers
+# ═════════════════════════════════════════════
+def _calculate_trade_hash(trade_data: Dict[str, Any]) -> str:
+    """محاسبه hash برای Duplicate Detection"""
+    key_parts = [
+        str(trade_data.get("source", "")),
+        str(trade_data.get("symbol", "")),
+        str(trade_data.get("direction", "")),
+        str(trade_data.get("open_time", "")),
+        str(trade_data.get("close_time", "")),
+        str(trade_data.get("open_price", "")),
+        str(trade_data.get("close_price", "")),
+        str(trade_data.get("size", "")),
+    ]
+    key = "|".join(key_parts)
+    return hashlib.md5(key.encode()).hexdigest()
 
 
 # ═════════════════════════════════════════════
@@ -86,24 +106,39 @@ class Soft4XImporter:
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
         personal_account_id: Optional[int] = None,
-    ) -> List[Trade]:
-        db_trades = []
+    ) -> Dict[str, Any]:
+        """ذخیره‌ی معاملات با Duplicate Detection"""
+        saved_trades = []
+        duplicate_trades = []
+
         for trade_data in trades:
+            hash_key = _calculate_trade_hash(trade_data)
+
+            existing = self.db.query(Trade).filter(Trade.trade_hash == hash_key).first()
+            if existing:
+                duplicate_trades.append(trade_data)
+                continue
+
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
+                trade_hash=hash_key,
                 **trade_data
             )
             self.db.add(db_trade)
-            db_trades.append(db_trade)
+            saved_trades.append(db_trade)
 
         self.db.commit()
 
         if prop_stage_id:
             self._update_prop_stage_profit(prop_stage_id)
 
-        return db_trades
+        return {
+            "saved": saved_trades,
+            "duplicates": duplicate_trades,
+            "total": len(trades),
+        }
 
     def _update_prop_stage_profit(self, prop_stage_id: int):
         from ..models.prop import PropStage, StageType
@@ -124,7 +159,6 @@ class Soft4XImporter:
         self.db.commit()
 
     def _apply_symbol_mapping(self, symbol: str) -> str:
-        """تبدیل نماد اصلی به نماد استاندارد"""
         from ..models.strategy import SymbolMapping
         mapping = self.db.query(SymbolMapping).filter(
             SymbolMapping.original_symbol == symbol
@@ -304,24 +338,39 @@ class MT4Importer:
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
         personal_account_id: Optional[int] = None,
-    ) -> List[Trade]:
-        db_trades = []
+    ) -> Dict[str, Any]:
+        """ذخیره‌ی معاملات با Duplicate Detection"""
+        saved_trades = []
+        duplicate_trades = []
+
         for trade_data in trades:
+            hash_key = _calculate_trade_hash(trade_data)
+
+            existing = self.db.query(Trade).filter(Trade.trade_hash == hash_key).first()
+            if existing:
+                duplicate_trades.append(trade_data)
+                continue
+
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
+                trade_hash=hash_key,
                 **trade_data
             )
             self.db.add(db_trade)
-            db_trades.append(db_trade)
+            saved_trades.append(db_trade)
 
         self.db.commit()
 
         if prop_stage_id:
             self._update_prop_stage_profit(prop_stage_id)
 
-        return db_trades
+        return {
+            "saved": saved_trades,
+            "duplicates": duplicate_trades,
+            "total": len(trades),
+        }
 
     def _update_prop_stage_profit(self, prop_stage_id: int):
         from ..models.prop import PropStage, StageType
@@ -342,7 +391,6 @@ class MT4Importer:
         self.db.commit()
 
     def _apply_symbol_mapping(self, symbol: str) -> str:
-        """تبدیل نماد اصلی به نماد استاندارد"""
         from ..models.strategy import SymbolMapping
         mapping = self.db.query(SymbolMapping).filter(
             SymbolMapping.original_symbol == symbol

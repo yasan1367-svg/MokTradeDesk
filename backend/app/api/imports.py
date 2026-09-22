@@ -42,42 +42,56 @@ async def import_soft4x(
     try:
         importer = Soft4XImporter(db, symbol=symbol, test_type=test_type)
         trades = importer.parse_file(tmp_path)
+        target_label = None
+        result = None
 
         if version_id:
             version = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
             if not version:
                 raise HTTPException(status_code=404, detail="نسخه استراتژی پیدا نشد")
-            saved_trades = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved_trades)} معامله با موفقیت وارد شد (استراتژی)"
+            target_label = "استراتژی"
         elif prop_stage_id:
-            saved_trades = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved_trades)} معامله با موفقیت وارد شد (پراپ)"
+            target_label = "پراپ"
         elif personal_account_id:
-            saved_trades = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved_trades)} معامله با موفقیت وارد شد (حساب شخصی)"
+            target_label = "حساب شخصی"
+
+        if result:
+            saved_count = len(result["saved"])
+            duplicates_count = len(result["duplicates"])
+            if duplicates_count > 0:
+                message = f"{saved_count} معامله ذخیره شد ({target_label}) — {duplicates_count} معامله تکراری نادیده گرفته شد"
+            else:
+                message = f"{saved_count} معامله با موفقیت وارد شد ({target_label})"
         else:
-            saved_trades = []
+            saved_count = 0
+            duplicates_count = 0
             message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id، prop_stage_id یا personal_account_id را وارد کنید."
 
         return {
             "message": message,
             "total_trades": len(trades),
-            "saved_trades": len(saved_trades),
+            "saved_trades": saved_count,
+            "duplicates_count": duplicates_count,
             "preview": trades[:3]
         }
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"خطا در پردازش فایل: {str(e)}")
 
@@ -127,38 +141,51 @@ async def import_mt4(
         if not trades:
             raise HTTPException(status_code=400, detail="هیچ معامله‌ای در فایل یافت نشد")
 
+        target_label = None
+        result = None
+
         if version_id:
             version = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
             if not version:
                 raise HTTPException(status_code=404, detail="نسخه استراتژی پیدا نشد")
-            saved = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved)} معامله با موفقیت وارد شد (استراتژی)"
+            target_label = "استراتژی"
         elif prop_stage_id:
-            saved = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 prop_stage_id=prop_stage_id,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved)} معامله با موفقیت وارد شد (پراپ)"
+            target_label = "پراپ"
         elif personal_account_id:
-            saved = importer.save_trades(
+            result = importer.save_trades(
                 trades,
                 personal_account_id=personal_account_id,
             )
-            message = f"{len(saved)} معامله با موفقیت وارد شد (حساب شخصی)"
+            target_label = "حساب شخصی"
+
+        if result:
+            saved_count = len(result["saved"])
+            duplicates_count = len(result["duplicates"])
+            if duplicates_count > 0:
+                message = f"{saved_count} معامله ذخیره شد ({target_label}) — {duplicates_count} معامله تکراری نادیده گرفته شد"
+            else:
+                message = f"{saved_count} معامله با موفقیت وارد شد ({target_label})"
         else:
-            saved = []
-            message = f"{len(trades)} معامله شناسایی شد."
+            saved_count = 0
+            duplicates_count = 0
+            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id، prop_stage_id یا personal_account_id را وارد کنید."
 
         return {
             "message": message,
             "total_trades": len(trades),
-            "saved_trades": len(saved),
+            "saved_trades": saved_count,
+            "duplicates_count": duplicates_count,
             "preview": trades[:3]
         }
 

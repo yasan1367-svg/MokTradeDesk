@@ -260,8 +260,8 @@ const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
                       currentStageProgress.target_reached ? 'text-[#13AE81]' : 'text-[#1A2B47]'
                     }`}
                   >
-                    {currentStageProgress.current_profit_percent}٪ /{' '}
-                    {currentStageProgress.profit_target_percent}٪
+                    {currentStageProgress.current_profit} $ /{' '}
+                    {currentStageProgress.profit_target} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -286,8 +286,8 @@ const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
                       currentStageProgress.daily_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'
                     }`}
                   >
-                    {currentStageProgress.max_daily_dd_percent}٪ /{' '}
-                    {currentStageProgress.max_daily_dd_limit}٪
+                    {currentStageProgress.max_daily_loss} $ /{' '}
+                    {currentStageProgress.max_daily_dd_limit} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">
@@ -312,8 +312,8 @@ const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
                       currentStageProgress.total_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'
                     }`}
                   >
-                    {currentStageProgress.max_total_dd_percent}٪ /{' '}
-                    {currentStageProgress.max_total_dd_limit}٪
+                    {currentStageProgress.max_total_dd} $ /{' '}
+                    {currentStageProgress.max_total_dd_limit} $
                   </span>
                 </div>
                 <div className="h-2 bg-white rounded-full overflow-hidden">

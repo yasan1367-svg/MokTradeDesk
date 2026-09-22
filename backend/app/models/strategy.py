@@ -109,6 +109,8 @@ class Trade(Base):
     screenshot_path = Column(String, nullable=True)
     raw_data = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+        # ← Duplicate Detection
+    trade_hash = Column(String(32), nullable=True, index=True)
 
     version = relationship("StrategyVersion", back_populates="trades")
     prop_stage = relationship("PropStage", back_populates="trades")

@@ -7,6 +7,12 @@ from .core.database import engine, Base
 from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings
 from .api import settings as settings_api
 
+# ⚠️ Migration باید تنها راه ساخت جدول‌ها باشه
+# Base.metadata.create_all(bind=engine)   ← غیرفعال شد
+
+# ═════════════════════════════════════════════
+# App
+# ═════════════════════════════════════════════
 app = FastAPI(title="MokTradeDesk API", version="1.0")
 
 app.add_middleware(
@@ -16,8 +22,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-Base.metadata.create_all(bind=engine)
 
 # ═════════════════════════════════════════════
 # Mount static files برای اسکرین‌شات‌ها

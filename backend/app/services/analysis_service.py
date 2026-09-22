@@ -466,14 +466,26 @@ class AnalysisService:
     # متریک‌های پایه
     # ═════════════════════════════════════════════
     def _calculate_basic_metrics(self, trades: List[Trade]) -> Dict[str, Any]:
+        """
+        محاسبه‌ی متریک‌های پایه.
+
+        نکته: تمام محاسبات PnL بر اساس **net_pnl** هست:
+            net_pnl = pnl + commission + swap
+        (چون commission معمولاً منفی ذخیره می‌شه، جمعش یعنی کم شدن)
+        """
+
+        def _net_pnl(t: Trade) -> float:
+            """PnL خالص یک معامله"""
+            return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
+
         total = len(trades)
-        wins = [t for t in trades if t.pnl and t.pnl > 0]
-        losses = [t for t in trades if t.pnl and t.pnl < 0]
+        wins = [t for t in trades if _net_pnl(t) > 0]
+        losses = [t for t in trades if _net_pnl(t) < 0]
 
-        gross_profit = sum(t.pnl for t in wins) if wins else 0
-        gross_loss = abs(sum(t.pnl for t in losses)) if losses else 0
+        gross_profit = sum(_net_pnl(t) for t in wins) if wins else 0
+        gross_loss = abs(sum(_net_pnl(t) for t in losses)) if losses else 0
 
-        net_pnl = sum(t.pnl for t in trades if t.pnl) or 0
+        net_pnl = sum(_net_pnl(t) for t in trades)
         win_rate = (len(wins) / total * 100) if total > 0 else 0
         profit_factor = self._profit_factor(gross_profit, gross_loss)
 
@@ -485,8 +497,8 @@ class AnalysisService:
         # اکسپکتنسی، میانگین/بزرگ‌ترین برد و باخت
         avg_win = (gross_profit / len(wins)) if wins else 0
         avg_loss = (gross_loss / len(losses)) if losses else 0  # مقدار مثبت
-        largest_win = max((t.pnl for t in wins), default=0)
-        largest_loss = abs(min((t.pnl for t in losses), default=0))  # مقدار مثبت
+        largest_win = max((_net_pnl(t) for t in wins), default=0)
+        largest_loss = abs(min((_net_pnl(t) for t in losses), default=0))  # مقدار مثبت
 
         win_rate_ratio = (len(wins) / total) if total > 0 else 0
         loss_rate_ratio = (len(losses) / total) if total > 0 else 0
@@ -577,13 +589,21 @@ class AnalysisService:
         }
 
     def _calculate_max_drawdown(self, trades: List[Trade]) -> float:
+        """
+        محاسبه‌ی حداکثر افت سرمایه (peak-to-valley).
+
+        نکته: از net_pnl استفاده می‌کنه (pnl + commission + swap)
+        """
+        def _net_pnl(t: Trade) -> float:
+            return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
+
         sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
         equity = 0
         peak = 0
         max_dd = 0
 
         for t in sorted_trades:
-            equity += t.pnl or 0
+            equity += _net_pnl(t)
             if equity > peak:
                 peak = equity
             dd = peak - equity

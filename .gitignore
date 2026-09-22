@@ -130,3 +130,6 @@ htmlcov/
 *.seed
 *.pid.lock
 .cache
+# Database backup with timestamp
+*.db.bak*
+*.db.backup*
