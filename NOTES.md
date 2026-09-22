@@ -82,3 +82,10 @@
 cd backend
 .\venv\Scripts\Activate.ps1
 python -m uvicorn app.main:app --reload
+
+
+
+
+### [تاریخ] - دفتر
+- Create Account + Edit Stage → درصد (کامیت `fcbc948`)
+- همه‌ی Prop forms الان درصد می‌گیرن

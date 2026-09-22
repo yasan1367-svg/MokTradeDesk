@@ -103,21 +103,25 @@ export default function ImportPage() {
     setResult(null);
 
     try {
-      let response;
+            let response;
       if (fileType === 'soft4x') {
         if (importTarget === 'strategy') {
           response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, undefined, selectedPersonalAccount || undefined);
         } else if (importTarget === 'prop') {
-          response = await importSoft4X(file, undefined, symbol, testType, selectedPropStage || undefined, undefined);
+          // ✅ Real Prop: هم version_id هم prop_stage_id
+          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, selectedPropStage || undefined, undefined);
         } else {
+          // Personal: هم version_id هم personal_account_id
           response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, undefined, selectedPersonalAccount || undefined);
         }
       } else {
         if (importTarget === 'strategy') {
           response = await importMT4(file, selectedVersion || undefined, testType, undefined, selectedPersonalAccount || undefined);
         } else if (importTarget === 'prop') {
-          response = await importMT4(file, undefined, testType, selectedPropStage || undefined, undefined);
+          // ✅ Real Prop
+          response = await importMT4(file, selectedVersion || undefined, testType, selectedPropStage || undefined, undefined);
         } else {
+          // Personal
           response = await importMT4(file, selectedVersion || undefined, testType, undefined, selectedPersonalAccount || undefined);
         }
       }
@@ -252,8 +256,11 @@ export default function ImportPage() {
           <div className="mb-5">
             <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🎯 مقصد واردات</label>
             <div className="flex gap-2 flex-wrap">
-              <button
-                onClick={() => setImportTarget('strategy')}
+                            <button
+                onClick={() => {
+                  setImportTarget('strategy');
+                  setTestType('backtest');
+                }}
                 className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
                   importTarget === 'strategy'
                     ? 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
@@ -264,7 +271,10 @@ export default function ImportPage() {
                 🎯 استراتژی
               </button>
               <button
-                onClick={() => setImportTarget('personal')}
+                onClick={() => {
+                  setImportTarget('personal');
+                  setTestType('real');
+                }}
                 className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
                   importTarget === 'personal'
                     ? 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
@@ -275,7 +285,10 @@ export default function ImportPage() {
                 💼 شخصی
               </button>
               <button
-                onClick={() => setImportTarget('prop')}
+                onClick={() => {
+                  setImportTarget('prop');
+                  setTestType('real');
+                }}
                 className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
                   importTarget === 'prop'
                     ? 'text-white shadow-[0_6px_16px_rgba(121,89,214,0.3)]'
@@ -303,33 +316,35 @@ export default function ImportPage() {
             </div>
           )}
 
-          {/* نوع تست */}
-          <div className="mb-5">
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🧪 نوع تست</label>
-            <div className="flex gap-2">
-              {[
-                { value: 'backtest', label: '🧪 بک‌تست' },
-                { value: 'forward', label: '🔭 فوروارد' },
-                { value: 'real', label: '💰 رییل' },
-              ].map((t) => {
-                const isActive = testType === t.value;
-                return (
-                  <button
-                    key={t.value}
-                    onClick={() => setTestType(t.value as any)}
-                    className={`flex-1 py-3 rounded-[12px] text-[12px] font-extrabold transition-all ${
-                      isActive
-                        ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
-                        : 'bg-[#F8FAFF] border-2 border-[#E5EBF3] text-[#6B7A94] hover:border-[#A9C1FA]'
-                    }`}
-                    style={isActive ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
+                    {/* نوع تست — فقط برای استراتژی */}
+          {importTarget === 'strategy' && (
+            <div className="mb-5">
+              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🧪 نوع تست</label>
+              <div className="flex gap-2">
+                {[
+                  { value: 'backtest', label: '🧪 بک‌تست' },
+                  { value: 'forward', label: '🔭 فوروارد' },
+                  { value: 'real', label: '💰 رییل' },
+                ].map((t) => {
+                  const isActive = testType === t.value;
+                  return (
+                    <button
+                      key={t.value}
+                      onClick={() => setTestType(t.value as any)}
+                      className={`flex-1 py-3 rounded-[12px] text-[12px] font-extrabold transition-all ${
+                        isActive
+                          ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
+                          : 'bg-[#F8FAFF] border-2 border-[#E5EBF3] text-[#6B7A94] hover:border-[#A9C1FA]'
+                      }`}
+                      style={isActive ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+                    >
+                      {t.label}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
-          </div>
+          )}
 
           {/* مقصد انتخابی */}
           {importTarget === 'strategy' && (
@@ -372,24 +387,43 @@ export default function ImportPage() {
             </div>
           )}
 
-          {importTarget === 'prop' && (
-            <div className="mb-2">
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
-                📌 مرحله‌ی پراپ <span className="text-[#E45D72]">*</span>
-              </label>
-              <select
-                value={selectedPropStage || ''}
-                onChange={(e) => setSelectedPropStage(e.target.value ? Number(e.target.value) : null)}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#F1ECFF] transition-all cursor-pointer"
-              >
-                <option value="">— انتخاب مرحله —</option>
-                {propStages.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.display_name}
-                  </option>
-                ))}
-              </select>
-            </div>
+                    {importTarget === 'prop' && (
+            <>
+              <div className="mb-2">
+                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+                  🎯 نسخه‌ی استراتژی <span className="text-[#E45D72]">*</span>
+                </label>
+                <select
+                  value={selectedVersion || ''}
+                  onChange={(e) => setSelectedVersion(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#F1ECFF] transition-all cursor-pointer"
+                >
+                  <option value="">— انتخاب نسخه —</option>
+                  {versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.strategy_name} / {v.version_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mb-2">
+                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+                  📌 مرحله‌ی پراپ <span className="text-[#E45D72]">*</span>
+                </label>
+                <select
+                  value={selectedPropStage || ''}
+                  onChange={(e) => setSelectedPropStage(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#F1ECFF] transition-all cursor-pointer"
+                >
+                  <option value="">— انتخاب مرحله —</option>
+                  {propStages.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
           )}
         </div>
 
