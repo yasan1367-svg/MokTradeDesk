@@ -126,6 +126,7 @@ temp_build_err.log
 # Attachments / Screenshots / Storage
 # ═════════════════════════════════════════════
 backend/storage/screenshots/
+backend/backups/
 frontend/storage/
 storage/
 

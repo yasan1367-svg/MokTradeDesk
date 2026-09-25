@@ -32,6 +32,7 @@ const NAV_GROUPS = [
     label: 'حساب‌ها',
     items: [
       { key: 'prop', icon: '🏢', label: 'پراپ' },
+      { key: 'payouts', icon: '💸', label: 'برداشت‌ها' },
     ],
   },
   {

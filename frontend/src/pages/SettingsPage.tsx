@@ -1,7 +1,9 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../api/client';
+import BackupManager from '../components/BackupManager';
 
 export default function SettingsPage() {
+  const [tab, setTab] = useState<'general' | 'backup'>('general');
   const [settings, setSettings] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
@@ -45,6 +47,25 @@ export default function SettingsPage() {
         </div>
       )}
 
+      {/* تب‌ها (فاز ۱۷) */}
+      <div className="flex gap-2 bg-[var(--bg-elevated)] p-1.5 rounded-[14px] w-fit">
+        {([['general', '⚙️ تنظیمات عمومی'], ['backup', '💾 Backup']] as const).map(([k, label]) => (
+          <button
+            key={k}
+            onClick={() => setTab(k)}
+            className={`px-5 py-2 rounded-[10px] text-sm font-extrabold transition-all ${
+              tab === k ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
+            }`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {tab === 'backup' ? (
+        <BackupManager />
+      ) : (
+        <>
       {/* ظاهر */}
       <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
@@ -184,6 +205,8 @@ export default function SettingsPage() {
           {saving ? '⏳ در حال ذخیره...' : '💾 ذخیره‌ی تنظیمات'}
         </button>
       </div>
+        </>
+      )}
     </div>
   );
 }

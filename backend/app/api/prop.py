@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session, selectinload
+from sqlalchemy.orm import Session, selectinload, joinedload
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -131,6 +132,22 @@ class WithdrawalCreate(BaseModel):
     note: Optional[str] = None
     destination_account_id: int  # 🆕 فاز ۵ — حساب مالی مقصد (اجباری)
     withdrawal_date: Optional[str] = None  # 🆕 فاز ۵.۱ — تاریخ برداشت (ISO 8601)
+
+
+# ── فاز ۱۶: Schemas تاریخچهٔ برداشت (Payout) ──
+class PayoutCreate(BaseModel):
+    prop_stage_id: int
+    amount: float
+    note: Optional[str] = None
+    destination_account_id: int
+    withdrawal_date: Optional[str] = None
+
+
+class PayoutUpdate(BaseModel):
+    amount: Optional[float] = None
+    note: Optional[str] = None
+    destination_account_id: Optional[int] = None
+    withdrawal_date: Optional[str] = None
 
 
 class PropCostCreate(BaseModel):
@@ -513,95 +530,15 @@ def get_stage_trades(stage_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 @router.post("/stages/{stage_id}/withdraw")
 def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get_db)):
-    from ..services.prop_rule_engine import PropRuleEngine
-
-    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
-    if not stage:
-        raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
-
-    if stage.stage_type != StageType.FUNDED_REAL:
-        raise HTTPException(status_code=400, detail="برداشت فقط در مرحله رییل مجاز است")
-
-    # ✅ چک مجاز بودن برداشت با PropRuleEngine
-    is_valid, error = PropRuleEngine.validate_withdrawal(db, stage_id, request.amount)
-    if not is_valid:
-        raise HTTPException(status_code=400, detail=error)
-
-    # 🆕 فاز ۵ — اعتبارسنجی حساب مالی مقصد
-    dest = db.query(Account).filter(
-        Account.id == request.destination_account_id,
-        Account.type != AccountType.PROP,
-    ).first()
-    if not dest:
-        raise HTTPException(
-            status_code=400,
-            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول/بروکر باشد)",
-        )
-
-    prop_acc = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
-
-    # 🆕 فاز ۵ — اگر اکانت پراپ حساب مالی ندارد، خودکار ساخته می‌شود
-    src_acct = _ensure_finance_account(db, prop_acc) if prop_acc else None
-
-    # 🆕 فاز ۵.۱ — تاریخ برداشت (اختیاری؛ پیش‌فرض: الان)
-    withdrawal_dt = datetime.now(timezone.utc)
-    if request.withdrawal_date:
-        try:
-            parsed = datetime.fromisoformat(request.withdrawal_date.replace("Z", "+00:00"))
-            withdrawal_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
-            )
-
-    withdrawal = PropWithdrawal(
-        prop_stage_id=stage_id,
+    """ثبت برداشت برای یک مرحله (فاز ۵) — حالا از منطق مشترک فاز ۱۶ استفاده می‌کند"""
+    return _create_payout_record(
+        db,
+        stage_id=stage_id,
         amount=request.amount,
         note=request.note,
         destination_account_id=request.destination_account_id,
-        withdrawal_date=withdrawal_dt,
+        withdrawal_date=request.withdrawal_date,
     )
-    db.add(withdrawal)
-
-    # ✅ فقط total_withdrawn افزایش می‌یابد
-    # current_profit دست نمی‌خورد (چون از روی trades محاسبه می‌شود)
-    stage.total_withdrawn = (stage.total_withdrawn or 0) + request.amount
-
-    # 🆕 فاز ۵ — ثبت تراکنش مالی (جایگزین LedgerTransaction شخصی)
-    description = f"برداشت از {prop_acc.account_label if prop_acc else 'پراپ'}"
-    if request.note:
-        description += f" - {request.note}"
-
-    cat = _get_or_create_category(db, "برداشت پراپ", CategoryType.INCOME, "#27AE60", "💰")
-
-    tx = Transaction(
-        account_id=request.destination_account_id,           # مقصد (تصمیم ۹.۱ — گزینه الف)
-        category_id=cat.id,
-        amount=request.amount,
-        currency=_to_currency(prop_acc.currency if prop_acc else None),
-        date=withdrawal_dt,                                  # 🆕 فاز ۵.۱ — تاریخ برداشت
-        description=description,
-        type=TransactionType.WITHDRAWAL,
-        from_account_id=src_acct.id if src_acct else None,   # مبدأ = حساب مالی پراپ
-        to_account_id=request.destination_account_id,         # مقصد
-        related_prop_account_id=stage.prop_account_id,        # لینک به پراپ
-    )
-    db.add(tx)
-
-    # 🆕 فاز ۵ — به‌روزرسانی موجودی‌ها
-    if src_acct:
-        src_acct.balance = (src_acct.balance or 0.0) - request.amount
-    dest.balance = (dest.balance or 0.0) + request.amount
-
-    db.commit()
-
-    return {
-        "message": f"{request.amount} دلار برداشت ثبت شد و به حساب مقصد واریز شد",
-        "transaction_id": tx.id,
-        "source_account_id": src_acct.id if src_acct else None,
-        "destination_account_id": request.destination_account_id,
-    }
 
 
 @router.get("/stages/{stage_id}/withdrawals")
@@ -630,6 +567,307 @@ def get_stage_withdrawals(stage_id: int, db: Session = Depends(get_db)):
         }
         for w in rows
     ]
+
+
+# ═════════════════════════════════════════════
+# Payouts — تاریخچهٔ برداشت‌ها (فاز ۱۶)
+# ═════════════════════════════════════════════
+def _create_payout_record(
+    db: Session,
+    stage_id: int,
+    amount: float,
+    note: Optional[str],
+    destination_account_id: int,
+    withdrawal_date: Optional[str] = None,
+) -> dict:
+    """منطق مشترک ثبت برداشت پراپ (استفاده در `withdraw` و `POST /payouts`) — فاز ۱۶.
+
+    - اعتبارسنجی مرحله (باید FUNDED_REAL باشد) با PropRuleEngine
+    - اعتبارسنجی حساب مقصد
+    - ساخت PropWithdrawal + Transaction(type=withdrawal) + به‌روزرسانی موجودی‌ها
+    """
+    from ..services.prop_rule_engine import PropRuleEngine
+
+    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
+    if not stage:
+        raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
+
+    if stage.stage_type != StageType.FUNDED_REAL:
+        raise HTTPException(status_code=400, detail="برداشت فقط در مرحله رییل مجاز است")
+
+    is_valid, error = PropRuleEngine.validate_withdrawal(db, stage_id, amount)
+    if not is_valid:
+        raise HTTPException(status_code=400, detail=error)
+
+    dest = db.query(Account).filter(
+        Account.id == destination_account_id,
+        Account.type != AccountType.PROP,
+    ).first()
+    if not dest:
+        raise HTTPException(
+            status_code=400,
+            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول/بروکر باشد)",
+        )
+
+    prop_acc = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
+    src_acct = _ensure_finance_account(db, prop_acc) if prop_acc else None
+
+    withdrawal_dt = datetime.now(timezone.utc)
+    if withdrawal_date:
+        try:
+            parsed = datetime.fromisoformat(str(withdrawal_date).replace("Z", "+00:00"))
+            withdrawal_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
+            )
+
+    withdrawal = PropWithdrawal(
+        prop_stage_id=stage_id,
+        amount=amount,
+        note=note,
+        destination_account_id=destination_account_id,
+        withdrawal_date=withdrawal_dt,
+    )
+    db.add(withdrawal)
+
+    # فقط total_withdrawn افزایش می‌یابد (current_profit از روی trades محاسبه می‌شود)
+    stage.total_withdrawn = (stage.total_withdrawn or 0) + amount
+
+    description = f"برداشت از {prop_acc.account_label if prop_acc else 'پراپ'}"
+    if note:
+        description += f" - {note}"
+
+    cat = _get_or_create_category(db, "برداشت پراپ", CategoryType.INCOME, "#27AE60", "💰")
+
+    tx = Transaction(
+        account_id=destination_account_id,
+        category_id=cat.id,
+        amount=amount,
+        currency=_to_currency(prop_acc.currency if prop_acc else None),
+        date=withdrawal_dt,
+        description=description,
+        type=TransactionType.WITHDRAWAL,
+        from_account_id=src_acct.id if src_acct else None,
+        to_account_id=destination_account_id,
+        related_prop_account_id=stage.prop_account_id,
+    )
+    db.add(tx)
+
+    if src_acct:
+        src_acct.balance = (src_acct.balance or 0.0) - amount
+    dest.balance = (dest.balance or 0.0) + amount
+
+    db.commit()
+    db.refresh(withdrawal)
+
+    return {
+        "message": f"{amount} دلار برداشت ثبت شد و به حساب مقصد واریز شد",
+        "id": withdrawal.id,
+        "transaction_id": tx.id,
+        "source_account_id": src_acct.id if src_acct else None,
+        "destination_account_id": destination_account_id,
+    }
+
+
+def _serialize_payout(w: PropWithdrawal) -> dict:
+    """خروجی یک برداشت پراپ با اطلاعات مرحله/اکانت/شرکت و حساب مقصد"""
+    stage = w.stage
+    account = stage.account if stage else None
+    firm = account.firm if account and account.firm else None
+    return {
+        "id": w.id,
+        "prop_stage_id": w.prop_stage_id,
+        "stage_type": stage.stage_type.value if stage and stage.stage_type else None,
+        "stage_status": stage.status.value if stage and stage.status else None,
+        "prop_account_id": account.id if account else None,
+        "account_label": account.account_label if account else None,
+        "currency": account.currency if account else None,
+        "firm_id": firm.id if firm else None,
+        "firm_name": firm.name if firm else None,
+        "amount": w.amount,
+        "withdrawal_date": w.withdrawal_date.isoformat() if w.withdrawal_date else None,
+        "note": w.note,
+        "destination_account_id": w.destination_account_id,
+        "destination_account_name": w.destination_account.name if w.destination_account else None,
+    }
+
+
+def _payout_filter_query(
+    db: Session,
+    firm_id: Optional[int] = None,
+    currency: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+):
+    """کوئری پایهٔ برداشت‌ها با فیلترهای اختیاری (بدون joinedload تا برای aggregate هم قابل استفاده باشد)"""
+    q = db.query(PropWithdrawal)
+    if firm_id or currency:
+        q = (
+            q.join(PropStage, PropWithdrawal.prop_stage_id == PropStage.id)
+            .join(PropAccount, PropStage.prop_account_id == PropAccount.id)
+        )
+        if firm_id:
+            q = q.filter(PropAccount.prop_firm_id == firm_id)
+        if currency:
+            q = q.filter(PropAccount.currency == currency)
+    if date_from:
+        q = q.filter(PropWithdrawal.withdrawal_date >= date_from)
+    if date_to:
+        q = q.filter(PropWithdrawal.withdrawal_date <= date_to)
+    return q
+
+
+def _payout_eager():
+    """گزینه‌های eager loading برداشت‌ها — به‌صورت تابع تا در زمان import، mapper پیکربندی نشود."""
+    return (
+        joinedload(PropWithdrawal.stage)
+        .joinedload(PropStage.account)
+        .joinedload(PropAccount.firm),
+        joinedload(PropWithdrawal.destination_account),
+    )
+
+
+@router.get("/payouts")
+def list_payouts(
+    firm_id: Optional[int] = None,
+    currency: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """لیست همهٔ برداشت‌های پراپ با فیلتر شرکت/ارز/بازهٔ تاریخ (فاز ۱۶)"""
+    rows = (
+        _payout_filter_query(db, firm_id, currency, date_from, date_to)
+        .options(*_payout_eager())
+        .order_by(PropWithdrawal.withdrawal_date.desc())
+        .all()
+    )
+    return [_serialize_payout(w) for w in rows]
+
+
+@router.get("/payouts/stats")
+def get_payout_stats(
+    firm_id: Optional[int] = None,
+    currency: Optional[str] = None,
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """آمار برداشت‌های پراپ (فاز ۱۶) — محاسبات در SQL"""
+    q = _payout_filter_query(db, firm_id, currency, date_from, date_to)
+
+    agg = q.with_entities(
+        func.count(PropWithdrawal.id),
+        func.coalesce(func.sum(PropWithdrawal.amount), 0.0),
+        func.max(PropWithdrawal.amount),
+    ).one()
+    count = int(agg[0] or 0)
+    total = float(agg[1] or 0.0)
+    largest = float(agg[2] or 0.0)
+
+    monthly_rows = (
+        q.with_entities(
+            func.strftime("%Y-%m", PropWithdrawal.withdrawal_date).label("ym"),
+            func.sum(PropWithdrawal.amount),
+        )
+        .group_by("ym")
+        .order_by("ym")
+        .all()
+    )
+
+    by_firm_rows = (
+        db.query(PropFirm.name, func.sum(PropWithdrawal.amount), func.count(PropWithdrawal.id))
+        .join(PropStage, PropWithdrawal.prop_stage_id == PropStage.id)
+        .join(PropAccount, PropStage.prop_account_id == PropAccount.id)
+        .join(PropFirm, PropAccount.prop_firm_id == PropFirm.id)
+        .group_by(PropFirm.name)
+        .all()
+    )
+
+    return {
+        "total": round(total, 2),
+        "count": count,
+        "average": round((total / count) if count else 0.0, 2),
+        "largest": round(largest, 2),
+        "monthly": [{"month": m, "amount": round(float(a or 0), 2)} for m, a in monthly_rows],
+        "by_firm": [
+            {"name": n, "amount": round(float(a or 0), 2), "count": int(c or 0)}
+            for n, a, c in by_firm_rows
+        ],
+    }
+
+
+@router.post("/payouts")
+def create_payout(data: PayoutCreate, db: Session = Depends(get_db)):
+    """ثبت برداشت جدید پراپ (فاز ۱۶)"""
+    return _create_payout_record(
+        db,
+        stage_id=data.prop_stage_id,
+        amount=data.amount,
+        note=data.note,
+        destination_account_id=data.destination_account_id,
+        withdrawal_date=data.withdrawal_date,
+    )
+
+
+@router.put("/payouts/{payout_id}")
+@router.patch("/payouts/{payout_id}")
+def update_payout(payout_id: int, data: PayoutUpdate, db: Session = Depends(get_db)):
+    """ویرایش برداشت پراپ (فاز ۱۶) — هم PUT و هم PATCH"""
+    w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+
+    payload = data.model_dump(exclude_unset=True)
+    stage = db.query(PropStage).filter(PropStage.id == w.prop_stage_id).first()
+
+    if "amount" in payload and payload["amount"] is not None and stage:
+        # اصلاح total_withdrawn مرحله به‌اندازهٔ اختلاف مبلغ
+        delta = float(payload["amount"]) - float(w.amount or 0)
+        stage.total_withdrawn = (stage.total_withdrawn or 0) + delta
+
+    if "withdrawal_date" in payload and payload["withdrawal_date"]:
+        try:
+            parsed = datetime.fromisoformat(str(payload["withdrawal_date"]).replace("Z", "+00:00"))
+            payload["withdrawal_date"] = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
+            )
+
+    if "destination_account_id" in payload and payload["destination_account_id"] is not None:
+        dest = db.query(Account).filter(
+            Account.id == payload["destination_account_id"],
+            Account.type != AccountType.PROP,
+        ).first()
+        if not dest:
+            raise HTTPException(status_code=400, detail="حساب مقصد معتبر نیست")
+
+    for field, value in payload.items():
+        setattr(w, field, value)
+
+    db.commit()
+    db.refresh(w)
+    return {"message": "برداشت به‌روزرسانی شد", "payout": _serialize_payout(w)}
+
+
+@router.delete("/payouts/{payout_id}")
+def delete_payout(payout_id: int, db: Session = Depends(get_db)):
+    """حذف برداشت پراپ + اصلاح total_withdrawn مرحله (فاز ۱۶)"""
+    w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+
+    stage = db.query(PropStage).filter(PropStage.id == w.prop_stage_id).first()
+    if stage:
+        stage.total_withdrawn = max((stage.total_withdrawn or 0) - (w.amount or 0), 0.0)
+
+    db.delete(w)
+    db.commit()
+    return {"message": "برداشت حذف شد"}
 
 
 # ═════════════════════════════════════════════

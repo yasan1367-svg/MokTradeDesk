@@ -522,3 +522,77 @@ export const getFinanceAccountComparison = (params?: {
 
 export const getFinanceProfitLoss = (params?: { year?: number; account_id?: number }) =>
   api.get('/api/finance/reports/profit-loss', { params });
+// ─────────────────────────────────────────────
+// Payout History (فاز ۱۶)
+// ─────────────────────────────────────────────
+export type PayoutFilters = {
+  firm_id?: number;
+  currency?: string;
+  date_from?: string;
+  date_to?: string;
+};
+
+export const getPropPayouts = (params?: PayoutFilters) =>
+  api.get('/api/prop/payouts', { params });
+
+export const getPropPayoutsStats = (params?: PayoutFilters) =>
+  api.get('/api/prop/payouts/stats', { params });
+
+export const createPropPayout = (data: {
+  prop_stage_id: number;
+  amount: number;
+  note?: string;
+  destination_account_id: number;
+  withdrawal_date?: string;
+}) => api.post('/api/prop/payouts', data);
+
+export const updatePropPayout = (id: number, data: Record<string, any>) =>
+  api.put(`/api/prop/payouts/${id}`, data);
+
+export const deletePropPayout = (id: number) =>
+  api.delete(`/api/prop/payouts/${id}`);
+
+export const getBrokerPayouts = (params?: {
+  account_id?: number;
+  currency?: string;
+  date_from?: string;
+  date_to?: string;
+}) => api.get('/api/broker/payouts', { params });
+
+export const getBrokerPayoutsStats = (params?: {
+  account_id?: number;
+  currency?: string;
+  date_from?: string;
+  date_to?: string;
+}) => api.get('/api/broker/payouts/stats', { params });
+
+// ─────────────────────────────────────────────
+// Backup (فاز ۱۷)
+// ─────────────────────────────────────────────
+export type BackupItem = {
+  filename: string;
+  size: number;
+  created_at: string;
+};
+
+export const createBackup = () => api.post('/api/backup/create');
+
+export const listBackups = () => api.get('/api/backup/list');
+
+export const downloadBackup = (filename: string) =>
+  api.get(`/api/backup/download/${encodeURIComponent(filename)}`, { responseType: 'blob' });
+
+export const restoreBackup = (filename: string) =>
+  api.post(`/api/backup/restore/${encodeURIComponent(filename)}`);
+
+export const deleteBackup = (filename: string) =>
+  api.delete(`/api/backup/${encodeURIComponent(filename)}`);
+
+export const getBackupSettings = () => api.get('/api/backup/settings');
+
+export const updateBackupSettings = (data: {
+  auto_enabled?: boolean;
+  interval_hours?: number;
+  keep?: number;
+}) => api.put('/api/backup/settings', data);
+

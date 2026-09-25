@@ -10,6 +10,8 @@ import PnLDistributionChart from '../components/charts/PnLDistributionChart';
 import {
   getDashboardData, getYesterdayData, exportDashboardPdf, getPropAlerts, markAlertRead,
   getFinanceSummary, getFinanceCashflow, getFinanceAccounts, getTrades, getRiskAdvanced,
+  getPropPayoutsStats, getBrokerPayoutsStats,
+  listBackups, createBackup,
 } from '../api/client';
 import { DashboardSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/ToastProvider';
@@ -194,6 +196,36 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [refreshing, setRefreshing] = useState(false);
 
 const [alerts, setAlerts] = useState<any[]>([]);
+const [payouts, setPayouts] = useState<any>(null);
+
+  // ── آمار برداشت‌ها (فاز ۱۶) ──
+  useEffect(() => {
+    Promise.all([getPropPayoutsStats(), getBrokerPayoutsStats()])
+      .then(([p, b]) => setPayouts({ prop: p.data, broker: b.data }))
+      .catch(() => {});
+  }, []);
+
+  // ── آخرین Backup (فاز ۱۷) ──
+  const [lastBackup, setLastBackup] = useState<any>(null);
+  const [backupBusy, setBackupBusy] = useState(false);
+
+  const loadLastBackup = useCallback(() => {
+    listBackups().then((r) => setLastBackup((r.data || [])[0] || null)).catch(() => {});
+  }, []);
+  useEffect(() => { loadLastBackup(); }, [loadLastBackup]);
+
+  const handleQuickBackup = async () => {
+    setBackupBusy(true);
+    try {
+      await createBackup();
+      toast.success('Backup ساخته شد');
+      loadLastBackup();
+    } catch {
+      toast.error('خطا در ساخت Backup');
+    } finally {
+      setBackupBusy(false);
+    }
+  };
 
   // ── بارگذاری همهٔ ویجت‌ها (قابل Refresh) ──
   const loadDashboard = useCallback(
@@ -486,6 +518,105 @@ const [alerts, setAlerts] = useState<any[]>([]);
           <div className="text-[var(--text-muted)] text-center py-6 text-sm">داده‌ای برای روز گذشته نیست</div>
         )}
       </Card>
+
+      {/* کارت آمار برداشت‌ها (فاز ۱۶) */}
+      {payouts && (
+        <ErrorBoundary label="برداشت‌ها">
+          <Card>
+            <CardHeader
+              title="💸 آمار برداشت‌ها"
+              subtitle="پراپ و بروکر"
+              action={
+                <button
+                  onClick={() => onNavigate?.('payouts')}
+                  className="text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent-soft)] px-3 py-1.5 rounded-lg transition-all"
+                >
+                  مشاهده همه →
+                </button>
+              }
+            />
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">مجموع پراپ</div>
+                <div className="text-base font-extrabold text-[var(--profit)]">
+                  ${Number(payouts.prop?.total || 0).toLocaleString('en-US')}
+                </div>
+              </div>
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تعداد پراپ</div>
+                <div className="text-base font-extrabold text-[var(--text-primary)]">{payouts.prop?.count ?? 0}</div>
+              </div>
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">مجموع بروکر</div>
+                <div className="text-base font-extrabold text-[var(--accent)]">
+                  ${Number(payouts.broker?.total || 0).toLocaleString('en-US')}
+                </div>
+              </div>
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تعداد بروکر</div>
+                <div className="text-base font-extrabold text-[var(--text-primary)]">{payouts.broker?.count ?? 0}</div>
+              </div>
+            </div>
+          </Card>
+        </ErrorBoundary>
+      )}
+
+      {/* کارت آخرین Backup (فاز ۱۷) */}
+      <ErrorBoundary label="Backup">
+        <Card>
+          <CardHeader
+            title="💾 آخرین Backup"
+            subtitle="نسخهٔ پشتیبان دیتابیس"
+            action={
+              <div className="flex gap-2">
+                <button
+                  onClick={handleQuickBackup}
+                  disabled={backupBusy}
+                  className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
+                  style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
+                >
+                  {backupBusy ? '⏳ …' : '➕ ساخت Backup'}
+                </button>
+                <button
+                  onClick={() => onNavigate?.('settings')}
+                  className="text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] px-3 py-1.5 rounded-lg transition-all"
+                >
+                  مدیریت →
+                </button>
+              </div>
+            }
+          />
+          {lastBackup ? (
+            <div className="flex flex-wrap gap-4 text-sm">
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">فایل</div>
+                <div className="font-mono text-[12px] text-[var(--text-primary)]">{lastBackup.filename}</div>
+              </div>
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تاریخ</div>
+                <div className="text-[13px] font-extrabold text-[var(--text-primary)]">
+                  {(() => {
+                    const d = new Date(lastBackup.created_at);
+                    if (isNaN(d.getTime())) return '—';
+                    const [jy, jm, jd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
+                    const hh = String(d.getHours()).padStart(2, '0');
+                    const mm = String(d.getMinutes()).padStart(2, '0');
+                    return `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')} - ${hh}:${mm}`;
+                  })()}
+                </div>
+              </div>
+              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
+                <div className="text-[11px] text-[var(--text-secondary)] font-bold">حجم</div>
+                <div className="text-[13px] font-extrabold text-[var(--text-primary)]">
+                  {(Number(lastBackup.size || 0) / 1024).toFixed(1)} KB
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-[var(--text-secondary)] text-sm py-2">هنوز Backup‌ی ساخته نشده</div>
+          )}
+        </Card>
+      </ErrorBoundary>
 
       {/* کارت‌های آماری */}
       <ErrorBoundary label="کارت‌های آماری">

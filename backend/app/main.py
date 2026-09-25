@@ -5,12 +5,14 @@ from slowapi.errors import RateLimitExceeded
 from slowapi import _rate_limit_exceeded_handler
 import os
 import logging
+import threading
 from datetime import datetime, timezone
 
 from .core.database import engine, Base
 from .core.rate_limit import limiter
-from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance
+from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance, broker
 from .api import settings as settings_api
+from .api import backup as backup_api
 
 # ═════════════════════════════════════════════
 # Logging
@@ -27,6 +29,25 @@ logging.basicConfig(
     ],
 )
 logger = logging.getLogger("moktrade")
+
+# ═════════════════════════════════════════════
+# فاز ۱۷: زمان‌بند Backup خودکار (thread پس‌زمینه، بدون وابستگی خارجی)
+# ═════════════════════════════════════════════
+_backup_stop = threading.Event()
+_backup_thread = None
+_BACKUP_CHECK_SECONDS = 1800  # هر ۳۰ دقیقه وضعیت بررسی می‌شود
+
+
+def _backup_loop():
+    """در هر بازه بررسی می‌کند و در صورت رسیدن زمان (طبق تنظیمات) Backup می‌سازد."""
+    from .services import backup_service as svc
+    while not _backup_stop.wait(_BACKUP_CHECK_SECONDS):
+        try:
+            info = svc.run_auto_backup()
+            if info:
+                logger.info("💾 auto backup created: %s", info["filename"])
+        except Exception:
+            logger.exception("auto-backup failed")
 
 # ═════════════════════════════════════════════
 # App
@@ -67,9 +88,24 @@ async def log_requests(request: Request, call_next):
 @app.on_event("startup")
 def startup():
     logger.info("🚀 MokTradeDesk API started")
+    # ── فاز ۱۷: Backup اولیه + شروع حلقهٔ Backup خودکار ──
+    try:
+        from .services import backup_service as svc
+        svc.create_backup()
+        svc.cleanup_old_backups(keep=int(svc.load_config().get("keep", 30)))
+        logger.info("💾 initial backup created")
+    except Exception:
+        logger.exception("initial backup failed")
+
+    global _backup_thread
+    if _backup_thread is None or not _backup_thread.is_alive():
+        _backup_thread = threading.Thread(target=_backup_loop, name="auto-backup", daemon=True)
+        _backup_thread.start()
+        logger.info("⏱️ auto-backup loop started")
 
 @app.on_event("shutdown")
 def shutdown():
+    _backup_stop.set()
     logger.info("👋 MokTradeDesk API stopped")
 
 # ═════════════════════════════════════════════
@@ -92,6 +128,8 @@ app.include_router(trades.router, prefix="/api/trades", tags=["trades"])
 app.include_router(symbol_mappings.router, prefix="/api/symbol-mappings", tags=["symbol-mappings"])
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
+app.include_router(broker.router, prefix="/api/broker", tags=["broker"])
+app.include_router(backup_api.router, prefix="/api/backup", tags=["backup"])
 
 @app.get("/")
 def root():

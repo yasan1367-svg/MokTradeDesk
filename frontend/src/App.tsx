@@ -18,11 +18,12 @@ const RiskManagementPage = lazy(() => import('./pages/RiskManagementPage'));
 const ImportPage = lazy(() => import('./pages/ImportPage'));
 const FinancePage = lazy(() => import('./pages/FinancePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+const PayoutHistoryPage = lazy(() => import('./pages/PayoutHistoryPage'));
 
 // preload صفحهٔ پیش‌فرض (Dashboard) — فاز ۱۵.۴
 const preloadDashboard = () => { void import('./pages/DashboardPage'); };
 
-type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'settings';
+type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'payouts' | 'settings';
 
 const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   dashboard: { title: '📊 داشبورد', subtitle: 'نمای کلی عملکرد معاملاتی' },
@@ -36,6 +37,7 @@ const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   risk: { title: '🛡️ مدیریت ریسک', subtitle: 'تحلیل شاخص‌های ریسک و پیشنهاد Position Sizing' },
   import: { title: '📥 واردات', subtitle: 'واردات معاملات از فایل' },
   finance: { title: '💰 مالی', subtitle: 'مدیریت حساب‌ها و تراکنش‌های مالی' },
+  payouts: { title: '💸 برداشت‌ها', subtitle: 'تاریخچهٔ برداشت‌های پراپ و بروکر' },
   settings: { title: '⚙️ تنظیمات', subtitle: 'تنظیمات نرم‌افزار' },
 };
 
@@ -205,6 +207,7 @@ export default function App() {
             {page === 'risk' && <ErrorBoundary label="مدیریت ریسک"><RiskManagementPage /></ErrorBoundary>}
             {page === 'import' && <ErrorBoundary label="واردات"><ImportPage /></ErrorBoundary>}
             {page === 'finance' && <ErrorBoundary label="مالی"><FinancePage /></ErrorBoundary>}
+            {page === 'payouts' && <ErrorBoundary label="برداشت‌ها"><PayoutHistoryPage /></ErrorBoundary>}
             {page === 'settings' && <ErrorBoundary label="تنظیمات"><SettingsPage /></ErrorBoundary>}
           </Suspense>
         </div>
