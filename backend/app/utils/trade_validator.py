@@ -9,7 +9,7 @@ class TradeValidator:
     def validate_classification(
         test_type: str,
         version_id: Optional[int],
-        personal_account_id: Optional[int],
+        finance_account_id: Optional[int],
         prop_stage_id: Optional[int],
     ) -> Tuple[bool, Optional[str]]:
         """
@@ -28,8 +28,8 @@ class TradeValidator:
         if test_type_enum == TestType.BACKTEST:
             if not version_id:
                 return False, "BACKTEST نیاز به version_id دارد"
-            if personal_account_id:
-                return False, "BACKTEST نباید personal_account_id داشته باشد"
+            if finance_account_id:
+                return False, "BACKTEST نباید finance_account_id داشته باشد"
             if prop_stage_id:
                 return False, "BACKTEST نباید prop_stage_id داشته باشد"
 
@@ -39,8 +39,8 @@ class TradeValidator:
         elif test_type_enum == TestType.FORWARD:
             if not version_id:
                 return False, "FORWARD نیاز به version_id دارد"
-            if personal_account_id:
-                return False, "FORWARD نباید personal_account_id داشته باشد"
+            if finance_account_id:
+                return False, "FORWARD نباید finance_account_id داشته باشد"
             if prop_stage_id:
                 return False, "FORWARD نباید prop_stage_id داشته باشد"
 
@@ -52,10 +52,10 @@ class TradeValidator:
                 return False, "REAL نیاز به version_id دارد"
 
             # XOR: دقیقاً یکی از دو
-            if personal_account_id and prop_stage_id:
-                return False, "REAL نمی‌تواند همزمان personal_account_id و prop_stage_id داشته باشد"
-            if not personal_account_id and not prop_stage_id:
-                return False, "REAL باید یکی از personal_account_id یا prop_stage_id را داشته باشد"
+            if finance_account_id and prop_stage_id:
+                return False, "REAL نمی‌تواند همزمان finance_account_id و prop_stage_id داشته باشد"
+            if not finance_account_id and not prop_stage_id:
+                return False, "REAL باید یکی از finance_account_id یا prop_stage_id را داشته باشد"
 
         return True, None
 

@@ -29,40 +29,40 @@ export default function SettingsPage() {
     }
   };
 
-  if (loading) return <div className="text-center py-12 text-[#9AA8BF]">⏳ در حال بارگذاری...</div>;
-  if (!settings) return <div className="text-center py-12 text-[#E45D72]">خطا در بارگذاری</div>;
+  if (loading) return <div className="text-center py-12 text-[var(--text-muted)]">⏳ در حال بارگذاری...</div>;
+  if (!settings) return <div className="text-center py-12 text-[var(--loss)]">خطا در بارگذاری</div>;
 
   return (
     <div className="space-y-6 max-w-4xl">
       {error && (
-        <div className="bg-[#FFEDF0] border border-[#F0A6B2] text-[#E45D72] p-4 rounded-[14px] text-sm font-semibold">
+        <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] text-[var(--loss)] p-4 rounded-[14px] text-sm font-semibold">
           ❌ {error}
         </div>
       )}
       {successMessage && (
-        <div className="bg-[#E5F8F1] border border-[#A8E6CF] text-[#13AE81] p-4 rounded-[14px] text-sm font-semibold">
+        <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] text-[var(--profit)] p-4 rounded-[14px] text-sm font-semibold">
           ✅ {successMessage}
         </div>
       )}
 
       {/* ظاهر */}
-      <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
             style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>🎨</div>
           <div>
-            <h3 className="text-lg font-extrabold text-[#1A2B47]">ظاهر و نمایش</h3>
-            <p className="text-[12px] text-[#6B7A94] mt-0.5">تم، فونت و اندازه</p>
+            <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ظاهر و نمایش</h3>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">تم، فونت و اندازه</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🎨 تم</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🎨 تم</label>
             <select
               value={settings.theme}
               onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#3F7CFF] focus:outline-none cursor-pointer"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:outline-none cursor-pointer"
             >
               <option value="dark">🌙 تیره (Dark)</option>
               <option value="light">☀️ روشن (Light)</option>
@@ -71,11 +71,11 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">📏 اندازه‌ی فونت</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📏 اندازه‌ی فونت</label>
             <select
               value={settings.font_size}
               onChange={(e) => setSettings({ ...settings, font_size: Number(e.target.value) })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#3F7CFF] focus:outline-none cursor-pointer"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:outline-none cursor-pointer"
             >
               <option value={12}>کوچک (۱۲px)</option>
               <option value={14}>متوسط (۱۴px)</option>
@@ -87,23 +87,23 @@ export default function SettingsPage() {
       </div>
 
       {/* منطقه‌ی زمانی و ارز */}
-      <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
             style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>🌍</div>
           <div>
-            <h3 className="text-lg font-extrabold text-[#1A2B47]">منطقه و ارز</h3>
-            <p className="text-[12px] text-[#6B7A94] mt-0.5">منطقه‌ی زمانی، ارز و تقویم</p>
+            <h3 className="text-lg font-extrabold text-[var(--text-primary)]">منطقه و ارز</h3>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">منطقه‌ی زمانی، ارز و تقویم</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🕐 منطقه‌ی زمانی</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🕐 منطقه‌ی زمانی</label>
             <select
               value={settings.timezone}
               onChange={(e) => setSettings({ ...settings, timezone: e.target.value })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none cursor-pointer"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none cursor-pointer"
             >
               <option value="Asia/Tehran">🇮🇷 Tehran</option>
               <option value="UTC">🌍 UTC</option>
@@ -114,11 +114,11 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">💵 ارز</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💵 ارز</label>
             <select
               value={settings.currency}
               onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none cursor-pointer"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none cursor-pointer"
             >
               <option value="USD">USD - دلار</option>
               <option value="EUR">EUR - یورو</option>
@@ -127,11 +127,11 @@ export default function SettingsPage() {
           </div>
 
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">📅 تقویم</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📅 تقویم</label>
             <select
               value={settings.calendar}
               onChange={(e) => setSettings({ ...settings, calendar: e.target.value })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#7959D6] focus:outline-none cursor-pointer"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none cursor-pointer"
             >
               <option value="persian">🌙 شمسی</option>
               <option value="gregorian">🌍 میلادی</option>
@@ -141,33 +141,33 @@ export default function SettingsPage() {
       </div>
 
       {/* پیش‌فرض‌های ریسک */}
-      <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+        <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
             style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>⚙️</div>
           <div>
-            <h3 className="text-lg font-extrabold text-[#1A2B47]">پیش‌فرض‌های ریسک و پراپ</h3>
-            <p className="text-[12px] text-[#6B7A94] mt-0.5">مقادیر پیش‌فرض برای ساخت جدید</p>
+            <h3 className="text-lg font-extrabold text-[var(--text-primary)]">پیش‌فرض‌های ریسک و پراپ</h3>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">مقادیر پیش‌فرض برای ساخت جدید</p>
           </div>
         </div>
 
         <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">⚠️ ریسک پیش‌فرض (%)</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">⚠️ ریسک پیش‌فرض (%)</label>
             <input
               type="number"
               value={settings.default_risk_percent}
               onChange={(e) => setSettings({ ...settings, default_risk_percent: Number(e.target.value) })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none"
             />
           </div>
           <div>
-            <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🏢 سهم کاربر در پراپ (%)</label>
+            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🏢 سهم کاربر در پراپ (%)</label>
             <input
               type="number"
               value={settings.default_profit_share}
               onChange={(e) => setSettings({ ...settings, default_profit_share: Number(e.target.value) })}
-              className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-bold focus:border-[#13AE81] focus:outline-none"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none"
             />
           </div>
         </div>

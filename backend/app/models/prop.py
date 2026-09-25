@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 
 from ..core.database import Base
@@ -33,7 +33,7 @@ class PropFirm(Base):
     default_profit_share = Column(Float, default=80.0)
     website = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     accounts = relationship("PropAccount", back_populates="firm")
     default_rules = relationship("PropFirmDefaultRules", back_populates="firm", cascade="all, delete-orphan")
@@ -50,7 +50,7 @@ class PropFirmDefaultRules(Base):
     min_trading_days = Column(Integer, nullable=True)
     profit_share_percentage = Column(Float, nullable=True)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     firm = relationship("PropFirm", back_populates="default_rules")
 
@@ -63,11 +63,13 @@ class PropAccount(Base):
     account_number = Column(String, nullable=True)
     currency = Column(String, default="USD")
     is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     firm = relationship("PropFirm", back_populates="accounts")
     stages = relationship("PropStage", back_populates="account", cascade="all, delete-orphan")
     costs = relationship("PropCost", back_populates="account", cascade="all, delete-orphan")
+    finance_account = relationship("Account", foreign_keys=[finance_account_id])
 
 class PropStage(Base):
     __tablename__ = "prop_stages"
@@ -90,7 +92,7 @@ class PropStage(Base):
     current_profit = Column(Float, default=0.0)
     failure_reason = Column(Enum(FailureReason), nullable=True)
     failure_details = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     account = relationship("PropAccount", back_populates="stages")
     trades = relationship("Trade", back_populates="prop_stage")
@@ -103,10 +105,12 @@ class PropWithdrawal(Base):
     id = Column(Integer, primary_key=True, index=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=False)
     amount = Column(Float, nullable=False)
-    withdrawal_date = Column(DateTime, default=datetime.utcnow)
+    withdrawal_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     note = Column(Text, nullable=True)
+    destination_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
     stage = relationship("PropStage", back_populates="withdrawals")
+    destination_account = relationship("Account", foreign_keys=[destination_account_id])
 
 class PropCost(Base):
     __tablename__ = "prop_costs"
@@ -116,7 +120,7 @@ class PropCost(Base):
     cost_type = Column(String, nullable=False)
     amount = Column(Float, nullable=False)
     currency = Column(String, default="USD")
-    cost_date = Column(DateTime, default=datetime.utcnow)
+    cost_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     description = Column(Text, nullable=True)
     is_refunded = Column(Integer, default=0)
 
@@ -129,6 +133,6 @@ class PropAlert(Base):
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=False)
     message = Column(Text, nullable=False)
     is_read = Column(Integer, default=0)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     stage = relationship("PropStage", back_populates="alerts")

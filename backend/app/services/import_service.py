@@ -105,7 +105,7 @@ class Soft4XImporter:
         trades: List[Dict[str, Any]],
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
-        personal_account_id: Optional[int] = None,
+        finance_account_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """ذخیره‌ی معاملات با Duplicate Detection"""
         saved_trades = []
@@ -122,7 +122,7 @@ class Soft4XImporter:
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
+                finance_account_id=finance_account_id,
                 trade_hash=hash_key,
                 **trade_data
             )
@@ -337,7 +337,7 @@ class MT4Importer:
         trades: List[Dict[str, Any]],
         version_id: Optional[int] = None,
         prop_stage_id: Optional[int] = None,
-        personal_account_id: Optional[int] = None,
+        finance_account_id: Optional[int] = None,
     ) -> Dict[str, Any]:
         """ذخیره‌ی معاملات با Duplicate Detection"""
         saved_trades = []
@@ -354,7 +354,7 @@ class MT4Importer:
             db_trade = Trade(
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
+                finance_account_id=finance_account_id,
                 trade_hash=hash_key,
                 **trade_data
             )

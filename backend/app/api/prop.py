@@ -1,16 +1,71 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List, Optional
-from datetime import datetime
+from datetime import datetime, timezone
 from pydantic import BaseModel
 
 from ..core.database import get_db
 from ..models.prop import (
-    PropFirm, PropAccount, PropStage, PropWithdrawal, PropCost,
+    PropFirm, PropFirmDefaultRules, PropAccount, PropStage, PropWithdrawal, PropCost,
     StageType, StageStatus, FailureReason
+)
+from ..models.finance import (
+    Account, AccountType, Category, CategoryType, Currency, Transaction, TransactionType
 )
 
 router = APIRouter()
+
+
+# ═════════════════════════════════════════════
+# Helpers — Prop ↔ Finance (فاز ۵)
+# ═════════════════════════════════════════════
+def _to_currency(value: Optional[str]) -> Currency:
+    """تبدیل ارز رشته‌ای پراپ به Enum مالی (IRR|USD) با fallback امن"""
+    try:
+        return Currency((value or "USD").upper())
+    except ValueError:
+        return Currency.USD
+
+
+def _get_or_create_category(
+    db: Session, name: str, cat_type: CategoryType, color: str, icon: str
+) -> Category:
+    """دریافت دسته‌بندی با نام داده‌شده یا ساخت آن در صورت نبود"""
+    cat = db.query(Category).filter(Category.name == name).first()
+    if cat:
+        return cat
+    cat = Category(name=name, type=cat_type, color=color, icon=icon)
+    db.add(cat)
+    db.flush()
+    return cat
+
+
+def _ensure_finance_account(db: Session, prop_acc: PropAccount) -> Optional[Account]:
+    """اگر اکانت پراپ حساب مالی ندارد، آن را می‌سازد و وصل می‌کند"""
+    if prop_acc.finance_account_id:
+        existing = db.query(Account).filter(Account.id == prop_acc.finance_account_id).first()
+        if existing:
+            return existing
+
+    firm = db.query(PropFirm).filter(PropFirm.id == prop_acc.prop_firm_id).first()
+    stage1 = (
+        db.query(PropStage)
+        .filter(PropStage.prop_account_id == prop_acc.id)
+        .order_by(PropStage.id.asc())
+        .first()
+    )
+    fin = Account(
+        name=prop_acc.account_label,
+        type=AccountType.PROP,
+        currency=_to_currency(prop_acc.currency),
+        balance=stage1.initial_balance if stage1 and stage1.initial_balance else 0.0,
+        prop_firm_name=firm.name if firm else None,
+        prop_firm_id=prop_acc.prop_firm_id,
+    )
+    db.add(fin)
+    db.flush()
+    prop_acc.finance_account_id = fin.id
+    return fin
 
 
 # ═════════════════════════════════════════════
@@ -33,6 +88,7 @@ class PropAccountCreate(BaseModel):
     max_daily_dd: Optional[float] = 500.0
     max_total_dd: Optional[float] = 1000.0
     min_trading_days: Optional[int] = 5
+    create_finance_account: bool = True  # 🆕 فاز ۵ — ساخت خودکار حساب مالی
 
 
 class StageRules(BaseModel):
@@ -66,7 +122,8 @@ class FailStageRequest(BaseModel):
 class WithdrawalCreate(BaseModel):
     amount: float
     note: Optional[str] = None
-    target_personal_account_id: Optional[int] = None  # ← اکانت شخصی مقصد
+    destination_account_id: int  # 🆕 فاز ۵ — حساب مالی مقصد (اجباری)
+    withdrawal_date: Optional[str] = None  # 🆕 فاز ۵.۱ — تاریخ برداشت (ISO 8601)
 
 
 class PropCostCreate(BaseModel):
@@ -75,6 +132,8 @@ class PropCostCreate(BaseModel):
     amount: float
     currency: str = "USD"
     description: Optional[str] = None
+    pay_from_account_id: Optional[int] = None  # 🆕 فاز ۵ — حساب پرداخت‌کننده
+    create_transaction: bool = True            # 🆕 فاز ۵ — ثبت خودکار تراکنش
 
 
 # ═════════════════════════════════════════════
@@ -106,6 +165,32 @@ def create_firm(firm: PropFirmCreate, db: Session = Depends(get_db)):
     db.refresh(db_firm)
     return db_firm
 
+# ═════════════════════════════════════════════
+# Prop Firm Default Rules
+# ═════════════════════════════════════════════
+@router.get("/firms/{firm_id}/default-rules")
+def get_firm_default_rules(firm_id: int, db: Session = Depends(get_db)):
+    """دریافت قوانین پیش‌فرض یک شرکت پراپ"""
+    firm = db.query(PropFirm).filter(PropFirm.id == firm_id).first()
+    if not firm:
+        raise HTTPException(status_code=404, detail="شرکت پراپ پیدا نشد")
+
+    rules = db.query(PropFirmDefaultRules).filter(
+        PropFirmDefaultRules.prop_firm_id == firm_id
+    ).all()
+
+    return [
+        {
+            "stage_type": r.stage_type.value if hasattr(r.stage_type, 'value') else str(r.stage_type),
+            "profit_target": r.profit_target,
+            "max_daily_dd": r.max_daily_dd,
+            "max_total_dd": r.max_total_dd,
+            "min_trading_days": r.min_trading_days,
+            "profit_share_percentage": r.profit_share_percentage,
+            "description": r.description,
+        }
+        for r in rules
+    ]
 
 # ═════════════════════════════════════════════
 # Prop Account
@@ -144,15 +229,30 @@ def create_account(account: PropAccountCreate, db: Session = Depends(get_db)):
         currency=account.currency,
     )
     db.add(db_account)
-    db.commit()
-    db.refresh(db_account)
+    db.flush()  # ← گرفتن id بدون commit (تا کل عملیات اتمیک بماند)
+
+    # 🆕 فاز ۵ — ساخت خودکار حساب مالی متناظر
+    finance_account_id = None
+    if account.create_finance_account:
+        fin = Account(
+            name=account.account_label,
+            type=AccountType.PROP,
+            currency=_to_currency(account.currency),
+            balance=account.initial_balance or 0.0,
+            prop_firm_name=firm.name,
+            prop_firm_id=account.prop_firm_id,
+        )
+        db.add(fin)
+        db.flush()
+        db_account.finance_account_id = fin.id
+        finance_account_id = fin.id
 
     # ایجاد خودکار Stage 1
     stage1 = PropStage(
         prop_account_id=db_account.id,
         stage_type=StageType.STAGE_1,
         status=StageStatus.ACTIVE,
-        start_date=datetime.utcnow(),
+        start_date=datetime.now(timezone.utc),
         initial_balance=account.initial_balance,
         profit_target=account.profit_target,
         max_daily_dd=account.max_daily_dd,
@@ -161,8 +261,13 @@ def create_account(account: PropAccountCreate, db: Session = Depends(get_db)):
     )
     db.add(stage1)
     db.commit()
+    db.refresh(db_account)
 
-    return {"id": db_account.id, "message": "اکانت و مرحله ۱ ایجاد شد"}
+    return {
+        "id": db_account.id,
+        "finance_account_id": finance_account_id,
+        "message": "اکانت و مرحله ۱ ایجاد شد",
+    }
 
 
 @router.get("/accounts/{account_id}")
@@ -244,9 +349,12 @@ def get_all_stages(db: Session = Depends(get_db)):
 
 @router.get("/stages/{stage_id}/check-pass")
 def check_pass_ready(stage_id: int, db: Session = Depends(get_db)):
-    """بررسی وضعیت مرحله قبل از پاس کردن"""
+    """بررسی وضعیت مرحله قبل از پاس کردن + ایجاد هشدار خودکار"""
     from ..services.prop_rule_engine import PropRuleEngine
-    return PropRuleEngine.evaluate_stage(db, stage_id)
+    evaluation = PropRuleEngine.evaluate_stage(db, stage_id)
+    if "error" not in evaluation:
+        _generate_alerts_for_stage(db, stage_id, evaluation)
+    return evaluation
 
 
 @router.post("/stages/{stage_id}/pass")
@@ -284,7 +392,7 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
 
     # به‌روزرسانی مرحله‌ی فعلی
     stage.status = StageStatus.PASSED
-    stage.end_date = datetime.utcnow()
+    stage.end_date = datetime.now(timezone.utc)
     stage.final_balance = final_balance
     db.commit()
 
@@ -302,7 +410,7 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
             prop_account_id=stage.prop_account_id,
             stage_type=next_stage_type,
             status=StageStatus.ACTIVE,
-            start_date=datetime.utcnow(),
+            start_date=datetime.now(timezone.utc),
             initial_balance=rules.initial_balance or final_balance,
             profit_target=rules.profit_target,
             max_daily_dd=rules.max_daily_dd,
@@ -327,7 +435,7 @@ def fail_stage(stage_id: int, request: FailStageRequest, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
 
     stage.status = StageStatus.FAILED
-    stage.end_date = datetime.utcnow()
+    stage.end_date = datetime.now(timezone.utc)
     
     # تلاش برای تبدیل به enum، در غیر این صورت "other"
     try:
@@ -408,10 +516,40 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
 
+    # 🆕 فاز ۵ — اعتبارسنجی حساب مالی مقصد
+    dest = db.query(Account).filter(
+        Account.id == request.destination_account_id,
+        Account.type != AccountType.PROP,
+    ).first()
+    if not dest:
+        raise HTTPException(
+            status_code=400,
+            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول/بروکر باشد)",
+        )
+
+    prop_acc = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
+
+    # 🆕 فاز ۵ — اگر اکانت پراپ حساب مالی ندارد، خودکار ساخته می‌شود
+    src_acct = _ensure_finance_account(db, prop_acc) if prop_acc else None
+
+    # 🆕 فاز ۵.۱ — تاریخ برداشت (اختیاری؛ پیش‌فرض: الان)
+    withdrawal_dt = datetime.now(timezone.utc)
+    if request.withdrawal_date:
+        try:
+            parsed = datetime.fromisoformat(request.withdrawal_date.replace("Z", "+00:00"))
+            withdrawal_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
+        except ValueError:
+            raise HTTPException(
+                status_code=400,
+                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
+            )
+
     withdrawal = PropWithdrawal(
         prop_stage_id=stage_id,
         amount=request.amount,
         note=request.note,
+        destination_account_id=request.destination_account_id,
+        withdrawal_date=withdrawal_dt,
     )
     db.add(withdrawal)
 
@@ -419,48 +557,327 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
     # current_profit دست نمی‌خورد (چون از روی trades محاسبه می‌شود)
     stage.total_withdrawn = (stage.total_withdrawn or 0) + request.amount
 
-    try:
-        from ..models.personal import LedgerTransaction, TransactionType
-        account = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
+    # 🆕 فاز ۵ — ثبت تراکنش مالی (جایگزین LedgerTransaction شخصی)
+    description = f"برداشت از {prop_acc.account_label if prop_acc else 'پراپ'}"
+    if request.note:
+        description += f" - {request.note}"
 
-        description = f"برداشت از {account.account_label if account else 'پراپ'}"
-        if request.note:
-            description += f" - {request.note}"
+    cat = _get_or_create_category(db, "برداشت پراپ", CategoryType.INCOME, "#27AE60", "💰")
 
-        ledger = LedgerTransaction(
-            transaction_type=TransactionType.PROP_PAYOUT,
-            source_type="prop_stage",
-            source_id=stage_id,
-            prop_account_id=stage.prop_account_id,
-            personal_account_id=request.target_personal_account_id,
-            amount=request.amount,
-            description=description,
-        )
-        db.add(ledger)
-    except Exception as e:
-        print(f"⚠️ خطا در ثبت Ledger: {e}")
+    tx = Transaction(
+        account_id=request.destination_account_id,           # مقصد (تصمیم ۹.۱ — گزینه الف)
+        category_id=cat.id,
+        amount=request.amount,
+        currency=_to_currency(prop_acc.currency if prop_acc else None),
+        date=withdrawal_dt,                                  # 🆕 فاز ۵.۱ — تاریخ برداشت
+        description=description,
+        type=TransactionType.WITHDRAWAL,
+        from_account_id=src_acct.id if src_acct else None,   # مبدأ = حساب مالی پراپ
+        to_account_id=request.destination_account_id,         # مقصد
+        related_prop_account_id=stage.prop_account_id,        # لینک به پراپ
+    )
+    db.add(tx)
+
+    # 🆕 فاز ۵ — به‌روزرسانی موجودی‌ها
+    if src_acct:
+        src_acct.balance = (src_acct.balance or 0.0) - request.amount
+    dest.balance = (dest.balance or 0.0) + request.amount
 
     db.commit()
 
-    return {"message": f"{request.amount} دلار برداشت ثبت شد و به درآمد اضافه شد"}
+    return {
+        "message": f"{request.amount} دلار برداشت ثبت شد و به حساب مقصد واریز شد",
+        "transaction_id": tx.id,
+        "source_account_id": src_acct.id if src_acct else None,
+        "destination_account_id": request.destination_account_id,
+    }
 
 
+@router.get("/stages/{stage_id}/withdrawals")
+def get_stage_withdrawals(stage_id: int, db: Session = Depends(get_db)):
+    """لیست برداشت‌های یک مرحله پراپ"""
+    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
+    if not stage:
+        raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
+
+    rows = (
+        db.query(PropWithdrawal)
+        .filter(PropWithdrawal.prop_stage_id == stage_id)
+        .order_by(PropWithdrawal.withdrawal_date.desc())
+        .all()
+    )
+    return [
+        {
+            "id": w.id,
+            "amount": w.amount,
+            "withdrawal_date": w.withdrawal_date,
+            "note": w.note,
+            "destination_account_id": w.destination_account_id,
+            "destination_account_name": (
+                w.destination_account.name if w.destination_account else None
+            ),
+        }
+        for w in rows
+    ]
+
+
+# ═════════════════════════════════════════════
+# Prop Alert (هشدارها)
+# ═════════════════════════════════════════════
+def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = None):
+    """بررسی خودکار و ایجاد هشدار برای یک مرحله پراپ"""
+    from ..models.prop import PropAlert
+
+    if not evaluation:
+        from ..services.prop_rule_engine import PropRuleEngine
+        evaluation = PropRuleEngine.evaluate_stage(db, stage_id)
+
+    new_alerts = []
+    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
+    if not stage:
+        return new_alerts
+
+    # هشدار Daily DD نزدیک به حد
+    dd_limit = evaluation.get("max_daily_dd_limit", 0)
+    dd_current = evaluation.get("max_daily_loss", 0)
+    if dd_limit > 0 and dd_current > 0:
+        dd_percent = dd_current / dd_limit * 100
+        if 80 <= dd_percent < 100:
+            msg = f"⚠️ Daily DD به {dd_percent:.0f}% حد مجاز رسیده ({dd_current:.0f}$ از {dd_limit:.0f}$)"
+            existing = db.query(PropAlert).filter(
+                PropAlert.prop_stage_id == stage_id,
+                PropAlert.message == msg,
+                PropAlert.is_read == 0,
+            ).first()
+            if not existing:
+                new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
+        elif dd_percent >= 100:
+            msg = f"🚨 Daily DD نقض شده! ({dd_current:.0f}$ > {dd_limit:.0f}$)"
+            existing = db.query(PropAlert).filter(
+                PropAlert.prop_stage_id == stage_id,
+                PropAlert.message.contains("Daily DD نقض"),
+                PropAlert.is_read == 0,
+            ).first()
+            if not existing:
+                new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
+
+    # هشدار Total DD نزدیک به حد
+    td_limit = evaluation.get("max_total_dd_limit", 0)
+    td_current = evaluation.get("max_total_dd", 0)
+    if td_limit > 0 and td_current > 0:
+        td_percent = td_current / td_limit * 100
+        if 80 <= td_percent < 100:
+            msg = f"⚠️ Total DD به {td_percent:.0f}% حد مجاز رسیده ({td_current:.0f}$ از {td_limit:.0f}$)"
+            existing = db.query(PropAlert).filter(
+                PropAlert.prop_stage_id == stage_id,
+                PropAlert.message == msg,
+                PropAlert.is_read == 0,
+            ).first()
+            if not existing:
+                new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
+        elif td_percent >= 100:
+            msg = f"🚨 Total DD نقض شده! ({td_current:.0f}$ > {td_limit:.0f}$)"
+            existing = db.query(PropAlert).filter(
+                PropAlert.prop_stage_id == stage_id,
+                PropAlert.message.contains("Total DD نقض"),
+                PropAlert.is_read == 0,
+            ).first()
+            if not existing:
+                new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
+
+    # هشدار نزدیکی به هدف سود
+    profit_target = evaluation.get("profit_target", 0)
+    current_profit = evaluation.get("current_profit", 0)
+    if profit_target > 0 and current_profit > 0:
+        profit_percent = current_profit / profit_target * 100
+        if profit_percent >= 90 and profit_percent < 100:
+            msg = f"🎯 به {profit_percent:.0f}% هدف سود رسیده‌اید ({current_profit:.0f}$ از {profit_target:.0f}$)"
+            existing = db.query(PropAlert).filter(
+                PropAlert.prop_stage_id == stage_id,
+                PropAlert.message.contains("هدف سود"),
+                PropAlert.is_read == 0,
+            ).first()
+            if not existing:
+                new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
+
+    if new_alerts:
+        for a in new_alerts:
+            db.add(a)
+        db.commit()
+
+    return new_alerts
+
+
+@router.get("/alerts")
+def get_alerts(
+    stage_id: Optional[int] = None,
+    unread_only: bool = False,
+    db: Session = Depends(get_db),
+):
+    """لیست هشدارها (با قابلیت فیلتر بر اساس stage_id و unread_only)"""
+    query = db.query(PropAlert).order_by(PropAlert.created_at.desc())
+    if stage_id:
+        query = query.filter(PropAlert.prop_stage_id == stage_id)
+    if unread_only:
+        query = query.filter(PropAlert.is_read == 0)
+    alerts = query.all()
+    return [
+        {
+            "id": a.id,
+            "prop_stage_id": a.prop_stage_id,
+            "message": a.message,
+            "is_read": a.is_read,
+            "created_at": a.created_at,
+        }
+        for a in alerts
+    ]
+
+
+@router.patch("/alerts/{alert_id}/read")
+def mark_alert_read(alert_id: int, db: Session = Depends(get_db)):
+    """علامت‌گذاری هشدار به عنوان خوانده‌شده"""
+    alert = db.query(PropAlert).filter(PropAlert.id == alert_id).first()
+    if not alert:
+        raise HTTPException(status_code=404, detail="هشدار پیدا نشد")
+    alert.is_read = 1
+    db.commit()
+    return {"message": "هشدار به‌عنوان خوانده‌شده علامت‌گذاری شد"}
+
+
+@router.post("/alerts/generate")
+def generate_alerts(db: Session = Depends(get_db)):
+    """ایجاد خودکار هشدارها برای همه مراحل فعال"""
+    from ..models.prop import StageStatus
+    from ..services.prop_rule_engine import PropRuleEngine
+
+    active_stages = db.query(PropStage).filter(PropStage.status == StageStatus.ACTIVE).all()
+    total_new = 0
+    for stage in active_stages:
+        evaluation = PropRuleEngine.evaluate_stage(db, stage.id)
+        new_alerts = _generate_alerts_for_stage(db, stage.id, evaluation)
+        total_new += len(new_alerts)
+    return {"message": f"{total_new} هشدار جدید ایجاد شد"}
 # ═════════════════════════════════════════════
 # Prop Cost
 # ═════════════════════════════════════════════
 @router.post("/costs")
 def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
-    db_cost = PropCost(**cost.model_dump())
+    """ثبت هزینه پراپ + (برای purchase) ثبت خودکار تراکنش مالی"""
+    is_purchase = cost.create_transaction and (cost.cost_type or "").lower() == "purchase"
+
+    # ── اعتبارسنجی قبل از هر درج (تا در صورت خطا هیچ رکوردی باقی نماند) ──
+    prop_acc = None
+    payer = None
+    if is_purchase:
+        prop_acc = db.query(PropAccount).filter(PropAccount.id == cost.prop_account_id).first()
+        if cost.pay_from_account_id:
+            payer = db.query(Account).filter(Account.id == cost.pay_from_account_id).first()
+            if not payer:
+                raise HTTPException(status_code=400, detail="حساب پرداخت‌کننده معتبر نیست")
+        elif prop_acc:
+            payer = _ensure_finance_account(db, prop_acc)
+        if not payer:
+            raise HTTPException(
+                status_code=400,
+                detail="حساب پرداخت‌کننده الزامی است (pay_from_account_id) وگرنه اکانت پراپ باید حساب مالی داشته باشد",
+            )
+
+    db_cost = PropCost(
+        **cost.model_dump(exclude={"pay_from_account_id", "create_transaction"})
+    )
     db.add(db_cost)
+    db.flush()
+
+    # ── تراکنش خرید پراپ ──
+    transaction_id = None
+    if payer:
+        cat = _get_or_create_category(db, "خرید پراپ", CategoryType.EXPENSE, "#E74C3C", "🛒")
+
+        tx = Transaction(
+            account_id=payer.id,
+            category_id=cat.id,
+            amount=cost.amount,
+            currency=_to_currency(cost.currency),
+            date=datetime.now(timezone.utc),
+            description=cost.description or (
+                f"خرید پراپ {prop_acc.account_label}" if prop_acc else "خرید پراپ"
+            ),
+            type=TransactionType.PURCHASE,
+            from_account_id=payer.id,
+            related_prop_account_id=cost.prop_account_id,
+        )
+        db.add(tx)
+        payer.balance = (payer.balance or 0.0) - cost.amount
+        db.flush()
+        transaction_id = tx.id
+
     db.commit()
     db.refresh(db_cost)
-    return db_cost
+
+    return {
+        "id": db_cost.id,
+        "transaction_id": transaction_id,
+        "message": "هزینه ثبت شد",
+    }
 
 
 @router.get("/accounts/{account_id}/costs")
 def get_costs(account_id: int, db: Session = Depends(get_db)):
     costs = db.query(PropCost).filter(PropCost.prop_account_id == account_id).all()
     return costs
+
+
+@router.get("/accounts/{account_id}/finance-account")
+def get_prop_finance_account(account_id: int, db: Session = Depends(get_db)):
+    """دریافت حساب مالی متناظر با یک اکانت پراپ (فاز ۵)"""
+    prop_acc = db.query(PropAccount).filter(PropAccount.id == account_id).first()
+    if not prop_acc:
+        raise HTTPException(status_code=404, detail="اکانت پراپ پیدا نشد")
+
+    if not prop_acc.finance_account_id:
+        return {"linked": False, "account": None}
+
+    fin = db.query(Account).filter(Account.id == prop_acc.finance_account_id).first()
+    if not fin:
+        return {"linked": False, "account": None}
+
+    return {
+        "linked": True,
+        "account": {
+            "id": fin.id,
+            "name": fin.name,
+            "type": fin.type.value if fin.type else None,
+            "currency": fin.currency.value if fin.currency else None,
+            "balance": fin.balance,
+            "prop_firm_name": fin.prop_firm_name,
+        },
+    }
+
+
+@router.post("/accounts/{account_id}/finance-account")
+def create_prop_finance_account(account_id: int, db: Session = Depends(get_db)):
+    """ساخت (یا اتصال) حساب مالی برای یک اکانت پراپ — 🆕 فاز ۵.۱"""
+    prop_acc = db.query(PropAccount).filter(PropAccount.id == account_id).first()
+    if not prop_acc:
+        raise HTTPException(status_code=404, detail="اکانت پراپ پیدا نشد")
+
+    fin = _ensure_finance_account(db, prop_acc)
+    db.commit()
+
+    if not fin:
+        raise HTTPException(status_code=500, detail="ساخت حساب مالی ناموفق بود")
+
+    return {
+        "linked": True,
+        "account": {
+            "id": fin.id,
+            "name": fin.name,
+            "type": fin.type.value if fin.type else None,
+            "currency": fin.currency.value if fin.currency else None,
+            "balance": fin.balance,
+            "prop_firm_name": fin.prop_firm_name,
+        },
+    }
 
 @router.get("/analytics")
 def get_prop_analytics(db: Session = Depends(get_db)):

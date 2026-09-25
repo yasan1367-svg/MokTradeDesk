@@ -23,7 +23,7 @@ export default function PnLDistributionChart({ trades, height = 250 }: PnLDistri
 
   if (data.length === 0) {
     return (
-      <div className="text-text-secondary text-center py-8 text-sm">
+      <div className="text-[var(--text-secondary)] text-center py-8 text-sm">
         داده‌ای برای نمایش وجود ندارد
       </div>
     );

@@ -25,9 +25,75 @@
   --warning: #D99B25;
   --purple: #7959D6;
 
+  /* 🆕 فاز ۶ — رنگ‌های بدون dark variant (قبلاً hardcoded بودند) */
+  --purple-soft: #F1ECFF;
+  --warning-soft: #FFF5DB;
+  --warning-soft-alt: #FFF8E5;
+  --purple-border: #D5C8F5;
+  --warning-border: #F0DBA6;
+
+  /* 🆕 فاز ۶.۱ — حاشیه‌های semantic */
+  --profit-border: #A8E6CF;
+  --loss-border: #F0A6B2;
+
+  /* 🆕 فاز ۸ — رنگ‌های خاص */
+  --warning-strong: #946A1E;
+  --accent-strong: #2C63D6;
+  --accent-light: #DCE8FF;
+  --purple-light: #A78BFA;
+  --sidebar-text: #B9C8DE;
+  --sidebar-text-muted: #8DA2C1;
+
   --border-subtle: #E5EBF3;
   --border-medium: #D5DDE8;
   --border-accent: #A9C1FA;
+
+  --shadow-card: 0 6px 16px rgba(25, 50, 85, 0.08);
+  --shadow-md: 0 6px 16px rgba(25, 50, 85, 0.08), 0 2px 4px rgba(25, 50, 85, 0.04);
+}
+
+/* ── Dark Mode ── */
+.dark {
+  --bg-base: #0F1923;
+  --bg-card: #1A2736;
+  --bg-input: #1E2F41;
+  --bg-elevated: #243447;
+  --bg-sidebar: #0A131C;
+  --bg-sidebar-hover: #152238;
+
+  --text-primary: #E0E8F0;
+  --text-secondary: #8DA2C1;
+  --text-muted: #5A7290;
+
+  --accent-soft: #1A2E4D;
+  --profit-soft: #0D2E22;
+  --loss-soft: #2D151E;
+
+  /* 🆕 فاز ۶ — نسخه تاریک رنگ‌های بدون variant */
+  --purple-soft: #2A1F4A;
+  --warning-soft: #3D2F1A;
+  --warning-soft-alt: #3D2F1A;
+  --purple-border: #4A3A6A;
+  --warning-border: #5A4A2A;
+
+  /* 🆕 فاز ۶.۱ — نسخه تاریک */
+  --profit-border: #1E5945;
+  --loss-border: #5C2A34;
+
+  /* 🆕 فاز ۸ — نسخه تاریک */
+  --warning-strong: #E8C46A;
+  --accent-strong: #7FA8FF;
+  --accent-light: #1E3A6B;
+  --purple-light: #C4B5FD;
+  --sidebar-text: #B9C8DE;
+  --sidebar-text-muted: #8DA2C1;
+
+  --border-subtle: #2A3E54;
+  --border-medium: #3A5068;
+  --border-accent: #2A4A7A;
+
+  --shadow-card: 0 6px 16px rgba(0, 0, 0, 0.3);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
 }
 
 * {
@@ -64,8 +130,8 @@ html, body, #root {
 
 /* سازگاری با صفحات قدیمی - این کلاس‌ها را نگه می‌داریم */
 .glass-card {
-  background: #FFFFFF;
-  border: 1px solid #E5EBF3;
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
   border-radius: 20px;
-  box-shadow: 0 6px 16px rgba(25, 50, 85, 0.08);
+  box-shadow: var(--shadow-card);
 }

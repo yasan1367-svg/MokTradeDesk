@@ -8,7 +8,14 @@ import {
   createVersion,
   updateVersion,
   deleteVersion,
+  forkVersion,
+  getStrategyStats,
+  getVersionTrades,
 } from '../api/client';
+import {
+  LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
+  BarChart, Bar,
+} from 'recharts';
 
 interface Strategy {
   id: number;
@@ -26,6 +33,57 @@ interface Version {
   status: string;
   trades_count: number;
   created_at: string;
+}
+
+interface StrategyStats {
+  strategy_id: number;
+  strategy_name: string;
+  versions_count: number;
+  version_ids: number[];
+  total_trades: number;
+  summary: {
+    net_pnl: number;
+    win_rate: number;
+    profit_factor: number;
+    max_drawdown: number;
+    sharpe_ratio: number;
+    expectancy: number;
+  };
+  trade_counts: {
+    total: number;
+    winning: number;
+    losing: number;
+    breakeven: number;
+  };
+  averages: {
+    avg_win: number;
+    avg_loss: number;
+    avg_trade: number;
+  };
+  extremes: {
+    largest_win: number;
+    largest_loss: number;
+  };
+  consistency: {
+    max_consecutive_losses: number;
+    pnl_std_dev: number;
+  };
+}
+
+interface TradeItem {
+  id: number;
+  symbol: string;
+  direction: string;
+  close_time: string | null;
+  pnl: number | null;
+  commission: number | null;
+  swap: number | null;
+  r_multiple: number | null;
+}
+
+interface EquityPoint {
+  index: number;
+  equity: number;
 }
 
 const STATUS_OPTIONS = [
@@ -48,16 +106,16 @@ const getStatusLabel = (status: string) => {
 
 const getStatusStyle = (status: string) => {
   const styles: Record<string, string> = {
-    research: 'bg-[#F1ECFF] text-[#7959D6] border-[#D5C8F5]',
-    backtest: 'bg-[#EDF3FF] text-[#3F7CFF] border-[#A9C1FA]',
-    optimization: 'bg-[#EDF3FF] text-[#3F7CFF] border-[#A9C1FA]',
-    forward: 'bg-[#EDF3FF] text-[#3F7CFF] border-[#A9C1FA]',
-    approved: 'bg-[#E5F8F1] text-[#13AE81] border-[#A8E6CF]',
-    live: 'bg-[#E5F8F1] text-[#13AE81] border-[#A8E6CF]',
-    review: 'bg-[#FFF8E5] text-[#C99A1E] border-[#F0DBA6]',
-    deprecated: 'bg-[#FFEDF0] text-[#E45D72] border-[#F0A6B2]',
-    archived: 'bg-[#F5F7FB] text-[#6B7A94] border-[#E5EBF3]',
-    rejected: 'bg-[#FFEDF0] text-[#E45D72] border-[#F0A6B2]',
+    research: 'bg-[var(--purple-soft)] text-[var(--purple)] border-[var(--purple-border)]',
+    backtest: 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]',
+    optimization: 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]',
+    forward: 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]',
+    approved: 'bg-[var(--profit-soft)] text-[var(--profit)] border-[var(--profit-border)]',
+    live: 'bg-[var(--profit-soft)] text-[var(--profit)] border-[var(--profit-border)]',
+    review: 'bg-[var(--warning-soft-alt)] text-[var(--warning-strong)] border-[var(--warning-border)]',
+    deprecated: 'bg-[var(--loss-soft)] text-[var(--loss)] border-[var(--loss-border)]',
+    archived: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]',
+    rejected: 'bg-[var(--loss-soft)] text-[var(--loss)] border-[var(--loss-border)]',
   };
   return styles[status] || styles.archived;
 };
@@ -81,6 +139,13 @@ export default function StrategyPage() {
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  // ─── Stats ───
+  const [stats, setStats] = useState<StrategyStats | null>(null);
+  const [statsLoading, setStatsLoading] = useState(false);
+  const [showStats, setShowStats] = useState(false);
+  const [equityData, setEquityData] = useState<EquityPoint[]>([]);
+  const [rMultipleHistogram, setRMultipleHistogram] = useState<{ range: string; count: number; fill: string }[]>([]);
 
   useEffect(() => {
     loadStrategies();
@@ -107,6 +172,7 @@ export default function StrategyPage() {
   const handleSelectStrategy = (strategy: Strategy) => {
     setSelectedStrategy(strategy);
     loadVersions(strategy.id);
+    loadStats(strategy.id);
     setShowVersionForm(false);
   };
 
@@ -233,6 +299,89 @@ export default function StrategyPage() {
       setError(err.response?.data?.detail || 'خطا در حذف نسخه');
     }
   };
+const handleForkVersion = async (version: Version) => {
+    if (!confirm(`یک نسخه‌ی مشتق (Fork) از «${version.version_name}» ساخته شود؟`)) return;
+    try {
+      await forkVersion(version.id);
+      setSuccessMessage(`نسخه‌ی «${version.version_name} - Fork» ساخته شد`);
+      if (selectedStrategy) await loadVersions(selectedStrategy.id);
+      await loadStrategies();
+      setTimeout(() => setSuccessMessage(null), 3000);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || 'خطا در ایجاد Fork');
+    }
+  };
+
+  // ═════════════════════════════════════════════
+  // Strategy Stats
+  // ═════════════════════════════════════════════
+  const loadStats = async (strategyId: number) => {
+    setStatsLoading(true);
+    setShowStats(true);
+    try {
+      // 1. Get summary stats
+      const statsRes = await getStrategyStats(strategyId);
+      setStats(statsRes.data);
+
+      // 2. Get all trades for charts
+      const versionsRes = await getStrategyVersions(strategyId);
+      const versionIds = (versionsRes.data as Version[]).map((v: Version) => v.id);
+      const allTrades: TradeItem[] = [];
+
+      for (const vid of versionIds) {
+        try {
+          const tradesRes = await getVersionTrades(vid);
+          allTrades.push(...tradesRes.data);
+        } catch { /* skip */ }
+      }
+
+      // 3. Compute equity curve (cumulative net_pnl)
+      const sorted = [...allTrades].sort((a, b) => {
+        const ta = a.close_time || '';
+        const tb = b.close_time || '';
+        return ta.localeCompare(tb);
+      });
+
+      let cumEquity = 0;
+      const equityPoints: EquityPoint[] = sorted.map((t, idx) => {
+        const netPnl = (t.pnl || 0) + (t.commission || 0) + (t.swap || 0);
+        cumEquity += netPnl;
+        return { index: idx + 1, equity: Math.round(cumEquity * 100) / 100 };
+      });
+      setEquityData(equityPoints);
+
+      // 4. Compute R-Multiple histogram
+      const rValues = allTrades
+        .map(t => t.r_multiple)
+        .filter((r): r is number => r !== null && r !== undefined);
+
+      if (rValues.length > 0) {
+        const maxR = Math.max(...rValues.map(Math.abs), 1);
+        const binCount = 8;
+        const binSize = (maxR * 2) / binCount;
+        const bins: { range: string; count: number; fill: string }[] = [];
+
+        for (let i = 0; i < binCount; i++) {
+          const low = -maxR + i * binSize;
+          const high = low + binSize;
+          const count = rValues.filter(r => r >= low && (i === binCount - 1 ? r <= high : r < high)).length;
+          bins.push({
+            range: `${low.toFixed(1)}-${high.toFixed(1)}`,
+            count,
+            fill: low + binSize / 2 >= 0 ? '#13AE81' : '#E45D72',
+          });
+        }
+        setRMultipleHistogram(bins);
+      } else {
+        setRMultipleHistogram([]);
+      }
+    } catch (err) {
+      console.error('خطا در دریافت آمار:', err);
+      setError('خطا در دریافت آمار استراتژی');
+    } finally {
+      setStatsLoading(false);
+    }
+  };
 
   const filteredStrategies = strategies.filter((s) =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
@@ -241,13 +390,13 @@ export default function StrategyPage() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="bg-[#FFEDF0] border border-[#F0A6B2] text-[#E45D72] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
+        <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] text-[var(--loss)] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
           ❌ {error}
           <button onClick={() => setError(null)} className="float-left text-xs font-bold">✕</button>
         </div>
       )}
       {successMessage && (
-        <div className="bg-[#E5F8F1] border border-[#A8E6CF] text-[#13AE81] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
+        <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] text-[var(--profit)] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
           ✅ {successMessage}
         </div>
       )}
@@ -267,42 +416,42 @@ export default function StrategyPage() {
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="🔍 جستجوی استراتژی..."
-            className="w-full bg-white border border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-medium shadow-sm focus:border-[#3F7CFF] focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all"
+            className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-medium shadow-sm focus:border-[var(--accent)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all"
           />
         </div>
       </div>
 
       {/* فرم استراتژی */}
       {showStrategyForm && (
-        <div className="bg-white border-2 border-[#3F7CFF] rounded-[22px] p-6 shadow-lg">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+        <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
               style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
               {editingStrategyId ? '✏️' : '➕'}
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-[#1A2B47]">
+              <h3 className="text-lg font-extrabold text-[var(--text-primary)]">
                 {editingStrategyId ? 'ویرایش استراتژی' : 'ساخت استراتژی جدید'}
               </h3>
-              <p className="text-[12px] text-[#6B7A94] mt-0.5">نام و توضیحات را وارد کنید</p>
+              <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">نام و توضیحات را وارد کنید</p>
             </div>
           </div>
 
           <div className="space-y-5 mb-6">
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
-                نام استراتژی <span className="text-[#E45D72]">*</span>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                نام استراتژی <span className="text-[var(--loss)]">*</span>
               </label>
               <input
                 type="text"
                 value={strategyName}
                 onChange={(e) => setStrategyName(e.target.value)}
                 placeholder="مثلاً SP2L"
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-semibold focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all"
               />
             </div>
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
                 توضیحات
               </label>
               <textarea
@@ -310,12 +459,12 @@ export default function StrategyPage() {
                 onChange={(e) => setStrategyDescription(e.target.value)}
                 placeholder="توضیحات استراتژی..."
                 rows={3}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-medium focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all resize-none"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all resize-none"
               />
             </div>
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-[#E5EBF3]">
+          <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
             <button
               onClick={handleSaveStrategy}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:shadow-[0_10px_24px_rgba(19,174,129,0.4)] hover:-translate-y-0.5"
@@ -325,7 +474,7 @@ export default function StrategyPage() {
             </button>
             <button
               onClick={() => setShowStrategyForm(false)}
-              className="bg-white border-2 border-[#E5EBF3] hover:border-[#A9C1FA] text-[#6B7A94] hover:text-[#3F7CFF] px-7 py-3 rounded-[12px] text-sm font-bold transition-all"
+              className="bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] hover:border-[var(--border-accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] px-7 py-3 rounded-[12px] text-sm font-bold transition-all"
             >
               ✕ لغو
             </button>
@@ -335,36 +484,36 @@ export default function StrategyPage() {
 
       {/* فرم نسخه */}
       {showVersionForm && selectedStrategy && (
-        <div className="bg-white border-2 border-[#3F7CFF] rounded-[22px] p-6 shadow-lg">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+        <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
               style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>
               {editingVersionId ? '✏️' : '➕'}
             </div>
             <div>
-              <h3 className="text-lg font-extrabold text-[#1A2B47]">
+              <h3 className="text-lg font-extrabold text-[var(--text-primary)]">
                 {editingVersionId ? 'ویرایش نسخه' : `ساخت نسخه‌ی جدید برای «${selectedStrategy.name}»`}
               </h3>
-              <p className="text-[12px] text-[#6B7A94] mt-0.5">نام، قوانین و وضعیت را وارد کنید</p>
+              <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">نام، قوانین و وضعیت را وارد کنید</p>
             </div>
           </div>
 
           <div className="space-y-5 mb-6">
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
-                نام نسخه <span className="text-[#E45D72]">*</span>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                نام نسخه <span className="text-[var(--loss)]">*</span>
               </label>
               <input
                 type="text"
                 value={versionName}
                 onChange={(e) => setVersionName(e.target.value)}
                 placeholder="مثلاً SP2L_TP1.5"
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-semibold focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all"
               />
             </div>
 
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
                 قوانین / توضیحات
               </label>
               <textarea
@@ -372,19 +521,19 @@ export default function StrategyPage() {
                 onChange={(e) => setVersionRules(e.target.value)}
                 placeholder="قوانین این نسخه..."
                 rows={4}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-medium focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all resize-none"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all resize-none"
               />
             </div>
 
             {editingVersionId && (
               <div>
-                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
                   وضعیت
                 </label>
                 <select
                   value={versionStatus}
                   onChange={(e) => setVersionStatus(e.target.value)}
-                  className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-semibold focus:border-[#3F7CFF] focus:bg-white focus:outline-none focus:ring-4 focus:ring-[#EDF3FF] transition-all cursor-pointer"
+                  className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer"
                 >
                   {STATUS_OPTIONS.map((o) => (
                     <option key={o.value} value={o.value}>{o.label}</option>
@@ -394,7 +543,7 @@ export default function StrategyPage() {
             )}
           </div>
 
-          <div className="flex gap-3 pt-4 border-t border-[#E5EBF3]">
+          <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
             <button
               onClick={handleSaveVersion}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:shadow-[0_10px_24px_rgba(19,174,129,0.4)] hover:-translate-y-0.5"
@@ -404,7 +553,7 @@ export default function StrategyPage() {
             </button>
             <button
               onClick={() => setShowVersionForm(false)}
-              className="bg-white border-2 border-[#E5EBF3] hover:border-[#A9C1FA] text-[#6B7A94] hover:text-[#3F7CFF] px-7 py-3 rounded-[12px] text-sm font-bold transition-all"
+              className="bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] hover:border-[var(--border-accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] px-7 py-3 rounded-[12px] text-sm font-bold transition-all"
             >
               ✕ لغو
             </button>
@@ -414,19 +563,19 @@ export default function StrategyPage() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* لیست استراتژی‌ها */}
-        <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#E5EBF3]">
-            <div className="w-11 h-11 rounded-[14px] bg-[#EDF3FF] flex items-center justify-center text-xl">
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+            <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">
               📚
             </div>
             <div>
-              <h3 className="text-base font-extrabold text-[#1A2B47]">استراتژی‌ها</h3>
-              <p className="text-[12px] text-[#6B7A94] mt-0.5">{filteredStrategies.length} استراتژی</p>
+              <h3 className="text-base font-extrabold text-[var(--text-primary)]">استراتژی‌ها</h3>
+              <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{filteredStrategies.length} استراتژی</p>
             </div>
           </div>
 
           {filteredStrategies.length === 0 ? (
-            <div className="text-[#9AA8BF] text-sm text-center py-12">
+            <div className="text-[var(--text-muted)] text-sm text-center py-12">
               {searchQuery ? 'نتیجه‌ای یافت نشد' : 'هنوز استراتژی‌ای نساخته‌اید'}
             </div>
           ) : (
@@ -439,21 +588,21 @@ export default function StrategyPage() {
                     onClick={() => handleSelectStrategy(strategy)}
                     className={`p-4 rounded-[14px] border-2 cursor-pointer transition-all ${
                       isSelected
-                        ? 'bg-[#EDF3FF] border-[#3F7CFF] shadow-[0_4px_12px_rgba(63,124,255,0.15)]'
-                        : 'bg-white border-[#E5EBF3] hover:border-[#A9C1FA] hover:bg-[#F8FAFF] hover:shadow-sm'
+                        ? 'bg-[var(--accent-soft)] border-[var(--accent)] shadow-[0_4px_12px_rgba(63,124,255,0.15)]'
+                        : 'bg-[var(--bg-card)] border-[var(--border-subtle)] hover:border-[var(--border-accent)] hover:bg-[var(--bg-input)] hover:shadow-sm'
                     }`}
                   >
                     <div className="flex justify-between items-start">
                       <div className="flex-1">
-                        <div className="text-[15px] font-extrabold text-[#1A2B47] flex items-center gap-2">
+                        <div className="text-[15px] font-extrabold text-[var(--text-primary)] flex items-center gap-2">
                           🎯 {strategy.name}
                         </div>
                         {strategy.description && (
-                          <div className="text-[12px] text-[#6B7A94] mt-1.5 font-medium">
+                          <div className="text-[12px] text-[var(--text-secondary)] mt-1.5 font-medium">
                             {strategy.description}
                           </div>
                         )}
-                        <div className="text-[11px] text-[#9AA8BF] mt-2 font-semibold">
+                        <div className="text-[11px] text-[var(--text-muted)] mt-2 font-semibold">
                           {strategy.versions_count} نسخه
                         </div>
                       </div>
@@ -463,7 +612,7 @@ export default function StrategyPage() {
                             e.stopPropagation();
                             handleOpenStrategyForm(strategy);
                           }}
-                          className="text-[#3F7CFF] hover:bg-[#EDF3FF] p-2 rounded-[8px] text-sm transition-all"
+                          className="text-[var(--accent)] hover:bg-[var(--accent-soft)] p-2 rounded-[8px] text-sm transition-all"
                           title="ویرایش"
                         >
                           ✏️
@@ -473,7 +622,7 @@ export default function StrategyPage() {
                             e.stopPropagation();
                             handleDeleteStrategy(strategy);
                           }}
-                          className="text-[#E45D72] hover:bg-[#FFEDF0] p-2 rounded-[8px] text-sm transition-all"
+                          className="text-[var(--loss)] hover:bg-[var(--loss-soft)] p-2 rounded-[8px] text-sm transition-all"
                           title="حذف"
                         >
                           🗑️
@@ -488,17 +637,17 @@ export default function StrategyPage() {
         </div>
 
         {/* لیست نسخه‌ها */}
-        <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           {selectedStrategy ? (
             <>
-              <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[#E5EBF3]">
+              <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
                 <div className="flex items-center gap-3">
-                  <div className="w-11 h-11 rounded-[14px] bg-[#F1ECFF] flex items-center justify-center text-xl">
+                  <div className="w-11 h-11 rounded-[14px] bg-[var(--purple-soft)] flex items-center justify-center text-xl">
                     🔖
                   </div>
                   <div>
-                    <h3 className="text-base font-extrabold text-[#1A2B47]">نسخه‌های «{selectedStrategy.name}»</h3>
-                    <p className="text-[12px] text-[#6B7A94] mt-0.5">{versions.length} نسخه</p>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)]">نسخه‌های «{selectedStrategy.name}»</h3>
+                    <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{versions.length} نسخه</p>
                   </div>
                 </div>
                 <button
@@ -511,7 +660,7 @@ export default function StrategyPage() {
               </div>
 
               {versions.length === 0 ? (
-                <div className="text-[#9AA8BF] text-sm text-center py-12">
+                <div className="text-[var(--text-muted)] text-sm text-center py-12">
                   هنوز نسخه‌ای نساخته‌اید
                 </div>
               ) : (
@@ -519,18 +668,18 @@ export default function StrategyPage() {
                   {versions.map((version) => (
                     <div
                       key={version.id}
-                      className="bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[14px] p-4 hover:border-[#A9C1FA] hover:bg-white hover:shadow-sm transition-all"
+                      className="bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[14px] p-4 hover:border-[var(--border-accent)] hover:bg-[var(--bg-card)] hover:shadow-sm transition-all"
                     >
                       <div className="flex justify-between items-start mb-2">
                         <div className="flex-1">
-                          <div className="text-[15px] font-extrabold text-[#1A2B47]">
+                          <div className="text-[15px] font-extrabold text-[var(--text-primary)]">
                             {version.version_name}
                           </div>
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
                             <span className={`text-[11px] font-bold px-3 py-1 rounded-full border ${getStatusStyle(version.status)}`}>
                               {getStatusLabel(version.status)}
                             </span>
-                            <span className="text-[11px] text-[#6B7A94] font-semibold">
+                            <span className="text-[11px] text-[var(--text-secondary)] font-semibold">
                               {version.trades_count} معامله
                             </span>
                           </div>
@@ -538,7 +687,7 @@ export default function StrategyPage() {
                         <div className="flex gap-1 shrink-0">
                           <button
                             onClick={() => handleOpenVersionForm(version)}
-                            className="text-[#3F7CFF] hover:bg-[#EDF3FF] p-2 rounded-[8px] text-sm transition-all"
+                            className="text-[var(--accent)] hover:bg-[var(--accent-soft)] p-2 rounded-[8px] text-sm transition-all"
                             title="ویرایش"
                           >
                             ✏️
@@ -546,16 +695,23 @@ export default function StrategyPage() {
                           <button
                             onClick={() => handleDeleteVersion(version)}
                             disabled={version.trades_count > 0}
-                            className="text-[#E45D72] hover:bg-[#FFEDF0] p-2 rounded-[8px] text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="text-[var(--loss)] hover:bg-[var(--loss-soft)] p-2 rounded-[8px] text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
                             title={version.trades_count > 0 ? 'این نسخه معامله دارد' : 'حذف'}
                           >
                             🗑️
+                          </button>
+                          <button
+                            onClick={() => handleForkVersion(version)}
+                            className="text-[var(--purple-light)] hover:bg-[var(--purple-soft)] p-2 rounded-[8px] text-sm transition-all"
+                            title="ایجاد نسخه مشتق (Fork)"
+                          >
+                            🔱
                           </button>
                         </div>
                       </div>
 
                       {version.rules_note && (
-                        <div className="text-[12px] text-[#6B7A94] bg-white border border-[#E5EBF3] rounded-[10px] p-3 mt-3 font-medium">
+                        <div className="text-[12px] text-[var(--text-secondary)] bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[10px] p-3 mt-3 font-medium">
                           📝 {version.rules_note}
                         </div>
                       )}
@@ -563,12 +719,167 @@ export default function StrategyPage() {
                   ))}
                 </div>
               )}
+
+              {/* 📊 آمار استراتژی */}
+              <div className="mt-6 pt-5 border-t border-[var(--border-subtle)]">
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="text-lg">📊</span>
+                    <h4 className="text-sm font-extrabold text-[var(--text-primary)]">آمار استراتژی</h4>
+                  </div>
+                  <button
+                    onClick={() => { if (!showStats) loadStats(selectedStrategy!.id); else setShowStats(!showStats); }}
+                    className={`text-xs font-bold px-4 py-2 rounded-[10px] transition-all ${
+                      showStats
+                        ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]'
+                    }`}
+                  >
+                    {showStats ? '🔽 بستن' : '📊 نمایش آمار'}
+                  </button>
+                </div>
+
+                {showStats && (
+                  <>
+                    {statsLoading ? (
+                      <div className="text-[var(--text-muted)] text-xs text-center py-6 animate-pulse">⏳ در حال محاسبه آمار...</div>
+                    ) : stats && stats.total_trades > 0 ? (
+                      <div className="space-y-5">
+                        {/* کارت‌های خلاصه */}
+                        <div className="grid grid-cols-3 gap-2">
+                          {[
+                            { label: 'نرخ برد', value: `${stats.summary.win_rate}%`, color: '#13AE81' },
+                            { label: 'فاکتور سود', value: stats.summary.profit_factor.toFixed(2), color: '#3F7CFF' },
+                            { label: 'سود خالص', value: `$${stats.summary.net_pnl.toFixed(0)}`, color: '#7959D6' },
+                            { label: 'شارپ', value: stats.summary.sharpe_ratio.toFixed(2), color: '#D99B25' },
+                            { label: 'افت سرمایه', value: `$${stats.summary.max_drawdown.toFixed(0)}`, color: '#E45D72' },
+                            { label: 'امید ریاضی', value: `$${stats.summary.expectancy.toFixed(2)}`, color: '#13AE81' },
+                          ].map((item) => (
+                            <div key={item.label} className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3 text-center">
+                              <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">{item.label}</div>
+                              <div className="text-[15px] font-extrabold" style={{ color: item.color }}>{item.value}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* جزئیات معاملات */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                            <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-2">📈 معاملات</div>
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--text-secondary)]">کل</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.trade_counts.total}</span>
+                              </div>
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--profit)]">سودده</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.trade_counts.winning}</span>
+                              </div>
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--loss)]">زیان‌ده</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.trade_counts.losing}</span>
+                              </div>
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--text-muted)]">سربه‌سر</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.trade_counts.breakeven}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <div className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                            <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-2">📊 میانگین‌ها</div>
+                            <div className="space-y-1.5">
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--profit)]">میانگین سود</span>
+                                <span className="font-bold text-[var(--text-primary)]">${stats.averages.avg_win.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--loss)]">میانگین زیان</span>
+                                <span className="font-bold text-[var(--text-primary)]">-${stats.averages.avg_loss.toFixed(2)}</span>
+                              </div>
+                              <div className="flex justify-between text-[12px]">
+                                <span className="text-[var(--purple)]">میانگین هر معامله</span>
+                                <span className="font-bold text-[var(--text-primary)]">${stats.averages.avg_trade.toFixed(2)}</span>
+                              </div>
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* اکستریم‌ها */}
+                        <div className="grid grid-cols-2 gap-3">
+                          <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] rounded-[12px] p-3">
+                            <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">🏆 بهترین معامله</div>
+                            <div className="text-[16px] font-extrabold text-[var(--profit)]">+${stats.extremes.largest_win.toFixed(2)}</div>
+                          </div>
+                          <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] rounded-[12px] p-3">
+                            <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">💔 بدترین معامله</div>
+                            <div className="text-[16px] font-extrabold text-[var(--loss)]">-${stats.extremes.largest_loss.toFixed(2)}</div>
+                          </div>
+                        </div>
+
+                        {/* نمودار Equity Curve */}
+                        {equityData.length > 1 && (
+                          <div>
+                            <h5 className="text-[11px] font-bold text-[var(--text-secondary)] mb-2">📈 منحنی سرمایه (Equity Curve)</h5>
+                            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                              <ResponsiveContainer width="100%" height={180}>
+                                <LineChart data={equityData}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#E5EBF3" />
+                                  <XAxis dataKey="index" tick={{ fontSize: 10, fill: '#9AA8BF' }} />
+                                  <YAxis tick={{ fontSize: 10, fill: '#9AA8BF' }} />
+                                  <Tooltip
+                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5EBF3' }}
+                                    formatter={(value) => [`$${Number(value ?? 0).toFixed(2)}`, 'سرمایه']}
+                                    labelFormatter={(label) => `معامله #${label}`}
+                                  />
+                                  <Line
+                                    type="monotone"
+                                    dataKey="equity"
+                                    stroke="#3F7CFF"
+                                    strokeWidth={2}
+                                    dot={false}
+                                    activeDot={{ r: 4, fill: '#3F7CFF' }}
+                                  />
+                                </LineChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        )}
+
+                        {/* نمودار R-Multiple */}
+                        {rMultipleHistogram.length > 0 && (
+                          <div>
+                            <h5 className="text-[11px] font-bold text-[var(--text-secondary)] mb-2">📊 توزیع R-Multiple</h5>
+                            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                              <ResponsiveContainer width="100%" height={160}>
+                                <BarChart data={rMultipleHistogram}>
+                                  <CartesianGrid strokeDasharray="3 3" stroke="#E5EBF3" />
+                                  <XAxis dataKey="range" tick={{ fontSize: 8, fill: '#9AA8BF' }} />
+                                  <YAxis tick={{ fontSize: 10, fill: '#9AA8BF' }} />
+                                  <Tooltip
+                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5EBF3' }}
+                                    formatter={(value) => [Number(value ?? 0), 'تعداد']}
+                                  />
+                                  <Bar dataKey="count" fill="#3F7CFF" radius={[3, 3, 0, 0]} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ) : stats && stats.total_trades === 0 ? (
+                      <div className="text-[var(--text-muted)] text-xs text-center py-6">
+                        ⏳ هیچ معامله‌ای برای این استراتژی یافت نشد
+                      </div>
+                    ) : null}
+                  </>
+                )}
+              </div>
             </>
           ) : (
             <div className="text-center py-16">
               <div className="text-6xl mb-4">🎯</div>
-              <div className="text-[15px] font-bold text-[#1A2B47]">یک استراتژی را از لیست انتخاب کنید</div>
-              <div className="text-[12px] text-[#9AA8BF] mt-2">تا نسخه‌های آن را ببینید</div>
+              <div className="text-[15px] font-bold text-[var(--text-primary)]">یک استراتژی را از لیست انتخاب کنید</div>
+              <div className="text-[12px] text-[var(--text-muted)] mt-2">تا نسخه‌های آن را ببینید</div>
             </div>
           )}
         </div>

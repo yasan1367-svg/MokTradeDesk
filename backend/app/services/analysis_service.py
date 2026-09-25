@@ -2,7 +2,7 @@ from sqlalchemy.orm import Session
 from typing import Dict, List, Any
 
 from ..models.strategy import (
-    Trade, AnalysisResult, CustomTimeInterval,
+    Trade, AnalysisResult, AnalysisRun, CustomTimeInterval,
     StrategyVersion, Strategy
 )
 
@@ -16,8 +16,8 @@ class AnalysisService:
     # ═════════════════════════════════════════════
     # تحلیل یک نسخه
     # ═════════════════════════════════════════════
-    def analyze_version(self, version_id: int) -> AnalysisResult:
-        """تحلیل کامل یک نسخه و ذخیره‌ی نتیجه"""
+    def analyze_version(self, version_id: int) -> Dict[str, Any]:
+        """تحلیل کامل یک نسخه و ذخیره‌ی نتیجه (با نگهداری تاریخچه)"""
         trades = self.db.query(Trade).filter(Trade.version_id == version_id).all()
         if not trades:
             raise ValueError("هیچ معامله‌ای برای این نسخه یافت نشد")
@@ -29,6 +29,7 @@ class AnalysisService:
         custom_time_analysis = self._analyze_by_custom_intervals(trades)
         consistency_analysis = self._calculate_consistency(trades)
 
+        # ── ۱. به‌روزرسانی AnalysisResult (جاری) ──
         existing = self.db.query(AnalysisResult).filter(
             AnalysisResult.version_id == version_id
         ).first()
@@ -58,10 +59,43 @@ class AnalysisService:
             custom_time_analysis=custom_time_analysis,
         )
         self.db.add(result)
+
+        # ── ۲. افزودن AnalysisRun (تاریخچه) ──
+        full_metrics_snapshot = {
+            "basic": basic_metrics,
+            "consistency": consistency_analysis,
+            "session": session_analysis,
+            "weekday": weekday_analysis,
+            "hour": hour_analysis,
+            "custom_time": custom_time_analysis,
+        }
+
+        run = AnalysisRun(
+            version_id=version_id,
+            total_trades=basic_metrics["total_trades"],
+            win_rate=basic_metrics["win_rate"],
+            profit_factor=basic_metrics["profit_factor"],
+            net_pnl=basic_metrics["net_pnl"],
+            net_r=basic_metrics["net_r"],
+            max_dd=basic_metrics["max_dd"],
+            expectancy=basic_metrics["expectancy"],
+            expectancy_r=basic_metrics["expectancy_r"],
+            avg_win=basic_metrics["avg_win"],
+            avg_loss=basic_metrics["avg_loss"],
+            largest_win=basic_metrics["largest_win"],
+            largest_loss=basic_metrics["largest_loss"],
+            max_consecutive_losses=basic_metrics["max_consecutive_losses"],
+            full_metrics=full_metrics_snapshot,
+        )
+        self.db.add(run)
         self.db.commit()
         self.db.refresh(result)
 
-        return result
+        return {
+            "result": result,
+            "run_id": run.id,
+            "message": "تحلیل انجام شد و در تاریخچه ذخیره گردید",
+        }
 
     # ═════════════════════════════════════════════
     # مقایسه‌ی چند نسخه
@@ -380,88 +414,6 @@ class AnalysisService:
         return max(min(score, 100), 0)
 
     # ═════════════════════════════════════════════
-    # پیشرفت مرحله‌ی پراپ
-    # ═════════════════════════════════════════════
-    def calculate_stage_progress(self, stage_id: int) -> Dict[str, Any]:
-        """محاسبه‌ی پیشرفت یک مرحله‌ی پراپ نسبت به قوانین"""
-        from ..models.prop import PropStage
-
-        stage = self.db.query(PropStage).filter(PropStage.id == stage_id).first()
-        if not stage:
-            return {}
-
-        trades = self.db.query(Trade).filter(Trade.prop_stage_id == stage_id).all()
-        total_pnl = sum(t.pnl or 0 for t in trades)
-        initial = stage.initial_balance or 10000
-        profit_percent = (total_pnl / initial * 100) if initial > 0 else 0
-
-        daily_pnl: Dict[str, float] = {}
-        for t in trades:
-            if not t.close_time:
-                continue
-            day_key = t.close_time.strftime('%Y-%m-%d')
-            daily_pnl[day_key] = daily_pnl.get(day_key, 0) + (t.pnl or 0)
-
-        max_daily_loss = min(daily_pnl.values()) if daily_pnl else 0
-        max_daily_dd_percent = abs(max_daily_loss / initial * 100) if initial > 0 else 0
-
-        sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
-        equity = initial
-        peak = initial
-        max_dd = 0
-        for t in sorted_trades:
-            equity += t.pnl or 0
-            if equity > peak:
-                peak = equity
-            dd = peak - equity
-            if dd > max_dd:
-                max_dd = dd
-        max_dd_percent = (max_dd / initial * 100) if initial > 0 else 0
-
-        trading_days = len(daily_pnl)
-        profit_target = stage.profit_target or 0
-        max_daily_dd_limit = stage.max_daily_dd or 0
-        max_total_dd_limit = stage.max_total_dd or 0
-        min_days = stage.min_trading_days or 0
-
-        daily_dd_violated = max_daily_dd_percent > max_daily_dd_limit if max_daily_dd_limit > 0 else False
-        total_dd_violated = max_dd_percent > max_total_dd_limit if max_total_dd_limit > 0 else False
-        target_reached = profit_percent >= profit_target if profit_target > 0 else False
-        min_days_met = trading_days >= min_days if min_days > 0 else True
-
-        if daily_dd_violated:
-            suggested_status = "failed_daily_dd"
-        elif total_dd_violated:
-            suggested_status = "failed_total_dd"
-        elif target_reached and min_days_met:
-            suggested_status = "ready_to_pass"
-        else:
-            suggested_status = "in_progress"
-
-        return {
-            "stage_id": stage_id,
-            "stage_type": stage.stage_type.value if stage.stage_type else None,
-            "status": stage.status.value if stage.status else None,
-            "current_profit": round(total_pnl, 2),
-            "current_profit_percent": round(profit_percent, 2),
-            "profit_target_percent": profit_target,
-            "profit_progress_percent": round((profit_percent / profit_target * 100) if profit_target > 0 else 0, 2),
-            "max_daily_dd_percent": round(max_daily_dd_percent, 2),
-            "max_daily_dd_limit": max_daily_dd_limit,
-            "daily_dd_progress_percent": round((max_daily_dd_percent / max_daily_dd_limit * 100) if max_daily_dd_limit > 0 else 0, 2),
-            "max_total_dd_percent": round(max_dd_percent, 2),
-            "max_total_dd_limit": max_total_dd_limit,
-            "total_dd_progress_percent": round((max_dd_percent / max_total_dd_limit * 100) if max_total_dd_limit > 0 else 0, 2),
-            "trading_days": trading_days,
-            "min_trading_days": min_days,
-            "days_met": min_days_met,
-            "daily_dd_violated": daily_dd_violated,
-            "total_dd_violated": total_dd_violated,
-            "target_reached": target_reached,
-            "suggested_status": suggested_status,
-            "total_trades": len(trades),
-        }
-
     # ═════════════════════════════════════════════
     # متریک‌های پایه
     # ═════════════════════════════════════════════
@@ -542,10 +494,11 @@ class AnalysisService:
         streak = 0
         max_streak = 0
         for t in sorted_trades:
-            if t.pnl is not None and t.pnl < 0:
+            npnl = self._net_pnl(t)
+            if npnl < 0:
                 streak += 1
                 max_streak = max(max_streak, streak)
-            elif t.pnl is not None and t.pnl > 0:
+            elif npnl > 0:
                 streak = 0
             # معامله‌ی سربه‌سر (pnl == 0) استریک رو نمی‌شکنه و اضافه‌ش هم نمی‌کنه
         return max_streak
@@ -558,9 +511,9 @@ class AnalysisService:
           (وابستگی به معاملات بزرگ)
         - avg_win_avg_loss_ratio: نسبت میانگین برد به میانگین باخت
         """
-        wins = [t for t in trades if t.pnl and t.pnl > 0]
-        losses = [t for t in trades if t.pnl and t.pnl < 0]
-        pnl_values = [t.pnl for t in trades if t.pnl is not None]
+        wins = [t for t in trades if self._net_pnl(t) > 0]
+        losses = [t for t in trades if self._net_pnl(t) < 0]
+        pnl_values = [self._net_pnl(t) for t in trades]
 
         if not pnl_values:
             return {
@@ -573,12 +526,12 @@ class AnalysisService:
         variance = sum((p - mean_pnl) ** 2 for p in pnl_values) / len(pnl_values)
         pnl_std_dev = variance ** 0.5
 
-        gross_profit = sum(t.pnl for t in wins) if wins else 0
-        top_n = sorted((t.pnl for t in wins), reverse=True)[:3]
+        gross_profit = sum(self._net_pnl(t) for t in wins) if wins else 0
+        top_n = sorted((self._net_pnl(t) for t in wins), reverse=True)[:3]
         top_trades_contribution = (sum(top_n) / gross_profit * 100) if gross_profit > 0 else 0
 
         avg_win = (gross_profit / len(wins)) if wins else 0
-        gross_loss = abs(sum(t.pnl for t in losses)) if losses else 0
+        gross_loss = abs(sum(self._net_pnl(t) for t in losses)) if losses else 0
         avg_loss = (gross_loss / len(losses)) if losses else 0
         avg_win_avg_loss_ratio = (avg_win / avg_loss) if avg_loss > 0 else 0
 
@@ -591,19 +544,15 @@ class AnalysisService:
     def _calculate_max_drawdown(self, trades: List[Trade]) -> float:
         """
         محاسبه‌ی حداکثر افت سرمایه (peak-to-valley).
-
-        نکته: از net_pnl استفاده می‌کنه (pnl + commission + swap)
+        از net_pnl استفاده می‌کند (pnl + commission + swap)
         """
-        def _net_pnl(t: Trade) -> float:
-            return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-
         sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
         equity = 0
         peak = 0
         max_dd = 0
 
         for t in sorted_trades:
-            equity += _net_pnl(t)
+            equity += self._net_pnl(t)
             if equity > peak:
                 peak = equity
             dd = peak - equity
@@ -682,15 +631,20 @@ class AnalysisService:
 
         return result
 
+    @staticmethod
+    def _net_pnl(trade: Trade) -> float:
+        """محاسبه net_pnl با در نظر گرفتن کمیسیون و swap"""
+        return (trade.pnl or 0) + (trade.commission or 0) + (trade.swap or 0)
+
     def _summarize(self, trades: List[Trade]) -> Dict[str, Any]:
         total = len(trades)
-        wins = [t for t in trades if t.pnl and t.pnl > 0]
-        losses = [t for t in trades if t.pnl and t.pnl < 0]
+        wins = [t for t in trades if self._net_pnl(t) > 0]
+        losses = [t for t in trades if self._net_pnl(t) < 0]
 
-        gross_profit = sum(t.pnl for t in wins) if wins else 0
-        gross_loss = abs(sum(t.pnl for t in losses)) if losses else 0
+        gross_profit = sum(self._net_pnl(t) for t in wins) if wins else 0
+        gross_loss = abs(sum(self._net_pnl(t) for t in losses)) if losses else 0
 
-        net_pnl = sum(t.pnl for t in trades if t.pnl) or 0
+        net_pnl = sum(self._net_pnl(t) for t in trades) or 0
         win_rate = (len(wins) / total * 100) if total > 0 else 0
         profit_factor = self._profit_factor(gross_profit, gross_loss)
 

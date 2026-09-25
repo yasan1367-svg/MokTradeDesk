@@ -40,15 +40,15 @@ export default function ComparisonRadarChart({ items, height = 400 }: Comparison
   return (
     <ResponsiveContainer width="100%" height={height}>
       <RadarChart data={data} cx="50%" cy="50%" outerRadius="70%">
-        <PolarGrid stroke="#E5EBF3" />
+        <PolarGrid stroke="var(--border-subtle)" />
         <PolarAngleAxis
           dataKey="metric"
-          style={{ fontSize: '13px', fontFamily: 'Vazirmatn', fontWeight: 'bold', fill: '#1A2B47' }}
+          style={{ fontSize: '13px', fontFamily: 'Vazirmatn', fontWeight: 'bold', fill: 'var(--text-primary)' }}
         />
         <PolarRadiusAxis
           angle={90}
           domain={[0, 100]}
-          style={{ fontSize: '10px', fill: '#9AA8BF' }}
+          style={{ fontSize: '10px', fill: 'var(--text-muted)' }}
         />
         {items.map((item, index) => (
           <Radar
@@ -63,17 +63,17 @@ export default function ComparisonRadarChart({ items, height = 400 }: Comparison
         ))}
         <Tooltip
           contentStyle={{
-            backgroundColor: '#FFFFFF',
-            border: '2px solid #E5EBF3',
+            backgroundColor: 'var(--bg-card)',
+            border: '2px solid var(--border-subtle)',
             borderRadius: '12px',
-            color: '#1A2B47',
+            color: 'var(--text-primary)',
             fontSize: '12px',
             fontWeight: 'bold',
             boxShadow: '0 6px 16px rgba(25,50,85,0.08)',
           }}
         />
         <Legend
-          wrapperStyle={{ fontSize: '12px', color: '#1A2B47', fontWeight: 'bold', paddingTop: '10px' }}
+          wrapperStyle={{ fontSize: '12px', color: 'var(--text-primary)', fontWeight: 'bold', paddingTop: '10px' }}
         />
       </RadarChart>
     </ResponsiveContainer>

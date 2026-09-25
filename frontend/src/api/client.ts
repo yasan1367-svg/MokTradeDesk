@@ -1,6 +1,7 @@
 import axios from 'axios';
 
-const API_BASE_URL = 'http://localhost:8000';
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) 
+  || 'http://localhost:8000';
 
 export const api = axios.create({
   baseURL: API_BASE_URL,
@@ -33,6 +34,52 @@ export const compareVersionsWithDetails = (versionIds: number[], minTrades: numb
   api.post('/api/analytics/compare', { version_ids: versionIds, min_trades: minTrades });
 export const getPropAnalytics = () => api.get('/api/prop/analytics');
 
+export const getFirmDefaultRules = (firmId: number) =>
+  api.get(`/api/prop/firms/${firmId}/default-rules`);
+
+// ─────────────────────────────────────────────
+// Prop Alerts
+// ─────────────────────────────────────────────
+export const getPropAlerts = (params?: { stage_id?: number; unread_only?: boolean }) =>
+  api.get('/api/prop/alerts', { params });
+
+export const markAlertRead = (alertId: number) =>
+  api.patch(`/api/prop/alerts/${alertId}/read`);
+
+export const generatePropAlerts = () =>
+  api.post('/api/prop/alerts/generate');
+
+// ─────────────────────────────────────────────
+// Calendar
+// ─────────────────────────────────────────────
+export const getCalendarData = (params?: {
+  year?: number;
+  month?: number;
+  from_date?: string;
+  to_date?: string;
+}) => api.get('/api/analytics/calendar', { params });
+
+// ─────────────────────────────────────────────
+// Dashboard
+// ─────────────────────────────────────────────
+export const getDashboardData = () => api.get('/api/analytics/dashboard');
+
+// ─────────────────────────────────────────────
+// Risk Management
+// ─────────────────────────────────────────────
+export const getRiskMetrics = () => api.get('/api/analytics/risk-metrics');
+
+// ─────────────────────────────────────────────
+// Export
+// ─────────────────────────────────────────────
+export const exportTradesCsv = (params?: Record<string, any>) =>
+  api.get('/api/export/trades/csv', { params, responseType: 'blob' });
+export const exportTradesPdf = (params?: Record<string, any>) =>
+  api.get('/api/export/trades/pdf', { params, responseType: 'blob' });
+export const exportAnalysisPdf = (versionId: number) =>
+  api.get('/api/export/analysis/pdf', { params: { version_id: versionId }, responseType: 'blob' });
+export const exportDashboardPdf = () =>
+  api.get('/api/export/dashboard/pdf', { responseType: 'blob' });
 // ─────────────────────────────────────────────
 // Import
 // ─────────────────────────────────────────────
@@ -44,13 +91,11 @@ export const importSoft4X = (
   symbol?: string,
   testType?: string,
   propStageId?: number,
-  personalAccountId?: number,
 ) => {
   const formData = new FormData();
   formData.append('file', file);
   if (versionId) formData.append('version_id', versionId.toString());
   if (propStageId) formData.append('prop_stage_id', propStageId.toString());
-  if (personalAccountId) formData.append('personal_account_id', personalAccountId.toString());
   if (symbol) formData.append('symbol', symbol);
   if (testType) formData.append('test_type', testType);
 
@@ -64,13 +109,11 @@ export const importMT4 = (
   versionId?: number,
   testType?: string,
   propStageId?: number,
-  personalAccountId?: number,
 ) => {
   const formData = new FormData();
   formData.append('file', file);
   if (versionId) formData.append('version_id', versionId.toString());
   if (propStageId) formData.append('prop_stage_id', propStageId.toString());
-  if (personalAccountId) formData.append('personal_account_id', personalAccountId.toString());
   if (testType) formData.append('test_type', testType);
 
   return api.post('/api/imports/mt4', formData, {
@@ -86,6 +129,9 @@ export const getVersionTrades = (versionId: number) =>
 
 export const getVersionAnalysis = (versionId: number) =>
   api.get(`/api/analytics/${versionId}`);
+
+export const getVersionAnalysisHistory = (versionId: number) =>
+  api.get(`/api/analytics/${versionId}/history`);
 
 // ─────────────────────────────────────────────
 // Prop Desk
@@ -105,6 +151,7 @@ export const createPropAccount = (data: {
   max_daily_dd?: number;
   max_total_dd?: number;
   min_trading_days?: number;
+  create_finance_account?: boolean;  // 🆕 فاز ۵.۱ — ساخت خودکار حساب مالی
 }) => api.post('/api/prop/accounts', data);
 
 export const getPropAccountDetail = (accountId: number) =>
@@ -119,19 +166,32 @@ export const failStage = (stageId: number, failureReason: string, failureDetails
     failure_details: failureDetails,
   });
 
+// 🆕 فاز ۵.۱ — برداشت از پراپ: مقصد = حساب مالی (جایگزین اکانت شخصی)
 export const withdrawFromStage = (
   stageId: number,
-  amount: number,
-  note?: string,
-  targetPersonalAccountId?: number
-) =>
-  api.post(`/api/prop/stages/${stageId}/withdraw`, {
-    amount,
-    note,
-    target_personal_account_id: targetPersonalAccountId,
-  });
+  data: {
+    amount: number;
+    destination_account_id: number;
+    withdrawal_date?: string;
+    note?: string;
+  }
+) => api.post(`/api/prop/stages/${stageId}/withdraw`, data);
+
 export const getStageWithdrawals = (stageId: number) =>
   api.get(`/api/prop/stages/${stageId}/withdrawals`);
+
+// 🆕 فاز ۵.۱ — حساب مالی متناظر با یک اکانت پراپ
+export const getPropAccountFinanceAccount = (propAccountId: number) =>
+  api.get(`/api/prop/accounts/${propAccountId}/finance-account`);
+
+// 🆕 فاز ۵.۱ — ساخت (یا اتصال) حساب مالی برای اکانت پراپ
+export const createPropFinanceAccount = (propAccountId: number) =>
+  api.post(`/api/prop/accounts/${propAccountId}/finance-account`);
+
+// 🆕 فاز ۵.۱ — حساب‌های مالی مجاز به‌عنوان مقصد برداشت
+// (فیلتر type !== 'prop' در سمت کلاینت انجام می‌شود)
+export const getFinanceAccountsForDestination = () =>
+  api.get('/api/finance/accounts');
 
 export const getStageTrades = (stageId: number) =>
   api.get(`/api/prop/stages/${stageId}/trades`);
@@ -186,6 +246,8 @@ export const deleteStrategy = (strategyId: number) =>
 
 export const getStrategyVersions = (strategyId: number) =>
   api.get(`/api/strategies/${strategyId}/versions`);
+export const getStrategyStats = (strategyId: number) =>
+  api.get(`/api/strategies/${strategyId}/stats`);
 
 export const updateVersion = (
   versionId: number,
@@ -194,6 +256,9 @@ export const updateVersion = (
 
 export const deleteVersion = (versionId: number) =>
   api.delete(`/api/strategies/versions/${versionId}`);
+
+export const forkVersion = (versionId: number) =>
+  api.post(`/api/strategies/versions/${versionId}/fork`);
 
 
 // ─────────────────────────────────────────────
@@ -205,9 +270,18 @@ export const getTrades = (params?: {
   symbol?: string;
   test_type?: string;
   source?: string;
+  direction?: string;
   search?: string;
+  date_from?: string;
+  date_to?: string;
+  pnl_min?: number;
+  pnl_max?: number;
+  page?: number;
+  page_size?: number;
   limit?: number;
   offset?: number;
+  sort_by?: string;
+  sort_order?: string;
 }) => api.get('/api/trades/', { params });
 
 export const getTrade = (tradeId: number) =>
@@ -233,7 +307,7 @@ export const createManualTrade = (data: {
   commission?: number;
   swap?: number;
   version_id?: number;
-  personal_account_id?: number;
+  finance_account_id?: number;
   prop_stage_id?: number;
   test_type?: string;
   note?: string;
@@ -253,55 +327,6 @@ export const getTradeScreenshots = (tradeId: number) =>
 
 export const deleteScreenshot = (screenshotId: number) =>
   api.delete(`/api/trades/screenshots/${screenshotId}`);
-
-// ─────────────────────────────────────────────
-// Personal Accounts & Accounting
-// ─────────────────────────────────────────────
-export const getPersonalAccounts = () => api.get('/api/personal/accounts');
-
-export const createPersonalAccount = (data: {
-  name: string;
-  broker_name: string;
-  account_number?: string;
-  currency?: string;
-  initial_balance?: number;
-}) => api.post('/api/personal/accounts', data);
-
-export const getPersonalAccountDetail = (accountId: number) =>
-  api.get(`/api/personal/accounts/${accountId}`);
-
-export const updatePersonalAccount = (accountId: number, data: any) =>
-  api.patch(`/api/personal/accounts/${accountId}`, data);
-
-export const deletePersonalAccount = (accountId: number) =>
-  api.delete(`/api/personal/accounts/${accountId}`);
-
-// ─────────────────────────────────────────────
-// Ledger
-// ─────────────────────────────────────────────
-export const getLedger = (params?: {
-  personal_account_id?: number;
-  transaction_type?: string;
-  from_date?: string;
-  to_date?: string;
-  limit?: number;
-}) => api.get('/api/personal/ledger', { params });
-
-export const createLedgerTransaction = (data: {
-  transaction_type: string;
-  amount: number;
-  currency?: string;
-  description?: string;
-  personal_account_id?: number;
-  prop_account_id?: number;
-  transaction_date?: string;
-}) => api.post('/api/personal/ledger', data);
-
-export const deleteLedgerTransaction = (transactionId: number) =>
-  api.delete(`/api/personal/ledger/${transactionId}`);
-
-export const getCashflow = (params?: { from_date?: string; to_date?: string }) =>
-  api.get('/api/personal/cashflow', { params });
 
 // ─────────────────────────────────────────────
 // Journal
@@ -336,8 +361,6 @@ export const deleteReviewScreenshot = (screenshotId: number) =>
 export const deleteJournalReview = (reviewId: number) =>
   api.delete(`/api/personal/journal/reviews/${reviewId}`);
 
-export const getPropAccountsForLedger = () =>
-  api.get('/api/personal/prop-accounts-list');
 // ─────────────────────────────────────────────
 // Symbol Mappings
 // ─────────────────────────────────────────────
@@ -383,3 +406,113 @@ export const updateSettings = (data: {
   default_profit_share?: number;
 }) => api.patch('/api/settings/', data);
 
+// ─────────────────────────────────────────────
+// Finance
+// ─────────────────────────────────────────────
+export const getFinanceAccounts = (params?: { type?: string; currency?: string }) =>
+  api.get('/api/finance/accounts', { params });
+
+export const createFinanceAccount = (data: {
+  name: string;
+  type: string;
+  currency?: string;
+  balance?: number;
+  card_number?: string;
+  broker_name?: string;
+  prop_firm_name?: string;
+  prop_firm_id?: number | null;
+}) => api.post('/api/finance/accounts', data);
+
+export const updateFinanceAccount = (id: number, data: Record<string, any>) =>
+  api.patch(`/api/finance/accounts/${id}`, data);
+
+export const deleteFinanceAccount = (id: number) =>
+  api.delete(`/api/finance/accounts/${id}`);
+
+export const getFinanceCategories = (params?: { type?: string }) =>
+  api.get('/api/finance/categories', { params });
+
+export const createFinanceCategory = (data: {
+  name: string;
+  type: string;
+  color?: string;
+  icon?: string;
+}) => api.post('/api/finance/categories', data);
+
+export const updateFinanceCategory = (id: number, data: Record<string, any>) =>
+  api.patch(`/api/finance/categories/${id}`, data);
+
+export const deleteFinanceCategory = (id: number) =>
+  api.delete(`/api/finance/categories/${id}`);
+
+export const getFinanceTransactions = (params?: {
+  date_from?: string;
+  date_to?: string;
+  account_id?: number;
+  type?: string;
+  category_id?: number;
+}) => api.get('/api/finance/transactions', { params });
+
+export const createFinanceTransaction = (data: {
+  account_id: number;
+  amount: number;
+  type: string;
+  category_id?: number | null;
+  currency?: string;
+  date?: string;
+  description?: string;
+  from_account_id?: number | null;
+  to_account_id?: number | null;
+  related_trade_id?: number | null;
+  related_prop_account_id?: number | null;
+}) => api.post('/api/finance/transactions', data);
+
+export const updateFinanceTransaction = (id: number, data: Record<string, any>) =>
+  api.patch(`/api/finance/transactions/${id}`, data);
+
+export const deleteFinanceTransaction = (id: number) =>
+  api.delete(`/api/finance/transactions/${id}`);
+
+export const seedFinanceCategories = () => api.post('/api/finance/seed');
+
+// ─────────────────────────────────────────────
+// Finance Reports
+// ─────────────────────────────────────────────
+export const getFinanceSummary = () =>
+  api.get('/api/finance/summary');
+
+export const getFinanceAccountStats = (accountId: number) =>
+  api.get(`/api/finance/accounts/${accountId}/stats`);
+
+export const getFinanceWithdrawalStats = () =>
+  api.get('/api/finance/withdrawals/stats');
+
+export const getFinanceCashflow = (params?: { year?: number }) =>
+  api.get('/api/finance/charts/cashflow', { params });
+
+export const getFinanceDistribution = (params?: {
+  date_from?: string;
+  date_to?: string;
+}) => api.get('/api/finance/charts/distribution', { params });
+
+// ─────────────────────────────────────────────
+// Advanced Finance Reports (فاز ۱۱)
+// ─────────────────────────────────────────────
+export const getFinanceMonthlyReport = (params?: { year?: number; account_id?: number }) =>
+  api.get('/api/finance/reports/monthly', { params });
+
+export const getFinanceCategoryBreakdown = (params?: {
+  year?: number;
+  month?: number;
+  type?: string;
+  account_id?: number;
+}) => api.get('/api/finance/reports/category-breakdown', { params });
+
+export const getFinanceAccountComparison = (params?: {
+  year?: number;
+  month?: number;
+  currency?: string;
+}) => api.get('/api/finance/reports/account-comparison', { params });
+
+export const getFinanceProfitLoss = (params?: { year?: number; account_id?: number }) =>
+  api.get('/api/finance/reports/profit-loss', { params });

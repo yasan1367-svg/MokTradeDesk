@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import GlassCard from '../components/GlassCard';
+import PersianDateInput from '../components/PersianDateInput';
 import {
   getTrades,
   getTrade,
@@ -11,7 +12,9 @@ import {
   deleteScreenshot,
   getAllVersions,
   getAllPropStages,
-  getPersonalAccounts,
+  getFinanceAccounts,
+  exportTradesCsv,
+  exportTradesPdf,
 } from '../api/client';
 
 interface Trade {
@@ -38,12 +41,14 @@ export default function TradesPage() {
   const [total, setTotal] = useState(0);
   const [versions, setVersions] = useState<any[]>([]);
   const [propStages, setPropStages] = useState<any[]>([]);
-  const [personalAccounts, setPersonalAccounts] = useState<any[]>([]);
+  const [financeAccounts, setFinanceAccounts] = useState<any[]>([]);
 
   const [filterVersion, setFilterVersion] = useState<number | null>(null);
   const [filterSymbol, setFilterSymbol] = useState('');
   const [filterTestType, setFilterTestType] = useState('');
   const [filterSource, setFilterSource] = useState('');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
 
   const [showEditModal, setShowEditModal] = useState(false);
@@ -69,17 +74,19 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     tp: '',
     pnl: '',
     test_type: 'backtest',
-    account_type: 'personal',
     note: '',
     version_id: '',
-    personal_account_id: '',
     prop_stage_id: '',
+    finance_account_id: '',
   });
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [lightboxImage, setLightboxImage] = useState<string | null>(null);
+  const [currentPage, setCurrentPage] = useState(1);
+  const [totalPages, setTotalPages] = useState(1);
+  const pageSize = 50;
   const handleOpenGallery = async (trade: Trade) => {
   if (trade.screenshots_count === 0) return;
   try {
@@ -95,20 +102,28 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     loadFilters();
   }, []);
 
+  // وقتی فیلترها عوض می‌شوند، به صفحه‌ی ۱ برگرد
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterDateFrom, filterDateTo]);
+
   useEffect(() => {
     loadTrades();
-  }, [filterVersion, filterSymbol, filterTestType, filterSource]);
+  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterDateFrom, filterDateTo, currentPage]);
 
   const loadFilters = async () => {
     try {
-      const [versionsRes, stagesRes, personalRes] = await Promise.all([
+      const [versionsRes, stagesRes, financeRes] = await Promise.all([
         getAllVersions(),
         getAllPropStages(),
-        getPersonalAccounts(),
+        getFinanceAccounts(),
       ]);
       setVersions(versionsRes.data);
       setPropStages(stagesRes.data);
-      setPersonalAccounts(personalRes.data);
+      // فقط حساب‌های غیرپراپ به‌عنوان حساب مالی معامله
+      setFinanceAccounts(
+        (financeRes.data || []).filter((a: any) => a.type !== 'prop')
+      );
     } catch (err) {
       console.error('خطا:', err);
     }
@@ -122,11 +137,15 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         symbol: filterSymbol || undefined,
         test_type: filterTestType || undefined,
         source: filterSource || undefined,
+        date_from: filterDateFrom || undefined,
+        date_to: filterDateTo || undefined,
         search: searchQuery || undefined,
-        limit: 200,
+        page: currentPage,
+        page_size: pageSize,
       });
       setTrades(res.data.trades);
       setTotal(res.data.total);
+      setTotalPages(res.data.total_pages || 1);
     } catch (err) {
       console.error('خطا:', err);
     } finally {
@@ -235,11 +254,10 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       tp: '',
       pnl: '',
       test_type: 'backtest',
-      account_type: 'personal',
       note: '',
       version_id: '',
-      personal_account_id: '',
       prop_stage_id: '',
+      finance_account_id: '',
     });
     setShowManualModal(true);
   };
@@ -256,15 +274,25 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     }
 
     if (manualTrade.test_type === 'real') {
-      const hasPersonal = !!manualTrade.personal_account_id;
+      const hasFinance = !!manualTrade.finance_account_id;
       const hasProp = !!manualTrade.prop_stage_id;
-      if (hasPersonal === hasProp) {
-        setError('برای معامله‌ی REAL باید دقیقاً یکی از حساب شخصی یا مرحله‌ی پراپ انتخاب شود');
+      if (!hasFinance && !hasProp) {
+        setError('برای معامله‌ی REAL انتخاب «حساب مالی» یا «مرحله‌ی پراپ» الزامی است');
         return;
       }
-    } else if (manualTrade.personal_account_id || manualTrade.prop_stage_id) {
-      setError('برای Backtest و Forward، نباید حساب شخصی یا پراپ انتخاب شود');
-      return;
+      if (hasFinance && hasProp) {
+        setError('برای معامله‌ی REAL فقط یکی از «حساب مالی» یا «مرحله‌ی پراپ» را انتخاب کنید');
+        return;
+      }
+    } else {
+      if (manualTrade.prop_stage_id) {
+        setError('برای Backtest و Forward، نباید مرحله‌ی پراپ انتخاب شود');
+        return;
+      }
+      if (manualTrade.finance_account_id) {
+        setError('برای Backtest و Forward، نباید حساب مالی انتخاب شود');
+        return;
+      }
     }
 
     try {
@@ -282,7 +310,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         test_type: manualTrade.test_type,
         note: manualTrade.note || undefined,
         version_id: parseInt(manualTrade.version_id),
-        personal_account_id: manualTrade.personal_account_id ? parseInt(manualTrade.personal_account_id) : undefined,
+        finance_account_id: manualTrade.finance_account_id ? parseInt(manualTrade.finance_account_id) : undefined,
         prop_stage_id: manualTrade.prop_stage_id ? parseInt(manualTrade.prop_stage_id) : undefined,
       });
       setSuccessMessage('معامله‌ی دستی ثبت شد');
@@ -303,6 +331,30 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     return labels[source] || source;
   };
 
+  const downloadExport = async (apiFn: any, ext: string) => {
+    try {
+      const params: Record<string, any> = {};
+      if (filterVersion) params.version_id = filterVersion;
+      if (filterSymbol) params.symbol = filterSymbol;
+      if (filterTestType) params.test_type = filterTestType;
+      if (filterSource) params.source = filterSource;
+      if (searchQuery) params.search = searchQuery;
+
+      const res = await apiFn(params);
+      const blob = new Blob([res.data], { type: res.headers['content-type'] });
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `trades_${new Date().toISOString().slice(0, 19).replace(/[:-]/g, '')}.${ext}`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err: any) {
+      setError(err.response?.data?.detail || `خطا در دانلود فایل ${ext.toUpperCase()}`);
+    }
+  };
+
   const getTestTypeLabel = (testType: string) => {
     const labels: Record<string, string> = {
       backtest: '🧪 بک‌تست',
@@ -315,13 +367,13 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   return (
     <div>
       {error && (
-        <div className="mb-4 bg-loss/10 border border-loss/30 text-loss p-3 rounded-xl">
+        <div className="mb-4 bg-loss/10 border border-loss/30 text-[var(--loss)] p-3 rounded-xl">
           ❌ {error}
           <button onClick={() => setError(null)} className="float-left text-xs">✕</button>
         </div>
       )}
       {successMessage && (
-        <div className="mb-4 bg-profit/10 border border-profit/30 text-profit p-3 rounded-xl">
+        <div className="mb-4 bg-profit/10 border border-profit/30 text-[var(--profit)] p-3 rounded-xl">
           ✅ {successMessage}
         </div>
       )}
@@ -329,21 +381,21 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       <div className="flex gap-3 mb-6">
         <button
           onClick={handleOpenManualModal}
-          className="bg-accent hover:bg-accent/80 text-white px-5 py-2 rounded-xl transition-all"
+          className="bg-[var(--accent)] hover:bg-accent/80 text-white px-5 py-2 rounded-xl transition-all"
         >
           ➕ معامله‌ی دستی
         </button>
       </div>
 
       <GlassCard className="mb-6">
-        <h3 className="text-text-primary font-bold mb-4">🔍 فیلترها</h3>
+        <h3 className="text-[var(--text-primary)] font-bold mb-4">🔍 فیلترها</h3>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-3 mb-3">
           <div>
-            <label className="text-text-secondary text-xs block mb-1">نسخه</label>
+            <label className="text-[var(--text-secondary)] text-xs block mb-1">نسخه</label>
             <select
               value={filterVersion || ''}
               onChange={(e) => setFilterVersion(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary text-sm"
+              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
             >
               <option value="">همه</option>
               {versions.map((v) => (
@@ -355,11 +407,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
           </div>
 
           <div>
-            <label className="text-text-secondary text-xs block mb-1">نماد</label>
+            <label className="text-[var(--text-secondary)] text-xs block mb-1">نماد</label>
             <select
               value={filterSymbol}
               onChange={(e) => setFilterSymbol(e.target.value)}
-              className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary text-sm"
+              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
             >
               <option value="">همه</option>
               <option value="XAUUSD">🥇 طلا</option>
@@ -368,11 +420,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
           </div>
 
           <div>
-            <label className="text-text-secondary text-xs block mb-1">نوع تست</label>
+            <label className="text-[var(--text-secondary)] text-xs block mb-1">نوع تست</label>
             <select
               value={filterTestType}
               onChange={(e) => setFilterTestType(e.target.value)}
-              className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary text-sm"
+              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
             >
               <option value="">همه</option>
               <option value="backtest">🧪 بک‌تست</option>
@@ -382,11 +434,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
           </div>
 
           <div>
-            <label className="text-text-secondary text-xs block mb-1">منبع</label>
+            <label className="text-[var(--text-secondary)] text-xs block mb-1">منبع</label>
             <select
               value={filterSource}
               onChange={(e) => setFilterSource(e.target.value)}
-              className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary text-sm"
+              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
             >
               <option value="">همه</option>
               <option value="soft4x_import">📊 Soft4X</option>
@@ -396,35 +448,62 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
           </div>
         </div>
 
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+          <PersianDateInput
+            value={filterDateFrom}
+            onChange={(v) => setFilterDateFrom(v)}
+            label="از تاریخ"
+          />
+          <PersianDateInput
+            value={filterDateTo}
+            onChange={(v) => setFilterDateTo(v)}
+            label="تا تاریخ"
+          />
+        </div>
+
         <div className="flex gap-2">
           <input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder="🔍 جستجو در یادداشت‌ها..."
-            className="flex-1 bg-card border border-card-border rounded-xl px-4 py-2 text-text-primary"
+            className="flex-1 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-2 text-[var(--text-primary)]"
           />
           <button
             onClick={handleSearch}
-            className="bg-accent hover:bg-accent/80 text-white px-6 py-2 rounded-xl"
+            className="bg-[var(--accent)] hover:bg-accent/80 text-white px-6 py-2 rounded-xl"
           >
             جستجو
+          </button>
+          <button
+            onClick={() => downloadExport(exportTradesCsv, 'csv')}
+            className="bg-[#13AE81] hover:bg-[#13AE81]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
+            title="دانلود CSV"
+          >
+            📥 CSV
+          </button>
+          <button
+            onClick={() => downloadExport(exportTradesPdf, 'pdf')}
+            className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
+            title="دانلود PDF"
+          >
+            📄 PDF
           </button>
         </div>
       </GlassCard>
 
       <GlassCard>
-        <h3 className="text-text-primary font-bold mb-4">📋 معاملات ({total})</h3>
+        <h3 className="text-[var(--text-primary)] font-bold mb-4">📋 معاملات ({total})</h3>
 
         {loading ? (
-          <div className="text-text-secondary text-center py-8">⏳ در حال بارگذاری...</div>
+          <div className="text-[var(--text-secondary)] text-center py-8">⏳ در حال بارگذاری...</div>
         ) : trades.length === 0 ? (
-          <div className="text-text-secondary text-center py-8">معامله‌ای یافت نشد</div>
+          <div className="text-[var(--text-secondary)] text-center py-8">معامله‌ای یافت نشد</div>
         ) : (
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
               <thead>
-                <tr className="text-text-secondary border-b border-card-border">
+                <tr className="text-[var(--text-secondary)] border-b border-[var(--border-subtle)]">
                   <th className="text-right py-2">#</th>
                   <th className="text-right py-2">نماد</th>
                   <th className="text-right py-2">جهت</th>
@@ -441,26 +520,26 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <tbody>
                 {trades.map((t) => (
                   <tr key={t.id} className="border-b border-card-border/50 hover:bg-card/50">
-                    <td className="py-2 text-text-secondary text-xs">{t.id}</td>
-                    <td className="py-2 text-text-primary font-bold">{t.symbol}</td>
-                    <td className={`py-2 ${t.direction === 'buy' ? 'text-profit' : 'text-loss'}`}>
+                    <td className="py-2 text-[var(--text-secondary)] text-xs">{t.id}</td>
+                    <td className="py-2 text-[var(--text-primary)] font-bold">{t.symbol}</td>
+                    <td className={`py-2 ${t.direction === 'buy' ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                       {t.direction === 'buy' ? 'خرید' : 'فروش'}
                     </td>
-                    <td className="py-2 text-text-primary">{t.size}</td>
-                    <td className={`py-2 font-bold ${(t.pnl || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                    <td className="py-2 text-[var(--text-primary)]">{t.size}</td>
+                    <td className={`py-2 font-bold ${(t.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                       {(t.pnl || 0) >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} $
                     </td>
-                    <td className="py-2 text-text-secondary text-xs">{getSourceLabel(t.source)}</td>
-                    <td className="py-2 text-text-secondary text-xs">{getTestTypeLabel(t.test_type)}</td>
-                    <td className="py-2 text-text-secondary text-xs">{t.version_name || '-'}</td>
-                    <td className="py-2 text-text-secondary text-xs max-w-[150px] truncate">
+                    <td className="py-2 text-[var(--text-secondary)] text-xs">{getSourceLabel(t.source)}</td>
+                    <td className="py-2 text-[var(--text-secondary)] text-xs">{getTestTypeLabel(t.test_type)}</td>
+                    <td className="py-2 text-[var(--text-secondary)] text-xs">{t.version_name || '-'}</td>
+                    <td className="py-2 text-[var(--text-secondary)] text-xs max-w-[150px] truncate">
                       {t.note || '-'}
                     </td>
                     <td className="py-2">
   {t.screenshots_count > 0 ? (
     <button
       onClick={() => handleOpenGallery(t)}
-      className="text-accent hover:bg-accent/20 px-2 py-1 rounded-lg transition-all"
+      className="text-[var(--accent)] hover:bg-accent/20 px-2 py-1 rounded-lg transition-all"
     >
       📷 {t.screenshots_count}
     </button>
@@ -471,7 +550,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                     <td className="py-2">
                       <button
                         onClick={() => handleOpenEdit(t)}
-                        className="text-accent hover:bg-accent/20 px-3 py-1 rounded-lg text-xs"
+                        className="text-[var(--accent)] hover:bg-accent/20 px-3 py-1 rounded-lg text-xs"
                       >
                         ✏️ ویرایش
                       </button>
@@ -482,6 +561,59 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             </table>
           </div>
         )}
+
+        {/* صفحه‌بندی */}
+        {total > pageSize && (
+          <div className="flex items-center justify-between mt-4 px-2 pb-2" dir="ltr">
+            <span className="text-[12px] text-[#6B7A94] font-medium">
+              {total > 0 ? `نمایش ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, total)} از ${total} معامله` : ''}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
+                disabled={currentPage <= 1}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[#E5EBF3] hover:bg-[#EDF3FF] text-[#6B7A94] hover:text-[#3F7CFF]"
+              >
+                ‹ قبلی
+              </button>
+
+              {Array.from({ length: Math.min(totalPages, 7) }, (_, i) => {
+                let pageNum: number;
+                if (totalPages <= 7) {
+                  pageNum = i + 1;
+                } else if (currentPage <= 4) {
+                  pageNum = i + 1;
+                } else if (currentPage >= totalPages - 3) {
+                  pageNum = totalPages - 6 + i;
+                } else {
+                  pageNum = currentPage - 3 + i;
+                }
+                return (
+                  <button
+                    key={pageNum}
+                    onClick={() => setCurrentPage(pageNum)}
+                    className={`min-w-[32px] h-[32px] rounded-lg text-[12px] font-bold transition-all ${
+                      currentPage === pageNum
+                        ? 'text-white shadow-[0_4px_10px_rgba(63,124,255,0.3)]'
+                        : 'text-[#6B7A94] border border-[#E5EBF3] hover:bg-[#EDF3FF] hover:text-[#3F7CFF]'
+                    }`}
+                    style={currentPage === pageNum ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+                  >
+                    {pageNum}
+                  </button>
+                );
+              })}
+
+              <button
+                onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
+                disabled={currentPage >= totalPages}
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[#E5EBF3] hover:bg-[#EDF3FF] text-[#6B7A94] hover:text-[#3F7CFF]"
+              >
+                بعدی ›
+              </button>
+            </div>
+          </div>
+        )}
       </GlassCard>
 
       {/* مودال ویرایش */}
@@ -489,39 +621,39 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass-card max-w-2xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-xl font-bold text-text-primary">
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">
                 ✏️ ویرایش معامله #{editingTrade.id}
               </h3>
-              <button onClick={() => setShowEditModal(false)} className="text-text-secondary">✕</button>
+              <button onClick={() => setShowEditModal(false)} className="text-[var(--text-secondary)]">✕</button>
             </div>
 
-            <div className="bg-card border border-card-border rounded-xl p-4 mb-5">
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl p-4 mb-5">
               <div className="grid grid-cols-2 md:grid-cols-3 gap-3 text-sm">
                 <div>
-                  <div className="text-text-secondary text-xs">نماد</div>
-                  <div className="text-text-primary font-bold">{editingTrade.symbol}</div>
+                  <div className="text-[var(--text-secondary)] text-xs">نماد</div>
+                  <div className="text-[var(--text-primary)] font-bold">{editingTrade.symbol}</div>
                 </div>
                 <div>
-                  <div className="text-text-secondary text-xs">جهت</div>
-                  <div className={`font-bold ${editingTrade.direction === 'buy' ? 'text-profit' : 'text-loss'}`}>
+                  <div className="text-[var(--text-secondary)] text-xs">جهت</div>
+                  <div className={`font-bold ${editingTrade.direction === 'buy' ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                     {editingTrade.direction === 'buy' ? 'خرید' : 'فروش'}
                   </div>
                 </div>
                 <div>
-                  <div className="text-text-secondary text-xs">حجم</div>
-                  <div className="text-text-primary font-bold">{editingTrade.size}</div>
+                  <div className="text-[var(--text-secondary)] text-xs">حجم</div>
+                  <div className="text-[var(--text-primary)] font-bold">{editingTrade.size}</div>
                 </div>
                 <div>
-                  <div className="text-text-secondary text-xs">قیمت باز</div>
-                  <div className="text-text-primary">{editingTrade.open_price}</div>
+                  <div className="text-[var(--text-secondary)] text-xs">قیمت باز</div>
+                  <div className="text-[var(--text-primary)]">{editingTrade.open_price}</div>
                 </div>
                 <div>
-                  <div className="text-text-secondary text-xs">قیمت بسته</div>
-                  <div className="text-text-primary">{editingTrade.close_price || '-'}</div>
+                  <div className="text-[var(--text-secondary)] text-xs">قیمت بسته</div>
+                  <div className="text-[var(--text-primary)]">{editingTrade.close_price || '-'}</div>
                 </div>
                 <div>
-                  <div className="text-text-secondary text-xs">سود/زیان</div>
-                  <div className={`font-bold ${(editingTrade.pnl || 0) >= 0 ? 'text-profit' : 'text-loss'}`}>
+                  <div className="text-[var(--text-secondary)] text-xs">سود/زیان</div>
+                  <div className={`font-bold ${(editingTrade.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                     {editingTrade.pnl?.toFixed(2)} $
                   </div>
                 </div>
@@ -529,22 +661,22 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             </div>
 
             <div className="mb-5">
-              <label className="text-text-secondary text-sm block mb-2">📝 یادداشت</label>
+              <label className="text-[var(--text-secondary)] text-sm block mb-2">📝 یادداشت</label>
               <textarea
                 value={editNote}
                 onChange={(e) => setEditNote(e.target.value)}
                 rows={4}
-                className="w-full bg-card border border-card-border rounded-xl px-4 py-3 text-text-primary resize-none"
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] resize-none"
               />
             </div>
 
             <div className="mb-5">
               <div className="flex justify-between items-center mb-2">
-                <label className="text-text-secondary text-sm">📷 اسکرین‌شات‌ها</label>
+                <label className="text-[var(--text-secondary)] text-sm">📷 اسکرین‌شات‌ها</label>
                 <button
                   onClick={() => screenshotInputRef.current?.click()}
                   disabled={uploadingScreenshot}
-                  className="bg-accent hover:bg-accent/80 text-white px-3 py-1 rounded-lg text-xs"
+                  className="bg-[var(--accent)] hover:bg-accent/80 text-white px-3 py-1 rounded-lg text-xs"
                 >
                   {uploadingScreenshot ? '⏳...' : '➕ آپلود'}
                 </button>
@@ -558,7 +690,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               {editScreenshots.length === 0 ? (
-                <div className="text-text-secondary text-sm text-center py-4 bg-card border border-card-border rounded-xl">
+                <div className="text-[var(--text-secondary)] text-sm text-center py-4 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl">
                   اسکرین‌شاتی آپلود نشده
                 </div>
               ) : (
@@ -568,7 +700,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                       <img
   src={`http://localhost:8000/${s.file_path}`}
   alt="اسکرین‌شات"
-  className="w-full h-24 object-cover rounded-lg border border-card-border cursor-pointer hover:opacity-80 transition-opacity"
+  className="w-full h-24 object-cover rounded-lg border border-[var(--border-subtle)] cursor-pointer hover:opacity-80 transition-opacity"
   onClick={() => setLightboxImage(`http://localhost:8000/${s.file_path}`)}
 />
                       <button
@@ -586,21 +718,21 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             <div className="flex gap-3">
               <button
                 onClick={handleSaveNote}
-                className="flex-1 bg-profit hover:bg-profit/80 text-white py-3 rounded-xl font-bold"
+                className="flex-1 bg-[var(--profit)] hover:bg-profit/80 text-white py-3 rounded-xl font-bold"
               >
                 💾 ذخیره
               </button>
               {editingTrade.source === 'manual' && (
                 <button
                   onClick={() => handleDeleteTrade(editingTrade)}
-                  className="bg-loss hover:bg-loss/80 text-white px-6 py-3 rounded-xl"
+                  className="bg-[var(--loss)] hover:bg-loss/80 text-white px-6 py-3 rounded-xl"
                 >
                   🗑️ حذف
                 </button>
               )}
               <button
                 onClick={() => setShowEditModal(false)}
-                className="bg-card-border hover:bg-card-border/80 text-text-secondary px-6 py-3 rounded-xl"
+                className="bg-[var(--border-subtle)] hover:bg-card-border/80 text-[var(--text-secondary)] px-6 py-3 rounded-xl"
               >
                 ✕ لغو
               </button>
@@ -614,17 +746,17 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         <div className="fixed inset-0 bg-black/70 backdrop-blur-sm flex items-center justify-center z-50 p-4">
           <div className="glass-card max-w-3xl w-full max-h-[90vh] overflow-y-auto p-6">
             <div className="flex justify-between items-center mb-5">
-              <h3 className="text-xl font-bold text-text-primary">➕ معامله‌ی دستی جدید</h3>
-              <button onClick={() => setShowManualModal(false)} className="text-text-secondary">✕</button>
+              <h3 className="text-xl font-bold text-[var(--text-primary)]">➕ معامله‌ی دستی جدید</h3>
+              <button onClick={() => setShowManualModal(false)} className="text-[var(--text-secondary)]">✕</button>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
               <div>
-                <label className="text-text-secondary text-xs block mb-1">نماد *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">نماد *</label>
                 <select
                   value={manualTrade.symbol}
                   onChange={(e) => setManualTrade({ ...manualTrade, symbol: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="XAUUSD">🥇 طلا</option>
                   <option value="DJIUSD">📊 داوجونز</option>
@@ -632,11 +764,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">جهت *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">جهت *</label>
                 <select
                   value={manualTrade.direction}
                   onChange={(e) => setManualTrade({ ...manualTrade, direction: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="buy">خرید</option>
                   <option value="sell">فروش</option>
@@ -644,77 +776,77 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">حجم *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حجم *</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.size}
                   onChange={(e) => setManualTrade({ ...manualTrade, size: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">قیمت باز شدن *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">قیمت باز شدن *</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.open_price}
                   onChange={(e) => setManualTrade({ ...manualTrade, open_price: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">قیمت بسته شدن</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">قیمت بسته شدن</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.close_price}
                   onChange={(e) => setManualTrade({ ...manualTrade, close_price: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">سود/زیان ($)</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">سود/زیان ($)</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.pnl}
                   onChange={(e) => setManualTrade({ ...manualTrade, pnl: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">حد ضرر</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد ضرر</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.sl}
                   onChange={(e) => setManualTrade({ ...manualTrade, sl: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">حد سود</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد سود</label>
                 <input
                   type="number"
                   step="0.01"
                   value={manualTrade.tp}
                   onChange={(e) => setManualTrade({ ...manualTrade, tp: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">نوع تست</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">نوع تست</label>
                 <select
                   value={manualTrade.test_type}
                   onChange={(e) => setManualTrade({ ...manualTrade, test_type: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="backtest">🧪 بک‌تست</option>
                   <option value="forward">🔭 فوروارد</option>
@@ -725,33 +857,33 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-text-secondary text-xs block mb-1">زمان باز شدن *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">زمان باز شدن *</label>
                 <input
                   type="datetime-local"
                   value={manualTrade.open_time}
                   onChange={(e) => setManualTrade({ ...manualTrade, open_time: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">زمان بسته شدن</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">زمان بسته شدن</label>
                 <input
                   type="datetime-local"
                   value={manualTrade.close_time}
                   onChange={(e) => setManualTrade({ ...manualTrade, close_time: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
             </div>
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
-                <label className="text-text-secondary text-xs block mb-1">نسخه *</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">نسخه *</label>
                 <select
                   value={manualTrade.version_id}
                   onChange={(e) => setManualTrade({ ...manualTrade, version_id: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="">انتخاب نسخه</option>
                   {versions.map((v) => (
@@ -763,68 +895,45 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-text-secondary text-xs block mb-1">نوع حساب</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب مالی</label>
                 <select
-                  value={manualTrade.account_type}
-                  onChange={(e) => {
-                    const nextAccountType = e.target.value;
-                    setManualTrade({
-                      ...manualTrade,
-                      account_type: nextAccountType,
-                      personal_account_id: nextAccountType === 'personal' ? manualTrade.personal_account_id : '',
-                      prop_stage_id: nextAccountType === 'prop' ? manualTrade.prop_stage_id : '',
-                    });
-                  }}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
-                  disabled={manualTrade.test_type !== 'real'}
+                  value={manualTrade.finance_account_id}
+                  onChange={(e) => setManualTrade({ ...manualTrade, finance_account_id: e.target.value })}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
-                  <option value="personal">حساب شخصی</option>
-                  <option value="prop">پراپ</option>
+                  <option value="">— بدون حساب مالی —</option>
+                  {financeAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.name} ({a.type}{a.broker_name ? ` / ${a.broker_name}` : ''})
+                    </option>
+                  ))}
                 </select>
               </div>
             </div>
 
             {manualTrade.test_type === 'real' && (
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
-                <div>
-                  <label className="text-text-secondary text-xs block mb-1">حساب شخصی</label>
-                  <select
-                    value={manualTrade.personal_account_id}
-                    onChange={(e) => setManualTrade({ ...manualTrade, personal_account_id: e.target.value, prop_stage_id: '' })}
-                    className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
-                    disabled={manualTrade.account_type !== 'personal'}
-                  >
-                    <option value="">انتخاب حساب شخصی</option>
-                    {personalAccounts.map((acc) => (
-                      <option key={acc.id} value={acc.id}>{acc.name} ({acc.broker_name})</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="text-text-secondary text-xs block mb-1">مرحله‌ی پراپ</label>
-                  <select
-                    value={manualTrade.prop_stage_id}
-                    onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value, personal_account_id: '' })}
-                    className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
-                    disabled={manualTrade.account_type !== 'prop'}
-                  >
-                    <option value="">انتخاب مرحله‌ی پراپ</option>
-                    {propStages.map((s) => (
-                      <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="mb-3">
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">مرحله‌ی پراپ *</label>
+                <select
+                  value={manualTrade.prop_stage_id}
+                  onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value })}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
+                >
+                  <option value="">انتخاب مرحله‌ی پراپ</option>
+                  {propStages.map((s) => (
+                    <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
+                  ))}
+                </select>
               </div>
             )}
 
             {manualTrade.test_type !== 'real' && (
               <div className="mb-3">
-                <label className="text-text-secondary text-xs block mb-1">مرحله‌ی پراپ</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">مرحله‌ی پراپ</label>
                 <select
                   value={manualTrade.prop_stage_id}
                   onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value })}
-                  className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary"
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="">— بدون پراپ —</option>
                   {propStages.map((s) => (
@@ -835,25 +944,25 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             )}
 
             <div className="mb-5">
-              <label className="text-text-secondary text-xs block mb-1">یادداشت</label>
+              <label className="text-[var(--text-secondary)] text-xs block mb-1">یادداشت</label>
               <textarea
                 value={manualTrade.note}
                 onChange={(e) => setManualTrade({ ...manualTrade, note: e.target.value })}
                 rows={2}
-                className="w-full bg-card border border-card-border rounded-xl px-3 py-2 text-text-primary resize-none"
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] resize-none"
               />
             </div>
 
             <div className="flex gap-3">
               <button
                 onClick={handleCreateManualTrade}
-                className="flex-1 bg-profit hover:bg-profit/80 text-white py-3 rounded-xl font-bold"
+                className="flex-1 bg-[var(--profit)] hover:bg-profit/80 text-white py-3 rounded-xl font-bold"
               >
                 💾 ثبت معامله
               </button>
               <button
                 onClick={() => setShowManualModal(false)}
-                className="flex-1 bg-card-border hover:bg-card-border/80 text-text-secondary py-3 rounded-xl"
+                className="flex-1 bg-[var(--border-subtle)] hover:bg-card-border/80 text-[var(--text-secondary)] py-3 rounded-xl"
               >
                 ✕ لغو
               </button>
@@ -887,23 +996,23 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     <div className="glass-card max-w-4xl w-full max-h-[90vh] overflow-y-auto p-6">
       <div className="flex justify-between items-center mb-5">
         <div>
-          <h3 className="text-xl font-bold text-text-primary">
+          <h3 className="text-xl font-bold text-[var(--text-primary)]">
             📷 اسکرین‌شات‌های معامله #{galleryTrade.id}
           </h3>
-          <div className="text-text-secondary text-sm mt-1">
+          <div className="text-[var(--text-secondary)] text-sm mt-1">
             {galleryTrade.symbol} • {galleryTrade.direction === 'buy' ? 'خرید' : 'فروش'} • {galleryTrade.size} لات
           </div>
         </div>
         <button
           onClick={() => setShowGalleryModal(false)}
-          className="text-text-secondary hover:text-text-primary text-xl"
+          className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-xl"
         >
           ✕
         </button>
       </div>
 
       {galleryScreenshots.length === 0 ? (
-        <div className="text-text-secondary text-center py-8">
+        <div className="text-[var(--text-secondary)] text-center py-8">
           اسکرین‌شاتی وجود ندارد
         </div>
       ) : (
@@ -913,11 +1022,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <img
                 src={`http://localhost:8000/${s.file_path.replace(/\\/g, '/')}`}
                 alt="اسکرین‌شات"
-                className="w-full rounded-lg border border-card-border cursor-pointer hover:opacity-90 transition-all"
+                className="w-full rounded-lg border border-[var(--border-subtle)] cursor-pointer hover:opacity-90 transition-all"
                 onClick={() => setLightboxImage(`http://localhost:8000/${s.file_path.replace(/\\/g, '/')}`)}
               />
               {s.description && (
-                <div className="text-text-secondary text-xs mt-1 text-center">
+                <div className="text-[var(--text-secondary)] text-xs mt-1 text-center">
                   {s.description}
                 </div>
               )}

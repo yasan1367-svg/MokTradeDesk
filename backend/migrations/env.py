@@ -30,16 +30,21 @@ from app.models.prop import (
     PropAlert,
 )
 
-# Personal Models
+# Personal Models (Journal)
 from app.models.personal import (
-    PersonalAccount,
-    LedgerTransaction,
     JournalReview,
     Screenshot,
 )
 
 # Settings Models
 from app.models.settings import UserSettings
+
+# Finance Models
+from app.models.finance import (
+    Account,
+    Category,
+    Transaction,
+)
 
 # ═════════════════════════════════════════════
 # Alembic Config

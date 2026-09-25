@@ -31,7 +31,7 @@ export default function EquityCurveChart({ trades, initialBalance = 0, height = 
 
   if (data.length < 2) {
     return (
-      <div className="text-text-secondary text-center py-8 text-sm">
+      <div className="text-[var(--text-secondary)] text-center py-8 text-sm">
         داده‌ای برای نمایش منحنی سرمایه وجود ندارد
       </div>
     );
@@ -46,17 +46,17 @@ export default function EquityCurveChart({ trades, initialBalance = 0, height = 
             <stop offset="95%" stopColor="#00D4AA" stopOpacity={0} />
           </linearGradient>
         </defs>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3A" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
         <XAxis
   dataKey="index"
-  stroke="#6B7A94"
+  stroke="var(--text-secondary)"
   style={{ fontSize: '11px', fontFamily: 'Vazirmatn' }}
-  tick={{ fill: '#6B7A94' }}
+  tick={{ fill: 'var(--text-secondary)' }}
 />
 <YAxis
-  stroke="#6B7A94"
+  stroke="var(--text-secondary)"
   style={{ fontSize: '11px', fontFamily: 'Vazirmatn' }}
-  tick={{ fill: '#6B7A94' }}
+  tick={{ fill: 'var(--text-secondary)' }}
 />
         <Tooltip
           contentStyle={{

@@ -6,3 +6,8 @@ python-multipart
 openpyxl
 beautifulsoup4
 pydantic-settings
+
+# Testing (فاز ۱۲)
+pytest
+pytest-cov
+httpx

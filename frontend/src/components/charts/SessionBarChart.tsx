@@ -21,7 +21,7 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
 
   if (chartData.length === 0) {
     return (
-      <div className="text-text-secondary text-center py-8 text-sm">
+      <div className="text-[var(--text-secondary)] text-center py-8 text-sm">
         داده‌ای برای نمایش وجود ندارد
       </div>
     );
@@ -32,9 +32,9 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#2A2A3A" />
-        <XAxis dataKey="name" stroke="#8888A0" style={{ fontSize: '11px' }} tick={{ fill: '#8888A0' }} />
-        <YAxis stroke="#8888A0" style={{ fontSize: '10px' }} tick={{ fill: '#8888A0' }} />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+        <XAxis dataKey="name" stroke="var(--text-muted)" style={{ fontSize: '11px' }} tick={{ fill: 'var(--text-muted)' }} />
+        <YAxis stroke="var(--text-muted)" style={{ fontSize: '10px' }} tick={{ fill: 'var(--text-muted)' }} />
         <Tooltip
           contentStyle={{
             backgroundColor: '#14141E',

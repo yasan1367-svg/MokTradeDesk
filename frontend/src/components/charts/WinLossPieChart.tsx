@@ -14,7 +14,7 @@ export default function WinLossPieChart({ wins, losses, height = 200 }: WinLossP
 
   if (wins === 0 && losses === 0) {
     return (
-      <div className="text-text-secondary text-center py-8 text-sm">
+      <div className="text-[var(--text-secondary)] text-center py-8 text-sm">
         داده‌ای برای نمایش وجود ندارد
       </div>
     );

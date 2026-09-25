@@ -62,7 +62,7 @@ export default function PersianDateInput({
   return (
     <div className={className}>
       {label && (
-        <label className="text-text-secondary text-xs block mb-1">{label}</label>
+        <label className="text-[var(--text-secondary)] text-xs block mb-1">{label}</label>
       )}
       <input
         type="text"
@@ -70,7 +70,7 @@ export default function PersianDateInput({
         onChange={(e) => handleChange(e.target.value)}
         placeholder={placeholder}
         dir="ltr"
-        className="w-full bg-card border border-card-border rounded-xl px-4 py-2 text-text-primary text-center focus:border-accent focus:outline-none font-mono"
+        className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-2 text-[var(--text-primary)] text-center focus:border-[var(--accent)] focus:outline-none font-mono"
       />
     </div>
   );

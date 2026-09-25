@@ -1,5 +1,5 @@
 # ═════════════════════════════════════════════
-# Python
+# Python / Backend
 # ═════════════════════════════════════════════
 __pycache__/
 *.py[cod]
@@ -31,6 +31,14 @@ env.bak/
 venv.bak/
 .venv/
 
+# Testing
+.pytest_cache/
+.coverage
+htmlcov/
+.tox/
+.mypy_cache/
+.ruff_cache/
+
 # ═════════════════════════════════════════════
 # Database
 # ═════════════════════════════════════════════
@@ -38,6 +46,9 @@ venv.bak/
 *.sqlite
 *.sqlite3
 trading_desk.db
+trading_desk.db.backup*
+*.db.backup*
+*.db.bak*
 
 # ═════════════════════════════════════════════
 # Node.js / Frontend
@@ -49,11 +60,21 @@ dist-ssr/
 .vite/
 .cache/
 .parcel-cache/
-
-# Frontend build
 frontend/dist/
 frontend/build/
 frontend/node_modules/
+
+# ═════════════════════════════════════════════
+# Backup Files (فازهای توسعه)
+# ═════════════════════════════════════════════
+*.bak
+*.pre*
+*.pre61
+*.pre7
+*.pre71
+*.pre8
+*.backup
+backups/
 
 # ═════════════════════════════════════════════
 # IDE / Editor
@@ -86,6 +107,7 @@ desktop.ini
 .env.local
 .env.*.local
 *.env
+backend/.env
 
 # ═════════════════════════════════════════════
 # Logs
@@ -97,31 +119,15 @@ yarn-error.log*
 pnpm-debug.log*
 logs/
 *.log.*
+temp_build.log
+temp_build_err.log
 
 # ═════════════════════════════════════════════
-# Attachments / Screenshots
+# Attachments / Screenshots / Storage
 # ═════════════════════════════════════════════
+backend/storage/screenshots/
+frontend/storage/
 storage/
-attachments/
-screenshots/
-uploads/
-
-# ═════════════════════════════════════════════
-# Backup files
-# ═════════════════════════════════════════════
-*.bak
-*.backup
-backups/
-
-# ═════════════════════════════════════════════
-# Testing
-# ═════════════════════════════════════════════
-.pytest_cache/
-.coverage
-htmlcov/
-.tox/
-.mypy_cache/
-.ruff_cache/
 
 # ═════════════════════════════════════════════
 # Misc
@@ -130,6 +136,5 @@ htmlcov/
 *.seed
 *.pid.lock
 .cache
-# Database backup with timestamp
-*.db.bak*
-*.db.backup*
+coverage/
+*.tmp

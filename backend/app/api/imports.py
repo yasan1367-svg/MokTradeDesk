@@ -17,7 +17,6 @@ async def import_soft4x(
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
-    personal_account_id: Optional[int] = Form(None),
     symbol: Optional[str] = Form("XAUUSD"),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
@@ -28,7 +27,6 @@ async def import_soft4x(
     valid, error = TradeValidator.validate_classification(
         test_type or "backtest",
         version_id,
-        personal_account_id,
         prop_stage_id,
     )
     if not valid:
@@ -53,22 +51,15 @@ async def import_soft4x(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
             )
             target_label = "استراتژی"
         elif prop_stage_id:
             result = importer.save_trades(
                 trades,
+                version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
             )
             target_label = "پراپ"
-        elif personal_account_id:
-            result = importer.save_trades(
-                trades,
-                personal_account_id=personal_account_id,
-            )
-            target_label = "حساب شخصی"
 
         if result:
             saved_count = len(result["saved"])
@@ -80,7 +71,7 @@ async def import_soft4x(
         else:
             saved_count = 0
             duplicates_count = 0
-            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id، prop_stage_id یا personal_account_id را وارد کنید."
+            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id یا prop_stage_id را وارد کنید."
 
         return {
             "message": message,
@@ -105,7 +96,6 @@ async def import_mt4(
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
-    personal_account_id: Optional[int] = Form(None),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
 ):
@@ -115,7 +105,6 @@ async def import_mt4(
     valid, error = TradeValidator.validate_classification(
         test_type or "backtest",
         version_id,
-        personal_account_id,
         prop_stage_id,
     )
     if not valid:
@@ -152,22 +141,15 @@ async def import_mt4(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
             )
             target_label = "استراتژی"
         elif prop_stage_id:
             result = importer.save_trades(
                 trades,
+                version_id=version_id,
                 prop_stage_id=prop_stage_id,
-                personal_account_id=personal_account_id,
             )
             target_label = "پراپ"
-        elif personal_account_id:
-            result = importer.save_trades(
-                trades,
-                personal_account_id=personal_account_id,
-            )
-            target_label = "حساب شخصی"
 
         if result:
             saved_count = len(result["saved"])
@@ -179,7 +161,7 @@ async def import_mt4(
         else:
             saved_count = 0
             duplicates_count = 0
-            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id، prop_stage_id یا personal_account_id را وارد کنید."
+            message = f"{len(trades)} معامله شناسایی شد. برای ذخیره، version_id یا prop_stage_id را وارد کنید."
 
         return {
             "message": message,

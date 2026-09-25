@@ -3,10 +3,53 @@ interface StatCardProps {
   label: string;
   value: string | number;
   change?: string;
-  changeType?: 'up' | 'down';
+  changeType?: 'up' | 'down' | 'neutral';
   color?: 'profit' | 'loss' | 'accent' | 'purple' | 'warning';
   sparkData?: number[];
 }
+
+const COLOR_CONFIG = {
+  profit: {
+    value: 'text-[#13AE81]',
+    icon: 'bg-[#E5F8F1] shadow-[0_4px_12px_rgba(19,174,129,0.15)]',
+    bar: 'bg-gradient-to-b from-[#13AE81] to-[#4DD9A9]',
+    top: 'from-[#13AE81] to-[#4DD9A9]',
+    glow: 'rgba(19,174,129,0.08)',
+    hoverShadow: '0 20px 40px rgba(19,174,129,0.15), 0 8px 16px rgba(25,50,85,0.08)',
+  },
+  loss: {
+    value: 'text-[#E45D72]',
+    icon: 'bg-[#FFEDF0] shadow-[0_4px_12px_rgba(228,93,114,0.15)]',
+    bar: 'bg-gradient-to-b from-[#E45D72] to-[#F0A6B2]',
+    top: 'from-[#E45D72] to-[#F0A6B2]',
+    glow: 'rgba(228,93,114,0.08)',
+    hoverShadow: '0 20px 40px rgba(228,93,114,0.15), 0 8px 16px rgba(25,50,85,0.08)',
+  },
+  accent: {
+    value: 'text-[#1A2B47]',
+    icon: 'bg-[#EDF3FF] shadow-[0_4px_12px_rgba(63,124,255,0.12)]',
+    bar: 'bg-gradient-to-b from-[#3F7CFF] to-[#5B8DEF]',
+    top: 'from-[#3F7CFF] to-[#7959D6]',
+    glow: 'rgba(63,124,255,0.08)',
+    hoverShadow: '0 20px 40px rgba(63,124,255,0.15), 0 8px 16px rgba(25,50,85,0.08)',
+  },
+  purple: {
+    value: 'text-[#7959D6]',
+    icon: 'bg-[#F1ECFF] shadow-[0_4px_12px_rgba(121,89,214,0.15)]',
+    bar: 'bg-gradient-to-b from-[#7959D6] to-[#A78BFA]',
+    top: 'from-[#7959D6] to-[#A78BFA]',
+    glow: 'rgba(121,89,214,0.08)',
+    hoverShadow: '0 20px 40px rgba(121,89,214,0.15), 0 8px 16px rgba(25,50,85,0.08)',
+  },
+  warning: {
+    value: 'text-[#D99B25]',
+    icon: 'bg-[#FFF5DB] shadow-[0_4px_12px_rgba(217,155,37,0.15)]',
+    bar: 'bg-gradient-to-b from-[#D99B25] to-[#F0BE5C]',
+    top: 'from-[#D99B25] to-[#F0BE5C]',
+    glow: 'rgba(217,155,37,0.08)',
+    hoverShadow: '0 20px 40px rgba(217,155,37,0.15), 0 8px 16px rgba(25,50,85,0.08)',
+  },
+};
 
 export default function StatCard({
   icon,
@@ -17,50 +60,16 @@ export default function StatCard({
   color = 'accent',
   sparkData = [30, 55, 40, 70, 60, 85, 75, 95],
 }: StatCardProps) {
-  const colorConfig = {
-    profit: {
-      value: 'text-[#13AE81]',
-      icon: 'bg-[#E5F8F1] shadow-[0_4px_12px_rgba(19,174,129,0.15)]',
-      bar: 'bg-gradient-to-b from-[#13AE81] to-[#4DD9A9]',
-      top: 'from-[#13AE81] to-[#4DD9A9]',
-      glow: 'rgba(19,174,129,0.08)',
-      hoverShadow: '0 20px 40px rgba(19,174,129,0.15), 0 8px 16px rgba(25,50,85,0.08)',
-    },
-    loss: {
-      value: 'text-[#E45D72]',
-      icon: 'bg-[#FFEDF0] shadow-[0_4px_12px_rgba(228,93,114,0.15)]',
-      bar: 'bg-gradient-to-b from-[#E45D72] to-[#F0A6B2]',
-      top: 'from-[#E45D72] to-[#F0A6B2]',
-      glow: 'rgba(228,93,114,0.08)',
-      hoverShadow: '0 20px 40px rgba(228,93,114,0.15), 0 8px 16px rgba(25,50,85,0.08)',
-    },
-    accent: {
-      value: 'text-[#1A2B47]',
-      icon: 'bg-[#EDF3FF] shadow-[0_4px_12px_rgba(63,124,255,0.12)]',
-      bar: 'bg-gradient-to-b from-[#3F7CFF] to-[#5B8DEF]',
-      top: 'from-[#3F7CFF] to-[#7959D6]',
-      glow: 'rgba(63,124,255,0.08)',
-      hoverShadow: '0 20px 40px rgba(63,124,255,0.15), 0 8px 16px rgba(25,50,85,0.08)',
-    },
-    purple: {
-      value: 'text-[#7959D6]',
-      icon: 'bg-[#F1ECFF] shadow-[0_4px_12px_rgba(121,89,214,0.15)]',
-      bar: 'bg-gradient-to-b from-[#7959D6] to-[#A78BFA]',
-      top: 'from-[#7959D6] to-[#A78BFA]',
-      glow: 'rgba(121,89,214,0.08)',
-      hoverShadow: '0 20px 40px rgba(121,89,214,0.15), 0 8px 16px rgba(25,50,85,0.08)',
-    },
-    warning: {
-      value: 'text-[#D99B25]',
-      icon: 'bg-[#FFF5DB] shadow-[0_4px_12px_rgba(217,155,37,0.15)]',
-      bar: 'bg-gradient-to-b from-[#D99B25] to-[#F0BE5C]',
-      top: 'from-[#D99B25] to-[#F0BE5C]',
-      glow: 'rgba(217,155,37,0.08)',
-      hoverShadow: '0 20px 40px rgba(217,155,37,0.15), 0 8px 16px rgba(25,50,85,0.08)',
-    },
-  };
+  const cfg = COLOR_CONFIG[color];
 
-  const cfg = colorConfig[color];
+  const changeBadgeClass =
+    changeType === 'up'
+      ? 'bg-[#E5F8F1] text-[#13AE81]'
+      : changeType === 'down'
+        ? 'bg-[#FFEDF0] text-[#E45D72]'
+        : 'bg-[#F1F4F9] text-[#6B7A94]';
+
+  const changeArrow = changeType === 'up' ? '▲' : changeType === 'down' ? '▼' : '–';
 
   return (
     <div
@@ -80,12 +89,8 @@ export default function StatCard({
           {icon}
         </div>
         {change && (
-          <div className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${
-            changeType === 'up'
-              ? 'bg-[#E5F8F1] text-[#13AE81]'
-              : 'bg-[#FFEDF0] text-[#E45D72]'
-          }`}>
-            {changeType === 'up' ? '▲' : '▼'} {change}
+          <div className={`text-[11px] font-bold px-2.5 py-1 rounded-full ${changeBadgeClass}`}>
+            {changeArrow} {change}
           </div>
         )}
       </div>

@@ -25,24 +25,24 @@ export default function ComparisonBarChart({ items, metric, height = 250 }: Comp
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 20, right: 20, left: 0, bottom: 0 }}>
-        <CartesianGrid strokeDasharray="3 3" stroke="#E5EBF3" />
+        <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
         <XAxis
           dataKey="name"
-          stroke="#6B7A94"
+          stroke="var(--text-secondary)"
           style={{ fontSize: '11px', fontFamily: 'Vazirmatn', fontWeight: 'bold' }}
-          tick={{ fill: '#1A2B47' }}
+          tick={{ fill: 'var(--text-primary)' }}
         />
         <YAxis
-          stroke="#6B7A94"
+          stroke="var(--text-secondary)"
           style={{ fontSize: '11px', fontFamily: 'Vazirmatn' }}
-          tick={{ fill: '#6B7A94' }}
+          tick={{ fill: 'var(--text-secondary)' }}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: '#FFFFFF',
-            border: '2px solid #E5EBF3',
+            backgroundColor: 'var(--bg-card)',
+            border: '2px solid var(--border-subtle)',
             borderRadius: '12px',
-            color: '#1A2B47',
+            color: 'var(--text-primary)',
             fontSize: '12px',
             fontWeight: 'bold',
             boxShadow: '0 6px 16px rgba(25,50,85,0.08)',

@@ -1,6 +1,6 @@
 from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey
 from sqlalchemy.orm import relationship
-from datetime import datetime
+from datetime import datetime, timezone
 import enum
 
 from ..core.database import Base
@@ -43,7 +43,7 @@ class Strategy(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     versions = relationship(
         "StrategyVersion",
@@ -63,7 +63,7 @@ class StrategyVersion(Base):
     # زیرساخت Fork: اگه این نسخه از روی نسخه‌ی دیگه‌ای ساخته شده، اینجا لینک می‌شه
     # (خودِ قابلیت Fork - دکمه/endpoint - بعداً و جدا پیاده می‌شه، این فقط ستونشه)
     forked_from_version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     strategy = relationship("Strategy", back_populates="versions")
     forked_from = relationship("StrategyVersion", remote_side=[id])
@@ -77,6 +77,11 @@ class StrategyVersion(Base):
         back_populates="version",
         cascade="all, delete-orphan"
     )
+    analysis_runs = relationship(
+        "AnalysisRun",
+        back_populates="version",
+        cascade="all, delete-orphan"
+    )
 
 
 class Trade(Base):
@@ -86,12 +91,12 @@ class Trade(Base):
 
     version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
-    personal_account_id = Column(Integer, ForeignKey("personal_accounts.id"), nullable=True)
+    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
     symbol = Column(String, nullable=False)
     direction = Column(String, nullable=False)
-    open_time = Column(DateTime, nullable=False)
-    close_time = Column(DateTime, nullable=True)
+    open_time = Column(DateTime(timezone=True), nullable=False)
+    close_time = Column(DateTime(timezone=True), nullable=True)
     open_price = Column(Float, nullable=False)
     close_price = Column(Float, nullable=True)
     size = Column(Float, nullable=False)
@@ -108,13 +113,13 @@ class Trade(Base):
     note = Column(Text, nullable=True)
     screenshot_path = Column(String, nullable=True)
     raw_data = Column(JSON, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
         # ← Duplicate Detection
     trade_hash = Column(String(32), nullable=True, index=True)
 
     version = relationship("StrategyVersion", back_populates="trades")
     prop_stage = relationship("PropStage", back_populates="trades")
-    personal_account = relationship("PersonalAccount", back_populates="trades")
+    finance_account = relationship("Account")
     reviews = relationship(
         "JournalReview",
         back_populates="trade",
@@ -136,7 +141,7 @@ class CustomTimeInterval(Base):
     priority = Column(Integer, nullable=True)
     description = Column(Text, nullable=True)
     is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class TimePoint(Base):
@@ -148,7 +153,7 @@ class TimePoint(Base):
     minute = Column(Integer, nullable=False)
     label = Column(String, nullable=True)
     is_active = Column(Integer, default=1)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
 
 class AnalysisResult(Base):
@@ -180,9 +185,38 @@ class AnalysisResult(Base):
     custom_time_analysis = Column(JSON, nullable=True)
     time_point_analysis = Column(JSON, nullable=True)
 
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     version = relationship("StrategyVersion", back_populates="analysis_results")
+
+
+class AnalysisRun(Base):
+    __tablename__ = "analysis_runs"
+
+    id = Column(Integer, primary_key=True, index=True)
+    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=False)
+
+    # متریک‌های اصلی (همان‌هایی که در Dashboard و مقایسه استفاده می‌شوند)
+    total_trades = Column(Integer, default=0)
+    win_rate = Column(Float, default=0.0)
+    profit_factor = Column(Float, default=0.0)
+    net_pnl = Column(Float, default=0.0)
+    net_r = Column(Float, default=0.0)
+    max_dd = Column(Float, default=0.0)
+    expectancy = Column(Float, default=0.0)
+    expectancy_r = Column(Float, nullable=True)
+    avg_win = Column(Float, default=0.0)
+    avg_loss = Column(Float, default=0.0)
+    largest_win = Column(Float, default=0.0)
+    largest_loss = Column(Float, default=0.0)
+    max_consecutive_losses = Column(Integer, default=0)
+
+    # کلیه متریک‌های کامل به صورت JSON snapshot
+    full_metrics = Column(JSON, nullable=True)
+
+    created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
+
+    version = relationship("StrategyVersion", back_populates="analysis_runs")
 
 
 class SymbolMapping(Base):
@@ -192,4 +226,4 @@ class SymbolMapping(Base):
     original_symbol = Column(String, nullable=False, unique=True)
     canonical_symbol = Column(String, nullable=False)
     description = Column(Text, nullable=True)
-    created_at = Column(DateTime, default=datetime.utcnow)
+    created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))

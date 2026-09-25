@@ -3,91 +3,118 @@ import StatCard from '../components/ui/StatCard';
 import { Card, CardHeader } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import ProgressBar from '../components/ui/ProgressBar';
-import {
-  getAllVersions,
-  getVersionAnalysis,
-  getPropAccounts,
-  getActivePropStages,
-  checkPassReady,
-} from '../api/client';
+import { getDashboardData, exportDashboardPdf, getPropAlerts, markAlertRead } from '../api/client';
+import { DashboardSkeleton } from '../components/Skeleton';
 
 export default function DashboardPage() {
-  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(null);
-  const [analysis, setAnalysis] = useState<any>(null);
-  const [propAccounts, setPropAccounts] = useState<any[]>([]);
-  const [activeStages, setActiveStages] = useState<any[]>([]);
-const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
+  const [data, setData] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
+const [alerts, setAlerts] = useState<any[]>([]);
   useEffect(() => {
-  getAllVersions().then((res) => {
-    if (res.data.length > 0) setSelectedVersionId(res.data[0].id);
-  });
+    getDashboardData()
+      .then((res) => {
+        setData(res.data);
+        setLoading(false);
+      })
+      .catch((err: any) => {
+        setError(err.response?.data?.detail || 'خطا در بارگذاری داشبورد');
+        setLoading(false);
+      });
+    // بارگذاری هشدارها
+    getPropAlerts({ unread_only: true }).then((r) => setAlerts(r.data)).catch(() => {});
+  }, []);
 
-  getPropAccounts().then((res) => setPropAccounts(res.data));
+  if (loading) {
+    return <DashboardSkeleton />;
+  }
 
-  getActivePropStages().then((res) => {
-    const active = res.data.filter((s: any) => s.status === 'active');
-    setActiveStages(active);
-    if (active.length > 0) {
-      checkPassReady(active[0].id)
-        .then((progressRes) => setCurrentStageProgress(progressRes.data))
-        .catch(() => null);
-    }
-  });
-}, []);
+  if (error) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-[var(--loss)] text-lg">❌ {error}</div>
+      </div>
+    );
+  }
 
-  useEffect(() => {
-    if (!selectedVersionId) return;
-    getVersionAnalysis(selectedVersionId)
-      .then((res) => setAnalysis(res.data))
-      .catch(() => setAnalysis(null));
-  }, [selectedVersionId]);
+  if (!data) return null;
+
+  const { summary, today, sparkline, periods, prop_progress } = data;
+
+  const getChangeType = (value: number): 'up' | 'down' | 'neutral' => {
+    if (value > 0) return 'up';
+    if (value < 0) return 'down';
+    return 'neutral';
+  };
 
   return (
     <div className="space-y-7">
+      {/* هدر */}
+      <div className="flex justify-between items-center">
+        <h2 className="text-[var(--text-primary)] text-2xl font-extrabold">📊 داشبورد</h2>
+        <button
+          onClick={async () => {
+            try {
+              const res = await exportDashboardPdf();
+              const blob = new Blob([res.data], { type: 'application/pdf' });
+              const url = window.URL.createObjectURL(blob);
+              const a = document.createElement('a');
+              a.href = url;
+              a.download = `dashboard_${new Date().toISOString().slice(0, 10)}.pdf`;
+              document.body.appendChild(a); a.click();
+              window.URL.revokeObjectURL(url); a.remove();
+            } catch { /* ignore */ }
+          }}
+          className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-1 transition-all"
+        >
+          📄 دانلود گزارش PDF
+        </button>
+      </div>
+
       {/* کارت‌های آماری */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         <StatCard
           icon="💰"
           label="سود خالص"
-          value={analysis ? `${analysis.net_pnl >= 0 ? '+' : ''}${analysis.net_pnl} $` : '—'}
-          change="۱۲.۴٪"
-          changeType="up"
+          value={`${summary.net_pnl >= 0 ? '+' : ''}${summary.net_pnl} $`}
+          change={periods.month.change_percent > 0 ? `+${periods.month.change_percent}٪` : `${periods.month.change_percent}٪`}
+          changeType={getChangeType(periods.month.change_percent)}
           color="profit"
-          sparkData={[30, 55, 40, 70, 60, 85, 75, 95]}
+          sparkData={sparkline.length > 0 ? sparkline : [0]}
         />
         <StatCard
           icon="📈"
           label="نرخ برد"
-          value={analysis ? `${analysis.win_rate}٪` : '—'}
-          change="۲.۱٪"
-          changeType="up"
+          value={`${summary.win_rate}٪`}
+          change="—"
+          changeType="neutral"
           color="accent"
-          sparkData={[50, 65, 55, 80, 70, 90, 85, 92]}
+          sparkData={sparkline.length > 0 ? sparkline : [0]}
         />
         <StatCard
           icon="⚠️"
           label="حداکثر ضرر"
-          value={analysis ? `-${analysis.max_dd} $` : '—'}
-          change="۰.۵٪"
-          changeType="down"
+          value={`-${summary.max_dd} $`}
+          change="—"
+          changeType="neutral"
           color="loss"
-          sparkData={[20, 35, 25, 45, 30, 50, 40, 55]}
+          sparkData={sparkline.length > 0 ? sparkline : [0]}
         />
         <StatCard
           icon="🏆"
           label="فاکتور سود"
-          value={analysis ? analysis.profit_factor : '—'}
-          change="۸.۳٪"
-          changeType="up"
+          value={summary.profit_factor}
+          change="—"
+          changeType="neutral"
           color="purple"
-          sparkData={[40, 60, 50, 75, 65, 88, 80, 95]}
+          sparkData={sparkline.length > 0 ? sparkline : [0]}
         />
       </div>
 
-      {/* Hero Card */}
+      {/* Hero Card — امروز */}
       <div
-        className="relative rounded-[28px] p-8 flex justify-between items-center flex-wrap gap-7 overflow-hidden shadow-lg border border-[#A9C1FA]"
+        className="relative rounded-[28px] p-8 flex justify-between items-center flex-wrap gap-7 overflow-hidden shadow-lg border border-[var(--border-accent)]"
         style={{ background: 'linear-gradient(135deg, #FFFFFF 0%, #F0F6FF 100%)' }}
       >
         <div
@@ -96,308 +123,179 @@ const [currentStageProgress, setCurrentStageProgress] = useState<any>(null);
         />
         <div
           className="absolute -top-24 -left-24 w-[300px] h-[300px] rounded-full pointer-events-none"
-          style={{ background: 'radial-gradient(circle, rgba(63,124,255,0.08), transparent 70%)' }}
+          style={{ background: 'radial-gradient(circle, rgba(63,124,255,0.08) 0%, transparent 70%)' }}
         />
 
         <div className="relative z-10">
-          <div className="text-[13px] text-[#6B7A94] font-medium mb-1.5">سرمایه کل</div>
-          <div className="text-[46px] font-extrabold tracking-tighter accent-gradient-text leading-none">
-            {analysis ? `${(10000 + (analysis.net_pnl || 0)).toLocaleString()} $` : '—'}
+          <div className="text-xs text-[var(--text-secondary)] font-bold mb-1">📅 وضعیت امروز</div>
+          <div
+            className={`text-4xl font-extrabold ${today.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
+          >
+            {today.pnl >= 0 ? '+' : ''}{today.pnl} $
           </div>
-        </div>
-
-        <div className="flex gap-11 flex-wrap relative z-10">
-          <div>
-            <div className="text-[13px] text-[#6B7A94] font-medium mb-1.5">سود این ماه</div>
-            <div className="text-[22px] font-extrabold text-[#13AE81]">
-              {analysis ? `${analysis.net_pnl >= 0 ? '+' : ''}${analysis.net_pnl} $` : '—'}
+          <div className="flex items-center gap-4 mt-3">
+            <div className="text-sm text-[var(--text-secondary)]">
+              <span className="font-bold">{today.trades_count}</span> معامله
             </div>
-          </div>
-          <div>
-            <div className="text-[13px] text-[#6B7A94] font-medium mb-1.5">معاملات</div>
-            <div className="text-[22px] font-extrabold">{analysis?.total_trades || 0}</div>
-          </div>
-          <div>
-            <div className="text-[13px] text-[#6B7A94] font-medium mb-1.5">R کل</div>
-            <div className="text-[22px] font-extrabold text-[#13AE81]">
-              {analysis ? `+${analysis.net_r || 0} R` : '—'}
+            <div className="text-sm text-[var(--text-secondary)]">
+              <span className="font-bold">{summary.open_trades}</span> معامله باز
+            </div>
+            <div className="text-sm text-[var(--text-secondary)]">
+              <span className="font-bold">{summary.total_trades}</span> کل معاملات
             </div>
           </div>
         </div>
 
-        <div className="flex items-end gap-1 h-[70px] min-w-[300px] flex-1 relative z-10">
-          {[30, 45, 35, 60, 55, 70, 65, 80, 75, 90, 85, 95, 88, 100].map((h, i) => (
-            <div
-              key={i}
-              className="flex-1 rounded-t opacity-75 hover:opacity-100 transition-all hover:scale-y-110"
-              style={{ height: `${h}%`, background: 'linear-gradient(180deg, #3F7CFF, #5B8DEF)' }}
-            />
-          ))}
+        <div className="relative z-10 flex gap-4 flex-wrap">
+          <div className="text-center bg-white/70 backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+            <div className="text-[11px] text-[var(--text-secondary)] font-bold">این ماه</div>
+            <div className={`text-lg font-extrabold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+              {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} $
+            </div>
+          </div>
+          <div className="text-center bg-white/70 backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+            <div className="text-[11px] text-[var(--text-secondary)] font-bold">این فصل</div>
+            <div className={`text-lg font-extrabold ${periods.quarter.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+              {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+            </div>
+          </div>
+          <div className="text-center bg-white/70 backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+            <div className="text-[11px] text-[var(--text-secondary)] font-bold">امسال</div>
+            <div className={`text-lg font-extrabold ${periods.year.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+              {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+            </div>
+          </div>
         </div>
       </div>
-
-      {/* جدول */}
-      <Card>
-        <CardHeader
-          title="📋 آخرین معاملات"
-          action={
-            <button className="text-xs px-4 py-2 rounded-[10px] bg-[#F8FAFF] text-[#6B7A94] border border-[#E5EBF3] hover:bg-[#EDF3FF] hover:text-[#3F7CFF] hover:border-[#A9C1FA] transition-all font-semibold">
-              مشاهده همه ←
-            </button>
-          }
-        />
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="bg-[#F5F7FB] text-[#6B7A94] text-[11px] uppercase tracking-wider">
-                <th className="text-right px-4 py-3.5 font-bold rounded-r-xl">#</th>
-                <th className="text-right px-4 py-3.5 font-bold">نماد</th>
-                <th className="text-right px-4 py-3.5 font-bold">جهت</th>
-                <th className="text-right px-4 py-3.5 font-bold">حجم</th>
-                <th className="text-right px-4 py-3.5 font-bold">سود/زیان</th>
-                <th className="text-right px-4 py-3.5 font-bold">R</th>
-                <th className="text-right px-4 py-3.5 font-bold">وضعیت</th>
-                <th className="text-right px-4 py-3.5 font-bold rounded-l-xl">تاریخ</th>
-              </tr>
-            </thead>
-            <tbody>
-              <tr className="border-b border-[#E5EBF3] hover:bg-[#EDF3FF] transition-colors">
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۲۴</td>
-                <td className="px-4 py-3.5 font-bold text-[#1A2B47]">XAUUSD</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">خرید</td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">0.10</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">+۱۲.۵ $</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">1.24</td>
-                <td className="px-4 py-3.5"><Badge variant="success">✅ سود</Badge></td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۴۰۵/۰۶/۲۳</td>
-              </tr>
-              <tr className="border-b border-[#E5EBF3] hover:bg-[#EDF3FF] transition-colors">
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۲۳</td>
-                <td className="px-4 py-3.5 font-bold text-[#1A2B47]">DJIUSD</td>
-                <td className="px-4 py-3.5 text-[#E45D72] font-bold">فروش</td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">0.07</td>
-                <td className="px-4 py-3.5 text-[#E45D72] font-bold">-۴.۸ $</td>
-                <td className="px-4 py-3.5 text-[#E45D72] font-bold">-0.85</td>
-                <td className="px-4 py-3.5"><Badge variant="danger">❌ ضرر</Badge></td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۴۰۵/۰۶/۲۳</td>
-              </tr>
-              <tr className="hover:bg-[#EDF3FF] transition-colors">
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۲۲</td>
-                <td className="px-4 py-3.5 font-bold text-[#1A2B47]">XAUUSD</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">خرید</td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">0.05</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">+۲۳.۰ $</td>
-                <td className="px-4 py-3.5 text-[#13AE81] font-bold">1.96</td>
-                <td className="px-4 py-3.5"><Badge variant="success">✅ سود</Badge></td>
-                <td className="px-4 py-3.5 text-[#6B7A94]">۱۴۰۵/۰۶/۲۲</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </Card>
-{/* پراپ فعال */}
-{activeStages.length > 0 && currentStageProgress && (
-  <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-    <div className="flex items-center justify-between gap-3 mb-5 pb-4 border-b border-[#E5EBF3]">
-      <div className="flex items-center gap-3">
-        <div
-          className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-          style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}
-        >
-          🏢
-        </div>
-        <div>
-          <h3 className="text-base font-extrabold text-[#1A2B47]">پراپ فعال</h3>
-          <p className="text-[12px] text-[#6B7A94] mt-0.5">{activeStages.length} مرحله‌ی فعال</p>
-        </div>
-      </div>
-    </div>
-
-    {activeStages.slice(0, 3).map((stage: any) => {
-      const isCurrentStage = stage.id === currentStageProgress.stage_id;
-      return (
-        <div
-          key={stage.id}
-          className={`mb-4 p-4 rounded-[14px] border-2 ${
-            isCurrentStage ? 'bg-[#EDF3FF] border-[#A9C1FA]' : 'bg-[#F8FAFF] border-[#E5EBF3]'
-          }`}
-        >
-          <div className="flex justify-between items-center mb-3 flex-wrap gap-2">
-            <div>
-              <div className="text-[14px] font-extrabold text-[#1A2B47]">
-                {stage.firm_name} / {stage.account_label}
-              </div>
-              <div className="text-[12px] text-[#6B7A94] mt-0.5 font-semibold">
-                {stage.stage_label}
-              </div>
-            </div>
-            {isCurrentStage && currentStageProgress && (
-              <span
-                className={`text-[11px] font-bold px-3 py-1 rounded-full ${
-                  currentStageProgress.suggested_status === 'ready_to_pass'
-                    ? 'bg-[#E5F8F1] text-[#13AE81]'
-                    : currentStageProgress.suggested_status === 'failed_daily_dd' ||
-                      currentStageProgress.suggested_status === 'failed_total_dd'
-                    ? 'bg-[#FFEDF0] text-[#E45D72]'
-                    : 'bg-[#EDF3FF] text-[#3F7CFF]'
-                }`}
-              >
-                {currentStageProgress.suggested_status === 'ready_to_pass' && '✅ آماده‌ی پاس'}
-                {currentStageProgress.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
-                {currentStageProgress.suggested_status === 'failed_daily_dd' && '❌ DD روزانه'}
-                {currentStageProgress.suggested_status === 'failed_total_dd' && '❌ DD کلی'}
-              </span>
-            )}
-          </div>
-
-          {isCurrentStage && currentStageProgress && (
-            <div className="space-y-3">
-              <div>
-                <div className="flex justify-between mb-1.5">
-                  <span className="text-[11px] text-[#6B7A94] font-bold">🎯 هدف سود</span>
-                  <span
-                    className={`text-[11px] font-extrabold ${
-                      currentStageProgress.target_reached ? 'text-[#13AE81]' : 'text-[#1A2B47]'
-                    }`}
-                  >
-                    {currentStageProgress.current_profit} $ /{' '}
-                    {currentStageProgress.profit_target} $
-                  </span>
-                </div>
-                <div className="h-2 bg-white rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      currentStageProgress.target_reached
-                        ? 'bg-gradient-to-r from-[#13AE81] to-[#4DD9A9]'
-                        : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'
-                    }`}
-                    style={{
-                      width: `${Math.min(currentStageProgress.profit_progress_percent, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between mb-1.5">
-                  <span className="text-[11px] text-[#6B7A94] font-bold">⚠️ DD روزانه</span>
-                  <span
-                    className={`text-[11px] font-extrabold ${
-                      currentStageProgress.daily_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'
-                    }`}
-                  >
-                    {currentStageProgress.max_daily_loss} $ /{' '}
-                    {currentStageProgress.max_daily_dd_limit} $
-                  </span>
-                </div>
-                <div className="h-2 bg-white rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      currentStageProgress.daily_dd_violated
-                        ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]'
-                        : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'
-                    }`}
-                    style={{
-                      width: `${Math.min(currentStageProgress.daily_dd_progress_percent, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div>
-                <div className="flex justify-between mb-1.5">
-                  <span className="text-[11px] text-[#6B7A94] font-bold">📉 DD کلی</span>
-                  <span
-                    className={`text-[11px] font-extrabold ${
-                      currentStageProgress.total_dd_violated ? 'text-[#E45D72]' : 'text-[#1A2B47]'
-                    }`}
-                  >
-                    {currentStageProgress.max_total_dd} $ /{' '}
-                    {currentStageProgress.max_total_dd_limit} $
-                  </span>
-                </div>
-                <div className="h-2 bg-white rounded-full overflow-hidden">
-                  <div
-                    className={`h-full rounded-full ${
-                      currentStageProgress.total_dd_violated
-                        ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]'
-                        : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'
-                    }`}
-                    style={{
-                      width: `${Math.min(currentStageProgress.total_dd_progress_percent, 100)}%`,
-                    }}
-                  />
-                </div>
-              </div>
-
-              <div className="flex justify-between items-center bg-white rounded-[10px] p-2.5 border border-[#E5EBF3]">
-                <span className="text-[11px] text-[#6B7A94] font-bold">📅 روزهای معاملاتی</span>
-                <span
-                  className={`text-[12px] font-extrabold ${
-                    currentStageProgress.days_met ? 'text-[#13AE81]' : 'text-[#1A2B47]'
-                  }`}
-                >
-                  {currentStageProgress.trading_days} / {currentStageProgress.min_trading_days}
-                </span>
-              </div>
-            </div>
-          )}
-        </div>
-      );
-    })}
-  </div>
-)}
-      {/* پراپ + اهداف */}
+{/* پراپ + اهداف */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        {/* وضعیت پراپ */}
         <Card>
-          <CardHeader title="🏢 وضعیت پراپ" />
+          <CardHeader title="🏢 وضعیت پراپ" subtitle={prop_progress.length > 0 ? `${prop_progress.length} مرحله فعال` : undefined} />
           <div className="space-y-6">
-            {propAccounts.length === 0 ? (
-              <div className="text-[#9AA8BF] text-center py-4 text-sm">اکانتی وجود ندارد</div>
+            {prop_progress.length === 0 ? (
+              <div className="text-[var(--text-muted)] text-center py-4 text-sm">مرحله فعالی وجود ندارد</div>
             ) : (
-              propAccounts.slice(0, 3).map((acc: any) => (
-                <div key={acc.id}>
+              prop_progress.slice(0, 3).map((stage: any) => (
+                <div key={stage.stage_id}>
                   <div className="flex justify-between mb-2">
-                    <span className="text-sm font-bold text-[#1A2B47]">{acc.account_label}</span>
-                    <Badge variant="info">{acc.firm_name}</Badge>
+                    <span className="text-sm font-bold text-[var(--text-primary)]">{stage.account_label}</span>
+                    <Badge variant={stage.ready_to_pass ? 'success' : stage.violations.length > 0 ? 'danger' : 'info'}>
+                      {stage.stage_type === 'stage_1' ? '🥇 مرحله ۱' :
+                       stage.stage_type === 'stage_2' ? '🥈 مرحله ۲' :
+                       stage.stage_type === 'funded_real' ? '💰 رییل' : stage.stage_type}
+                    </Badge>
                   </div>
-                  <ProgressBar value={65} variant="profit" />
+                  <ProgressBar
+                    value={Math.min(stage.profit_progress_percent, 100)}
+                    variant={stage.ready_to_pass ? 'profit' : stage.violations.length > 0 ? 'loss' : 'profit'}
+                  />
                   <div className="flex justify-between mt-1.5">
-                    <span className="text-[11px] text-[#9AA8BF]">{acc.stages_count} مرحله</span>
-                    <span className="text-[11px] text-[#13AE81] font-bold">۶۵٪ پیشرفت</span>
+                    <span className="text-[11px] text-[var(--text-muted)]">
+                      {stage.trading_days}/{stage.min_trading_days} روز
+                    </span>
+                    <span className={`text-[11px] font-bold ${stage.ready_to_pass ? 'text-[var(--profit)]' : 'text-[var(--accent)]'}`}>
+                      {Math.round(stage.profit_progress_percent)}٪ پیشرفت
+                    </span>
                   </div>
+                  {stage.violations.length > 0 && (
+                    <div className="mt-2 text-[11px] text-[var(--loss)] font-semibold">
+                      ⚠️ {stage.violations[0]}
+                    </div>
+                  )}
                 </div>
               ))
             )}
           </div>
         </Card>
 
+        {/* پیشرفت اهداف (ماهانه/فصلی/سالانه) */}
         <Card>
-          <CardHeader title="🎯 پیشرفت اهداف" />
+          <CardHeader title="🎯 پیشرفت اهداف" subtitle="عملکرد واقعی بر اساس PnL" />
           <div className="space-y-6">
             <div>
               <div className="flex justify-between mb-2">
-                <span className="text-xs text-[#6B7A94]">هدف ماهانه</span>
-                <span className="text-xs font-bold text-[#13AE81]">۷۸٪</span>
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
+                <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} $
+                </span>
               </div>
-              <ProgressBar value={78} variant="profit" />
+              <ProgressBar
+                value={Math.min(Math.abs(periods.month.change_percent), 100)}
+                variant={periods.month.pnl >= 0 ? 'profit' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[11px] text-[var(--text-muted)]">نسبت به ماه قبل</span>
+                <span className={`text-[11px] font-bold ${periods.month.change_percent > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.change_percent > 0 ? '+' : ''}{periods.month.change_percent}٪
+                </span>
+              </div>
             </div>
+
             <div>
               <div className="flex justify-between mb-2">
-                <span className="text-xs text-[#6B7A94]">هدف فصلی</span>
-                <span className="text-xs font-bold text-[#3F7CFF]">۹۲٪</span>
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
+                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+                </span>
               </div>
-              <ProgressBar value={92} variant="accent" />
+              <ProgressBar
+                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[11px] text-[var(--text-muted)]">از ابتدای فصل</span>
+                <span className={`text-[11px] font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+                </span>
+              </div>
             </div>
+
             <div>
               <div className="flex justify-between mb-2">
-                <span className="text-xs text-[#6B7A94]">هدف سالانه</span>
-                <span className="text-xs font-bold text-[#D99B25]">۶۵٪</span>
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
+                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+                </span>
               </div>
-              <ProgressBar value={65} variant="warning" />
+              <ProgressBar
+                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-[11px] text-[var(--text-muted)]">از ابتدای سال</span>
+                <span className={`text-[11px] font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+                </span>
+              </div>
             </div>
           </div>
         </Card>
+{alerts.length > 0 && (
+        <Card>
+          <CardHeader title="🔔 هشدارهای پراپ" subtitle={`${alerts.length} هشدار فعال`} />
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {alerts.map((alert) => {
+              const isDanger = alert.message.includes('🚨');
+              const isWarning = alert.message.includes('⚠️');
+              const bgColor = isDanger ? 'bg-[var(--loss-soft)] border-[var(--loss-border)]' : isWarning ? 'bg-[var(--warning-soft-alt)] border-[var(--warning-border)]' : 'bg-[var(--profit-soft)] border-[var(--profit-border)]';
+              return (
+                <div key={alert.id} className={`${bgColor} border rounded-[12px] px-4 py-3 flex items-center justify-between`}>
+                  <span className={`text-[12px] font-medium ${isDanger ? 'text-[var(--loss)]' : isWarning ? 'text-[var(--warning)]' : 'text-[var(--profit)]'}`}>
+                    {alert.message}
+                  </span>
+                  <button
+                    onClick={async () => { try { await markAlertRead(alert.id); setAlerts(alerts.filter(a => a.id !== alert.id)); } catch {} }}
+                    className="text-[11px] bg-[var(--bg-card)] px-3 py-1 rounded-full font-bold text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all"
+                  >
+                    ✓ خواندم
+                  </button>
+                </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
       </div>
     </div>
   );

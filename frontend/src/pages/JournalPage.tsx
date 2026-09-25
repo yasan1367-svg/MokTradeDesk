@@ -18,7 +18,7 @@ const StarRating = ({ value, onChange }: { value: number; onChange?: (v: number)
           type="button"
           onClick={() => onChange && onChange(star)}
           className={`text-2xl transition-all ${onChange ? 'hover:scale-110 cursor-pointer' : 'cursor-default'} ${
-            star <= value ? 'text-[#F59E0B]' : 'text-[#E5EBF3]'
+            star <= value ? 'text-[var(--warning)]' : 'text-[var(--text-muted)]'
           }`}
         >
           ★
@@ -149,13 +149,13 @@ export default function JournalPage() {
   return (
     <div className="space-y-6">
       {error && (
-        <div className="bg-[#FFEDF0] border border-[#F0A6B2] text-[#E45D72] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
+        <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] text-[var(--loss)] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
           ❌ {error}
           <button onClick={() => setError(null)} className="float-left text-xs font-bold">✕</button>
         </div>
       )}
       {successMessage && (
-        <div className="bg-[#E5F8F1] border border-[#A8E6CF] text-[#13AE81] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
+        <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] text-[var(--profit)] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
           ✅ {successMessage}
         </div>
       )}
@@ -173,26 +173,26 @@ export default function JournalPage() {
 
       {/* فرم */}
       {showForm && (
-        <div className="bg-white border-2 border-[#3F7CFF] rounded-[22px] p-6 shadow-lg">
-          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[#E5EBF3]">
+        <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
+          <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
               style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>✏️</div>
             <div>
-              <h3 className="text-lg font-extrabold text-[#1A2B47]">مرور معامله جدید</h3>
-              <p className="text-[12px] text-[#6B7A94] mt-0.5">کیفیت ستاپ، اجرا و درس‌های معامله</p>
+              <h3 className="text-lg font-extrabold text-[var(--text-primary)]">مرور معامله جدید</h3>
+              <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">کیفیت ستاپ، اجرا و درس‌های معامله</p>
             </div>
           </div>
 
           <div className="space-y-5">
             {/* انتخاب معامله */}
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">
-                معامله <span className="text-[#E45D72]">*</span>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                معامله <span className="text-[var(--loss)]">*</span>
               </label>
               <select
                 value={selectedTradeId || ''}
                 onChange={(e) => setSelectedTradeId(Number(e.target.value))}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3.5 text-[#1A2B47] text-sm font-bold focus:border-[#3F7CFF] focus:outline-none cursor-pointer"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:outline-none cursor-pointer"
               >
                 <option value="">— انتخاب معامله —</option>
                 {trades.slice(0, 100).map((t) => (
@@ -206,57 +206,57 @@ export default function JournalPage() {
             {/* رتبه‌بندی */}
             <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
               <div>
-                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">🎯 کیفیت ستاپ</label>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🎯 کیفیت ستاپ</label>
                 <StarRating value={setupQuality} onChange={setSetupQuality} />
               </div>
               <div>
-                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">⚡ کیفیت اجرا</label>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">⚡ کیفیت اجرا</label>
                 <StarRating value={executionQuality} onChange={setExecutionQuality} />
               </div>
               <div>
-                <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">⭐ امتیاز کلی</label>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">⭐ امتیاز کلی</label>
                 <StarRating value={rating} onChange={setRating} />
               </div>
             </div>
 
             {/* نقض قوانین */}
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">⚠️ نقض قوانین</label>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">⚠️ نقض قوانین</label>
               <input
                 type="text"
                 value={ruleViolations}
                 onChange={(e) => setRuleViolations(e.target.value)}
                 placeholder="مثلاً: حد ضرر جابجا شد"
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-medium focus:border-[#3F7CFF] focus:outline-none"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:outline-none"
               />
             </div>
 
             {/* یادداشت */}
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">📝 یادداشت</label>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📝 یادداشت</label>
               <textarea
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
                 placeholder="چه اتفاقی افتاد؟"
                 rows={3}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-medium focus:border-[#3F7CFF] focus:outline-none resize-none"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:outline-none resize-none"
               />
             </div>
 
             {/* درس‌ها */}
             <div>
-              <label className="text-[13px] text-[#1A2B47] font-bold block mb-2">💡 درس‌ها</label>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💡 درس‌ها</label>
               <textarea
                 value={lessons}
                 onChange={(e) => setLessons(e.target.value)}
                 placeholder="برای دفعه‌ی بعد چه چیزی یاد گرفتم؟"
                 rows={3}
-                className="w-full bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[12px] px-5 py-3 text-[#1A2B47] text-sm font-medium focus:border-[#3F7CFF] focus:outline-none resize-none"
+                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:outline-none resize-none"
               />
             </div>
           </div>
 
-          <div className="flex gap-3 pt-5 mt-5 border-t border-[#E5EBF3]">
+          <div className="flex gap-3 pt-5 mt-5 border-t border-[var(--border-subtle)]">
             <button
               onClick={handleSubmit}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold"
@@ -266,7 +266,7 @@ export default function JournalPage() {
             </button>
             <button
               onClick={() => setShowForm(false)}
-              className="bg-white border-2 border-[#E5EBF3] text-[#6B7A94] px-7 py-3 rounded-[12px] text-sm font-bold hover:border-[#A9C1FA]"
+              className="bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] px-7 py-3 rounded-[12px] text-sm font-bold hover:border-[var(--border-accent)]"
             >
               ✕ لغو
             </button>
@@ -275,52 +275,52 @@ export default function JournalPage() {
       )}
 
       {/* لیست مرورها */}
-      <div className="bg-white border border-[#E5EBF3] rounded-[22px] p-6 shadow-md">
-        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[#E5EBF3]">
-          <div className="w-11 h-11 rounded-[14px] bg-[#F1ECFF] flex items-center justify-center text-xl">📔</div>
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+        <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+          <div className="w-11 h-11 rounded-[14px] bg-[var(--purple-soft)] flex items-center justify-center text-xl">📔</div>
           <div>
-            <h3 className="text-base font-extrabold text-[#1A2B47]">مرورهای ثبت‌شده</h3>
-            <p className="text-[12px] text-[#6B7A94] mt-0.5">{reviews.length} مرور</p>
+            <h3 className="text-base font-extrabold text-[var(--text-primary)]">مرورهای ثبت‌شده</h3>
+            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{reviews.length} مرور</p>
           </div>
         </div>
 
         {loading ? (
-          <div className="text-center py-12 text-[#9AA8BF]">⏳ در حال بارگذاری...</div>
+          <div className="text-center py-12 text-[var(--text-muted)]">⏳ در حال بارگذاری...</div>
         ) : reviews.length === 0 ? (
           <div className="text-center py-16">
             <div className="text-6xl mb-4">📔</div>
-            <div className="text-[15px] font-bold text-[#1A2B47]">هنوز مروری ثبت نکرده‌اید</div>
-            <div className="text-[12px] text-[#9AA8BF] mt-2">روی "➕ مرور معامله جدید" کلیک کنید</div>
+            <div className="text-[15px] font-bold text-[var(--text-primary)]">هنوز مروری ثبت نکرده‌اید</div>
+            <div className="text-[12px] text-[var(--text-muted)] mt-2">روی "➕ مرور معامله جدید" کلیک کنید</div>
           </div>
         ) : (
           <div className="space-y-3">
             {reviews.map((review) => (
               <div
                 key={review.id}
-                className="bg-[#F8FAFF] border-2 border-[#E5EBF3] rounded-[16px] p-5 hover:border-[#A9C1FA] hover:bg-white transition-all"
+                className="bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[16px] p-5 hover:border-[var(--border-accent)] hover:bg-[var(--bg-card)] transition-all"
               >
                 <div className="flex justify-between items-start mb-3">
                   <div className="flex items-center gap-3">
                     <div className={`w-11 h-11 rounded-[12px] flex items-center justify-center text-lg font-extrabold ${
-                      (review.trade_pnl || 0) >= 0 ? 'bg-[#E5F8F1] text-[#13AE81]' : 'bg-[#FFEDF0] text-[#E45D72]'
+                      (review.trade_pnl || 0) >= 0 ? 'bg-[var(--profit-soft)] text-[var(--profit)]' : 'bg-[var(--loss-soft)] text-[var(--loss)]'
                     }`}>
                       {(review.trade_pnl || 0) >= 0 ? '✅' : '❌'}
                     </div>
                     <div>
-                      <div className="text-[15px] font-extrabold text-[#1A2B47]">
+                      <div className="text-[15px] font-extrabold text-[var(--text-primary)]">
                         {review.trade_symbol}
-                        <span className="text-[12px] text-[#6B7A94] font-normal mr-2">
+                        <span className="text-[12px] text-[var(--text-secondary)] font-normal mr-2">
                           #{review.trade_id}
                         </span>
                       </div>
-                      <div className={`text-[12px] font-bold ${(review.trade_pnl || 0) >= 0 ? 'text-[#13AE81]' : 'text-[#E45D72]'}`}>
+                      <div className={`text-[12px] font-bold ${(review.trade_pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                         {(review.trade_pnl || 0) >= 0 ? '+' : ''}{review.trade_pnl?.toFixed(2)} $
                       </div>
                     </div>
                   </div>
                   <button
                     onClick={() => handleDelete(review.id)}
-                    className="text-[#E45D72] hover:bg-[#FFEDF0] px-3 py-1.5 rounded-[8px] text-[12px] font-bold"
+                    className="text-[var(--loss)] hover:bg-[var(--loss-soft)] px-3 py-1.5 rounded-[8px] text-[12px] font-bold"
                   >
                     🗑️
                   </button>
@@ -328,43 +328,43 @@ export default function JournalPage() {
 
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
                   <div>
-                    <div className="text-[11px] text-[#6B7A94] font-bold mb-1">🎯 کیفیت ستاپ</div>
+                    <div className="text-[11px] text-[var(--text-secondary)] font-bold mb-1">🎯 کیفیت ستاپ</div>
                     <StarRating value={review.setup_quality || 0} />
                   </div>
                   <div>
-                    <div className="text-[11px] text-[#6B7A94] font-bold mb-1">⚡ کیفیت اجرا</div>
+                    <div className="text-[11px] text-[var(--text-secondary)] font-bold mb-1">⚡ کیفیت اجرا</div>
                     <StarRating value={review.execution_quality || 0} />
                   </div>
                   <div>
-                    <div className="text-[11px] text-[#6B7A94] font-bold mb-1">⭐ امتیاز کلی</div>
+                    <div className="text-[11px] text-[var(--text-secondary)] font-bold mb-1">⭐ امتیاز کلی</div>
                     <StarRating value={review.rating || 0} />
                   </div>
                 </div>
 
                 {review.rule_violations && (
-                  <div className="bg-[#FFEDF0] border border-[#F0A6B2] rounded-[10px] p-3 mb-2 text-[12px] font-semibold text-[#E45D72]">
+                  <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] rounded-[10px] p-3 mb-2 text-[12px] font-semibold text-[var(--loss)]">
                     ⚠️ نقض: {review.rule_violations}
                   </div>
                 )}
 
                 {review.notes && (
-                  <div className="bg-white border border-[#E5EBF3] rounded-[10px] p-3 mb-2 text-[12px] text-[#1A2B47]">
+                  <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[10px] p-3 mb-2 text-[12px] text-[var(--text-primary)]">
                     <span className="font-bold">📝 یادداشت: </span>
                     {review.notes}
                   </div>
                 )}
 
                 {review.lessons && (
-                  <div className="bg-[#EDF3FF] border border-[#A9C1FA] rounded-[10px] p-3 text-[12px] text-[#1A2B47]">
+                  <div className="bg-[var(--accent-soft)] border border-[var(--border-accent)] rounded-[10px] p-3 text-[12px] text-[var(--text-primary)]">
                     <span className="font-bold">💡 درس: </span>
                     {review.lessons}
                   </div>
                 )}
 
-                <div className="mt-4 border-t border-[#E5EBF3] pt-4">
+                <div className="mt-4 border-t border-[var(--border-subtle)] pt-4">
                   <div className="flex items-center justify-between mb-3">
-                    <div className="text-[12px] text-[#6B7A94] font-bold">📷 اسکرین‌شات‌های مرور</div>
-                    <label className="cursor-pointer text-[11px] font-bold text-[#3F7CFF] hover:text-[#2C63D6]">
+                    <div className="text-[12px] text-[var(--text-secondary)] font-bold">📷 اسکرین‌شات‌های مرور</div>
+                    <label className="cursor-pointer text-[11px] font-bold text-[var(--accent)] hover:text-[var(--accent-strong)]">
                       + آپلود عکس
                       <input
                         type="file"
@@ -386,7 +386,7 @@ export default function JournalPage() {
                           <img
                             src={`http://localhost:8000/${screenshot.file_path}`}
                             alt="review screenshot"
-                            className="w-full h-28 object-cover rounded-[10px] border border-[#E5EBF3]"
+                            className="w-full h-28 object-cover rounded-[10px] border border-[var(--border-subtle)]"
                           />
                           <button
                             type="button"
@@ -400,7 +400,7 @@ export default function JournalPage() {
                       ))}
                     </div>
                   ) : (
-                    <div className="text-[12px] text-[#9AA8BF]">هنوز اسکرین‌شاتی برای این مرور آپلود نشده است.</div>
+                    <div className="text-[12px] text-[var(--text-muted)]">هنوز اسکرین‌شاتی برای این مرور آپلود نشده است.</div>
                   )}
                 </div>
               </div>

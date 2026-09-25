@@ -1,5 +1,5 @@
 from sqlalchemy import Column, Integer, String, DateTime
-from datetime import datetime
+from datetime import datetime, timezone
 from ..core.database import Base
 
 
@@ -14,4 +14,4 @@ class UserSettings(Base):
     calendar = Column(String, default="persian")  # persian / gregorian
     default_risk_percent = Column(Integer, default=1)
     default_profit_share = Column(Integer, default=80)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=lambda: datetime.now(timezone.utc), onupdate=lambda: datetime.now(timezone.utc))
