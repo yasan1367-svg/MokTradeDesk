@@ -50,7 +50,9 @@ from app.models.finance import (
 # Alembic Config
 # ═════════════════════════════════════════════
 config = context.config
-fileConfig(config.config_file_name)
+# disable_existing_loggers=False تا وقتی Migration درون‌برنامه‌ای (main.py) اجرا می‌شود
+# لاگرهای برنامه (moktrade) غیرفعال نشوند.
+fileConfig(config.config_file_name, disable_existing_loggers=False)
 
 target_metadata = Base.metadata
 

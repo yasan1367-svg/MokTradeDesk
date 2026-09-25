@@ -12,6 +12,23 @@ echo ╚════════════════════════
 echo.
 
 REM ═════════════════════════════════════════════
+REM ۰. اجرای Migration (ساخت/به‌روزرسانی جداول دیتابیس)
+REM ═════════════════════════════════════════════
+echo [0/3] Running database migrations...
+pushd "%~dp0backend"
+if exist "venv\Scripts\alembic.exe" (
+    venv\Scripts\alembic.exe upgrade head
+    if errorlevel 1 (
+        echo [WARN] Migration reported an error - see output above.
+    ) else (
+        echo [OK] Database migrations are up to date.
+    )
+) else (
+    echo [WARN] venv\Scripts\alembic.exe not found - skipping migration.
+)
+popd
+
+REM ═════════════════════════════════════════════
 REM ۱. اجرای Backend در پنجره جدید
 REM ═════════════════════════════════════════════
 echo [1/3] Starting Backend...

@@ -88,6 +88,36 @@ async def log_requests(request: Request, call_next):
 @app.on_event("startup")
 def startup():
     logger.info("🚀 MokTradeDesk API started")
+
+    # ── فاز ۱۸: اطمینان از ساخت/به‌روزرسانی جداول دیتابیس ──
+    # اگر فایل DB حذف/خالی شود، جداول به‌صورت خودکار ساخته می‌شوند تا داشبورد ۵۰۰ ندهد.
+    try:
+        from alembic.config import Config as AlembicConfig
+        from alembic import command as alembic_command
+        from .core.config import settings
+
+        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+        alembic_cfg = AlembicConfig(os.path.join(base_dir, "alembic.ini"))
+        alembic_cfg.set_main_option(
+            "script_location", os.path.join(base_dir, "migrations")
+        )
+        alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+        # alembic در env.py با fileConfig تنظیمات لاگ را بازنویسی می‌کند؛
+        # برای حفظ لاگ اپلیکیشن (فایل + کنسول)، هندلرها و سطح لاگ ذخیره/بازگردانی می‌شوند.
+        root = logging.getLogger()
+        saved_handlers = root.handlers[:]
+        saved_level = root.level
+        try:
+            alembic_command.upgrade(alembic_cfg, "head")
+        finally:
+            root.handlers[:] = saved_handlers
+            root.setLevel(saved_level)
+
+        logger.info("✅ Database migrations applied")
+    except Exception:
+        logger.exception("migration check failed")
+
     # ── فاز ۱۷: Backup اولیه + شروع حلقهٔ Backup خودکار ──
     try:
         from .services import backup_service as svc
