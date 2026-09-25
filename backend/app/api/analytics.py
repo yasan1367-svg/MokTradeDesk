@@ -7,7 +7,8 @@ from collections import defaultdict
 
 from ..core.database import get_db
 from ..services.analysis_service import AnalysisService
-from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval
+from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope
+from ..utils.trade_scope import analysis_trades_filter
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
     CustomTimeIntervalResponse,
@@ -75,6 +76,44 @@ def analyze_version(version_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"خطا در تحلیل: {str(e)}")
+
+
+# ═════════════════════════════════════════════
+# فاز ۲۰.۳ — تحلیل ۶گانه (POST)
+# ═════════════════════════════════════════════
+@router.post("/analyze/version/{version_id}")
+def analyze_version_scoped(version_id: int, test_type: Optional[str] = None, db: Session = Depends(get_db)):
+    """تحلیل Backtest/Forward یک نسخه — scope=VERSION"""
+    from ..models.strategy import TestType as TT
+    tt = TT(test_type) if test_type else None
+    try:
+        r = AnalysisService(db).analyze_version(version_id, test_type=tt)
+        return {"message": r["message"], "analysis_id": r["result"].id,
+                "run_id": r["run_id"], "version_id": version_id}
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+
+
+@router.post("/analyze/prop/{prop_stage_id}")
+def analyze_prop_stage(prop_stage_id: int, db: Session = Depends(get_db)):
+    """تحلیل کامل یک مرحله پراپ — scope=PROP_STAGE"""
+    try:
+        r = AnalysisService(db).analyze_prop_stage(prop_stage_id)
+        return {"message": r["message"], "analysis_id": r["result"].id,
+                "run_id": r["run_id"], "prop_stage_id": prop_stage_id}
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
+
+
+@router.post("/analyze/broker/{finance_account_id}")
+def analyze_broker(finance_account_id: int, db: Session = Depends(get_db)):
+    """تحلیل کامل یک حساب بروکر — scope=BROKER"""
+    try:
+        r = AnalysisService(db).analyze_broker(finance_account_id)
+        return {"message": r["message"], "analysis_id": r["result"].id,
+                "run_id": r["run_id"], "finance_account_id": finance_account_id}
+    except ValueError as e:
+        raise HTTPException(404, detail=str(e))
 
 
 @router.get("/dashboard")
@@ -217,6 +256,45 @@ def get_dashboard_data(
     # ── برد/باخت ──
     win_loss = {"wins": wins_n, "losses": losses_n}
 
+    # ── فاز ۲۰.۴: پول قابل خرج (بروکر + مرحله ۳ پراپ) ──
+    from ..models.finance import Account as FinAccount, AccountType, Transaction, TransactionType
+    from ..models.prop import PropStage as PS, StageType
+
+    _net = _net_expr()
+    broker_pnl = float(
+        db.query(func.coalesce(func.sum(_net), 0))
+        .select_from(Trade)
+        .join(FinAccount, Trade.finance_account_id == FinAccount.id)
+        .filter(FinAccount.type == AccountType.BROKER)
+        .scalar() or 0.0
+    )
+    funded_pnl = float(
+        db.query(func.coalesce(func.sum(_net), 0))
+        .select_from(Trade)
+        .join(PS, Trade.prop_stage_id == PS.id)
+        .filter(PS.stage_type == StageType.FUNDED_REAL)
+        .scalar() or 0.0
+    )
+    spendable_net = round(broker_pnl + funded_pnl, 2)
+
+    broker_balance = float(
+        db.query(func.coalesce(func.sum(FinAccount.balance), 0))
+        .filter(FinAccount.type == AccountType.BROKER)
+        .scalar() or 0.0
+    )
+
+    init_capital = float(
+        db.query(func.coalesce(func.sum(Transaction.amount), 0))
+        .select_from(Transaction)
+        .join(FinAccount, Transaction.account_id == FinAccount.id)
+        .filter(
+            FinAccount.type == AccountType.BROKER,
+            Transaction.type == TransactionType.DEPOSIT,
+            Transaction.is_deleted == False,
+        )
+        .scalar() or 0.0
+    )
+
     # ── Prop Progress ──
     active_stages = db.query(PropStage).filter(
         PropStage.status == StageStatus.ACTIVE
@@ -257,6 +335,11 @@ def get_dashboard_data(
         "equity_curve": equity_curve,
         "pnl_distribution": pnl_distribution,
         "win_loss": win_loss,
+        "spendable_money": {
+            "net_pnl": spendable_net,
+            "total_balance": round(broker_balance + broker_pnl + funded_pnl, 2),
+            "initial_capital": round(init_capital, 2),
+        },
         "periods": {
             "month": {
                 "pnl": round(mp, 2),
@@ -731,9 +814,101 @@ def _jalali_to_gregorian(jy: int, jm: int, jd: int):
             break
         gd -= sal_a[gm]
     return gy, gm, gd
+# ═════════════════════════════════════════════
+# فاز ۲۰.۳ — تحلیل ۶گانه (GET) + گارد سازگاری
+# ═════════════════════════════════════════════
+@router.get("/analysis/version/{version_id}")
+def get_analysis_version(version_id: int, test_type: Optional[str] = None, db: Session = Depends(get_db)):
+    """دریافت تحلیل Backtest/Forward یک نسخه (فاز ۲۰)"""
+    result = db.query(AnalysisResult).filter(
+        AnalysisResult.scope == AnalysisScope.VERSION,
+        AnalysisResult.scope_key == str(version_id),
+    ).first()
+    if not result:
+        raise HTTPException(404, detail="تحلیلی برای این نسخه یافت نشد. ابتدا POST analyze را اجرا کنید.")
+    _guard_analyzable(db, version_id=version_id, result=result)
+    return _analysis_response(result)
+
+
+@router.get("/analysis/prop/{prop_stage_id}")
+def get_analysis_prop(prop_stage_id: int, db: Session = Depends(get_db)):
+    """دریافت تحلیل یک مرحله پراپ — scope=PROP_STAGE"""
+    result = db.query(AnalysisResult).filter(
+        AnalysisResult.scope == AnalysisScope.PROP_STAGE,
+        AnalysisResult.scope_key == str(prop_stage_id),
+    ).first()
+    if not result:
+        raise HTTPException(404, detail="تحلیلی برای این مرحله پراپ یافت نشد.")
+    _guard_analyzable(db, prop_stage_id=prop_stage_id, result=result)
+    return _analysis_response(result)
+
+
+@router.get("/analysis/broker/{finance_account_id}")
+def get_analysis_broker(finance_account_id: int, db: Session = Depends(get_db)):
+    """دریافت تحلیل یک حساب بروکر — scope=BROKER"""
+    result = db.query(AnalysisResult).filter(
+        AnalysisResult.scope == AnalysisScope.BROKER,
+        AnalysisResult.scope_key == str(finance_account_id),
+    ).first()
+    if not result:
+        raise HTTPException(404, detail="تحلیلی برای این حساب بروکر یافت نشد.")
+    _guard_analyzable(db, finance_account_id=finance_account_id, result=result)
+    return _analysis_response(result)
+
+
+def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_account_id=None):
+    """گارد سازگاری فاز ۱۹ — تحلیل کهنه سرو نشود"""
+    from ..models.strategy import Trade
+    q = db.query(Trade)
+    if version_id is not None:
+        from ..utils.trade_scope import analysis_trades_filter
+        q = q.filter(Trade.version_id == version_id, analysis_trades_filter())
+    elif prop_stage_id is not None:
+        q = q.filter(Trade.prop_stage_id == prop_stage_id)
+    elif finance_account_id is not None:
+        q = q.filter(Trade.finance_account_id == finance_account_id)
+    count = q.count()
+    if count == 0:
+        raise HTTPException(404, detail="هیچ معامله‌ای برای این دامنه یافت نشد.")
+    if result.total_trades != count:
+        raise HTTPException(404, detail=f"تحلیل کهنه است ({result.total_trades} در برابر {count} معامله). دوباره تحلیل کنید.")
+
+
+def _analysis_response(result):
+    """تبدیل AnalysisResult به دیکشنری پاسخ"""
+    return {
+        "version_id": result.version_id,
+        "prop_stage_id": result.prop_stage_id,
+        "finance_account_id": result.finance_account_id,
+        "total_trades": result.total_trades,
+        "win_rate": result.win_rate,
+        "profit_factor": result.profit_factor,
+        "net_pnl": result.net_pnl,
+        "net_r": result.net_r,
+        "max_dd": result.max_dd,
+        "expectancy": result.expectancy,
+        "expectancy_r": result.expectancy_r,
+        "avg_win": result.avg_win,
+        "avg_loss": result.avg_loss,
+        "largest_win": result.largest_win,
+        "largest_loss": result.largest_loss,
+        "max_consecutive_losses": result.max_consecutive_losses,
+        "consistency_analysis": result.consistency_analysis,
+        "session_analysis": result.session_analysis,
+        "weekday_analysis": result.weekday_analysis,
+        "hour_analysis": result.hour_analysis,
+        "custom_time_analysis": result.custom_time_analysis,
+        "created_at": result.created_at,
+    }
+
+
 @router.get("/{version_id}")
 def get_analysis(version_id: int, db: Session = Depends(get_db)):
-    """دریافت آخرین تحلیل ذخیره‌شده‌ی یک نسخه"""
+    """دریافت آخرین تحلیل ذخیره‌شده‌ی یک نسخه
+
+    فاز ۱۹: تحلیل نسخه فقط روی معاملات Backtest/Forward انجام می‌شود؛ پس نتیجه‌ای
+    سرو می‌شود که با مجموعه‌ی معاملات قابل‌تحلیل فعلی نسخه هم‌خوان باشد.
+    """
     result = db.query(AnalysisResult).filter(
         AnalysisResult.version_id == version_id
     ).first()
@@ -742,6 +917,29 @@ def get_analysis(version_id: int, db: Session = Depends(get_db)):
         raise HTTPException(
             status_code=404,
             detail="تحلیلی برای این نسخه یافت نشد. ابتدا POST /analyze/{version_id} را اجرا کنید."
+        )
+
+    # ── گارد سازگاری (فاز ۱۹) ──
+    # تعداد معاملات قابل‌تحلیل = غیر-REAL (BACKTEST / FORWARD)
+    analyzable_trades = (
+        db.query(Trade)
+        .filter(Trade.version_id == version_id, analysis_trades_filter())
+        .count()
+    )
+
+    if analyzable_trades == 0:
+        raise HTTPException(
+            status_code=404,
+            detail="این نسخه معامله‌ی Backtest/Forward ندارد "
+                   "(معاملات REAL در تحلیل نسخه شمرده نمی‌شوند)",
+        )
+
+    if result.total_trades != analyzable_trades:
+        raise HTTPException(
+            status_code=404,
+            detail=f"تحلیل ذخیره‌شده کهنه است ({result.total_trades} معامله در تحلیل "
+                   f"در برابر {analyzable_trades} معامله‌ی قابل‌تحلیل فعلی). "
+                   f"دوباره «تحلیل مجدد» را بزنید.",
         )
 
     return {

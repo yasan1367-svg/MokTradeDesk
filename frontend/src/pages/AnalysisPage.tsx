@@ -4,10 +4,16 @@ import MetricCard from '../components/MetricCard';
 import AnalysisTable from '../components/AnalysisTable';
 import {
   getAllVersions,
-  getVersionAnalysis,
   getVersionTrades,
-  analyzeVersion,
   exportAnalysisPdf,
+  analyzeVersionScoped,
+  analyzePropStage,
+  analyzeBroker,
+  getAnalysisVersion,
+  getAnalysisProp,
+  getAnalysisBroker,
+  getAllPropStages,
+  getFinanceAccounts,
 } from '../api/client';
 
 import EquityCurveChart from '../components/charts/EquityCurveChart';
@@ -16,140 +22,189 @@ import WinLossPieChart from '../components/charts/WinLossPieChart';
 import WeekdayBarChart from '../components/charts/WeekdayBarChart';
 import PnLDistributionChart from '../components/charts/PnLDistributionChart';
 
-interface Version {
-  id: number;
-  version_name: string;
-  strategy_name: string;
-}
+type ScopeType = 'backtest' | 'forward' | 'prop_stage_1' | 'prop_stage_2' | 'prop_stage_3' | 'broker';
+const SCOPE_TABS: { key: ScopeType; icon: string; label: string }[] = [
+  { key: 'backtest', icon: '📊', label: 'بک‌تست' },
+  { key: 'forward', icon: '📈', label: 'فوروارد' },
+  { key: 'prop_stage_1', icon: '🏁', label: 'مرحله ۱' },
+  { key: 'prop_stage_2', icon: '🔍', label: 'مرحله ۲' },
+  { key: 'prop_stage_3', icon: '💰', label: 'مرحله ۳' },
+  { key: 'broker', icon: '🏦', label: 'بروکر' },
+];
+
+interface Version { id: number; version_name: string; strategy_name: string; }
+interface PropStageOption { id: number; display_name: string; stage_type: string; }
+interface BrokerOption { id: number; name: string; type: string; }
+
+const SCOPE_KEY = 'analysis_selected_scope';
 
 export default function AnalysisPage() {
+  const [scope, setScope] = useState<ScopeType>(() =>
+    (typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem(SCOPE_KEY) || '"backtest"') as ScopeType) : 'backtest')
+  );
+  const [selectedId, setSelectedId] = useState<number | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
-  const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
+  const [propStages, setPropStages] = useState<PropStageOption[]>([]);
+  const [brokerAccounts, setBrokerAccounts] = useState<BrokerOption[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ═════════════════════════════════════════════
-  // ۱. بارگذاری لیست نسخه‌ها (بدون شرط)
+  // ۱. بارگذاری لیست‌های اولیه (نسخه‌ها / پراپ‌ها / بروکرها)
   // ═════════════════════════════════════════════
   useEffect(() => {
     getAllVersions()
-      .then((res) => {
-        setVersions(res.data);
-        if (res.data.length > 0) {
-          setSelectedVersion(res.data[0].id);
-        }
-      })
+      .then((res) => setVersions(res.data))
       .catch((err) => console.error('خطا در دریافت نسخه‌ها:', err));
+    getAllPropStages()
+      .then((res) => setPropStages(res.data))
+      .catch((err) => console.error('خطا در دریافت مراحل پراپ:', err));
+    getFinanceAccounts({ type: 'broker' })
+      .then((res) => setBrokerAccounts(res.data))
+      .catch((err) => console.error('خطا در دریافت حساب‌های بروکر:', err));
   }, []);
 
   // ═════════════════════════════════════════════
-  // ۲. بارگذاری تحلیل و معاملات (با شرط selectedVersion)
+  // ۲. بارگذاری تحلیل و معاملات بر اساس scope
   // ═════════════════════════════════════════════
   useEffect(() => {
-    if (!selectedVersion) return;
-
-    setLoading(true);
-    setError(null);
-
+    if (!selectedId || !scope) return;
+    setLoading(true); setError(null);
     const loadData = async () => {
       try {
         let analysisData: any = null;
         let tradesData: any[] = [];
-
         try {
-          const analysisRes = await getVersionAnalysis(selectedVersion);
-          analysisData = analysisRes.data;
+          const isVersion = scope === 'backtest' || scope === 'forward';
+          const testType = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
+          const res = isVersion
+            ? await getAnalysisVersion(selectedId, testType)
+            : scope.startsWith('prop_stage_')
+              ? await getAnalysisProp(selectedId)
+              : await getAnalysisBroker(selectedId);
+          analysisData = res.data;
         } catch (e) {
           console.log('تحلیلی یافت نشد');
         }
-
         try {
-          const tradesRes = await getVersionTrades(selectedVersion);
+          const tradesRes = await getVersionTrades(selectedId);
           tradesData = tradesRes.data;
         } catch (e) {
           console.log('معامله‌ای یافت نشد');
         }
-
         setAnalysis(analysisData);
         setTrades(tradesData);
-      } catch (err) {
-        setError('خطا در بارگذاری داده‌ها');
-      } finally {
-        setLoading(false);
-      }
+      } catch { setError('خطا در بارگذاری داده‌ها'); }
+      finally { setLoading(false); }
     };
-
     loadData();
-  }, [selectedVersion]);
+  }, [selectedId, scope]);
 
   // ═════════════════════════════════════════════
-  // اجرای مجدد تحلیل
+  // اجرای تحلیل بر اساس scope
   // ═════════════════════════════════════════════
   const handleReanalyze = async () => {
-    if (!selectedVersion) return;
-
-    setLoading(true);
-    setError(null);
+    if (!selectedId) return;
+    setLoading(true); setError(null);
     try {
-      await analyzeVersion(selectedVersion);
-      const res = await getVersionAnalysis(selectedVersion);
-      setAnalysis(res.data);
+      const isVersion = scope === 'backtest' || scope === 'forward';
+      const testType = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
+      if (isVersion) {
+        await analyzeVersionScoped(selectedId, testType);
+        const res = await getAnalysisVersion(selectedId, testType);
+        setAnalysis(res.data);
+      } else if (scope.startsWith('prop_stage_')) {
+        await analyzePropStage(selectedId);
+        const res = await getAnalysisProp(selectedId);
+        setAnalysis(res.data);
+      } else {
+        await analyzeBroker(selectedId);
+        const res = await getAnalysisBroker(selectedId);
+        setAnalysis(res.data);
+      }
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در تحلیل');
-    } finally {
-      setLoading(false);
-    }
+    } finally { setLoading(false); }
+  };
+
+  const handleScopeChange = (newScope: ScopeType) => {
+    setScope(newScope);
+    setSelectedId(null);
+    setAnalysis(null);
+    setTrades([]);
+    setError(null);
+    localStorage.setItem(SCOPE_KEY, JSON.stringify(newScope));
   };
 
   return (
     <div>
-      {/* انتخاب نسخه */}
+      {/* تب‌های نوع تحلیل (فاز ۲۰) */}
+      <GlassCard className="mb-4">
+        <div className="flex flex-wrap gap-2">
+          {SCOPE_TABS.map((t) => (
+            <button
+              key={t.key}
+              onClick={() => handleScopeChange(t.key)}
+              className={`px-4 py-2.5 rounded-[10px] text-[12px] font-extrabold transition-all ${
+                scope === t.key
+                  ? 'bg-[var(--accent)] text-white shadow-md'
+                  : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:border-[var(--accent)]'
+              }`}
+            >
+              {t.icon} {t.label}
+            </button>
+          ))}
+        </div>
+      </GlassCard>
+
+      {/* انتخابگر بر اساس scope */}
       <GlassCard className="mb-6">
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[250px]">
-            <label className="text-[var(--text-secondary)] text-sm block mb-2">انتخاب نسخه</label>
-            <select
-              value={selectedVersion || ''}
-              onChange={(e) => setSelectedVersion(Number(e.target.value))}
-              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none"
-            >
-              {versions.length === 0 ? (
+            <label className="text-[var(--text-secondary)] text-sm block mb-2">
+              {scope === 'broker' ? 'انتخاب حساب بروکر' :
+               scope.startsWith('prop_stage_') ? 'انتخاب مرحله پراپ' : 'انتخاب نسخه'}
+            </label>
+            {scope === 'broker' ? (
+              <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
+                <option value="">— حساب بروکری وجود ندارد —</option>
+                {brokerAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
+              </select>
+            ) : scope.startsWith('prop_stage_') ? (
+              <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
+                <option value="">— مرحله پراپی وجود ندارد —</option>
+                {propStages.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+              </select>
+            ) : (
+              <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
                 <option value="">— نسخه‌ای وجود ندارد —</option>
-              ) : (
-                versions.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.strategy_name} / {v.version_name}
-                  </option>
-                ))
-              )}
-            </select>
+                {versions.map((v) => <option key={v.id} value={v.id}>{v.strategy_name} / {v.version_name}</option>)}
+              </select>
+            )}
           </div>
 
-          <button
-            onClick={handleReanalyze}
-            disabled={loading || !selectedVersion}
-            className="bg-[var(--accent)] hover:bg-accent/80 text-white px-6 py-3 rounded-xl transition-all disabled:opacity-50 mt-6"
-          >
+          <button onClick={handleReanalyze} disabled={loading || !selectedId}
+            className="bg-[var(--accent)] hover:bg-accent/80 text-white px-6 py-3 rounded-xl transition-all disabled:opacity-50 mt-6">
             {loading ? '⏳ در حال تحلیل...' : '🔄 تحلیل مجدد'}
           </button>
-          {analysis && selectedVersion && (
-            <button
-              onClick={async () => {
-                try {
-                  const res = await exportAnalysisPdf(selectedVersion!);
-                  const blob = new Blob([res.data], { type: 'application/pdf' });
-                  const url = window.URL.createObjectURL(blob);
-                  const a = document.createElement('a');
-                  a.href = url;
-                  a.download = `analysis_${selectedVersion}_${new Date().toISOString().slice(0, 10)}.pdf`;
-                  document.body.appendChild(a); a.click();
-                  window.URL.revokeObjectURL(url); a.remove();
-                } catch { setError('خطا در دانلود PDF'); }
-              }}
-              className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-5 py-3 rounded-xl transition-all mt-6 flex items-center gap-1"
-            >
+          {analysis && selectedId && (
+            <button onClick={async () => {
+              try {
+                const res = await exportAnalysisPdf(selectedId!);
+                const blob = new Blob([res.data], { type: 'application/pdf' });
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a'); a.href = url;
+                a.download = `analysis_${selectedId}_${new Date().toISOString().slice(0, 10)}.pdf`;
+                document.body.appendChild(a); a.click();
+                window.URL.revokeObjectURL(url); a.remove();
+              } catch { setError('خطا در دانلود PDF'); }
+            }}
+              className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-5 py-3 rounded-xl transition-all mt-6 flex items-center gap-1">
               📄 دانلود PDF
             </button>
           )}

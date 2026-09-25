@@ -28,10 +28,14 @@ async def import_soft4x(
     if not file.filename.endswith('.xlsx'):
         raise HTTPException(status_code=400, detail="فایل باید با فرمت xlsx باشد")
 
+    # امضای validate_classification چهار آرگومان دارد:
+    # (test_type, version_id, finance_account_id, prop_stage_id)
+    # endpoint ایمپورت finance_account_id نمی‌گیرد → None
     valid, error = TradeValidator.validate_classification(
-        test_type or "backtest",
-        version_id,
-        prop_stage_id,
+        test_type=test_type or "backtest",
+        version_id=version_id,
+        finance_account_id=None,
+        prop_stage_id=prop_stage_id,
     )
     if not valid:
         raise HTTPException(status_code=400, detail=error)
@@ -108,10 +112,14 @@ async def import_mt4(
     if not file.filename.endswith('.html'):
         raise HTTPException(status_code=400, detail="فایل باید با فرمت html باشد")
 
+    # امضای validate_classification چهار آرگومان دارد:
+    # (test_type, version_id, finance_account_id, prop_stage_id)
+    # endpoint ایمپورت finance_account_id نمی‌گیرد → None
     valid, error = TradeValidator.validate_classification(
-        test_type or "backtest",
-        version_id,
-        prop_stage_id,
+        test_type=test_type or "backtest",
+        version_id=version_id,
+        finance_account_id=None,
+        prop_stage_id=prop_stage_id,
     )
     if not valid:
         raise HTTPException(status_code=400, detail=error)

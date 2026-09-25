@@ -12,6 +12,7 @@ from ..core.rate_limit import limiter, EXPORT_RATE_LIMIT
 from ..models.strategy import Trade, StrategyVersion, Strategy
 from ..services.analysis_service import AnalysisService
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
+from ..utils.trade_scope import analysis_trades_filter
 
 # ═════════════════════════════════════════════
 # Font Registration (Vazirmatn) + Persian Date
@@ -335,7 +336,12 @@ def export_analysis_pdf(
         raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
     metrics = result["result"]
-    trades_list = db.query(Trade).filter(Trade.version_id == version_id).all()
+    # هماهنگ با متریک‌های بالا: فقط معاملات غیر-REAL
+    trades_list = (
+        db.query(Trade)
+        .filter(Trade.version_id == version_id, analysis_trades_filter())
+        .all()
+    )
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

@@ -1,105 +1,100 @@
 from sqlalchemy.orm import Session
-from typing import Dict, List, Any
+from typing import Dict, List, Any, Optional
 
 from ..models.strategy import (
     Trade, AnalysisResult, AnalysisRun, CustomTimeInterval,
-    StrategyVersion, Strategy
+    StrategyVersion, Strategy, AnalysisScope, TestType,
 )
+from ..utils.trade_scope import analysis_trades_filter
 
 
 class AnalysisService:
-    """سرویس تحلیل معاملات یک نسخه استراتژی"""
+    """سرویس تحلیل معاملات — نسخه، پراپ و بروکر (فاز 20)"""
 
     def __init__(self, db: Session):
         self.db = db
 
-    # ═════════════════════════════════════════════
-    # تحلیل یک نسخه
-    # ═════════════════════════════════════════════
-    def analyze_version(self, version_id: int) -> Dict[str, Any]:
-        """تحلیل کامل یک نسخه و ذخیره‌ی نتیجه (با نگهداری تاریخچه)"""
-        trades = self.db.query(Trade).filter(Trade.version_id == version_id).all()
+    def analyze_version(self, version_id: int, test_type: Optional[TestType] = None) -> Dict[str, Any]:
+        """تحلیل Backtest/Forward یک نسخه (معاملات REAL حذف می‌شوند)."""
+        q = self.db.query(Trade).filter(Trade.version_id == version_id, analysis_trades_filter())
+        if test_type is not None:
+            q = q.filter(Trade.test_type == test_type)
+        return self._analyze(q.all(), scope=AnalysisScope.VERSION, scope_key=str(version_id), version_id=version_id, test_type=test_type)
+
+    def analyze_prop_stage(self, prop_stage_id: int) -> Dict[str, Any]:
+        """تحلیل کامل یک مرحله پراپ + PropRuleEngine.evaluate_stage()"""
+        trades = self.db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
+        result = self._analyze(trades, scope=AnalysisScope.PROP_STAGE, scope_key=str(prop_stage_id), prop_stage_id=prop_stage_id)
+        from ..services.prop_rule_engine import PropRuleEngine
+        result["prop_rules"] = PropRuleEngine.evaluate_stage(self.db, prop_stage_id)
+        return result
+
+    def analyze_broker(self, finance_account_id: int) -> Dict[str, Any]:
+        """تحلیل کامل یک حساب بروکر (معاملات REAL)."""
+        trades = self.db.query(Trade).filter(Trade.finance_account_id == finance_account_id).all()
+        return self._analyze(trades, scope=AnalysisScope.BROKER, scope_key=str(finance_account_id), finance_account_id=finance_account_id)
+
+    def _analyze(self, trades, scope, scope_key, version_id=None, prop_stage_id=None, finance_account_id=None, test_type=None) -> Dict[str, Any]:
+        """موتور مشترک — محاسبه متریک و ذخیره AnalysisResult + AnalysisRun"""
         if not trades:
-            raise ValueError("هیچ معامله‌ای برای این نسخه یافت نشد")
+            stale = self.db.query(AnalysisResult).filter(AnalysisResult.scope == scope, AnalysisResult.scope_key == scope_key).first()
+            if stale:
+                self.db.delete(stale)
+                self.db.commit()
+            if scope == AnalysisScope.VERSION:
+                raise ValueError("هیچ معامله‌ای برای تحلیل این نسخه یافت نشد (معاملات REAL در تحلیل Backtest/Forward شمرده نمی‌شوند)")
+            raise ValueError("هیچ معامله‌ای برای این دامنه یافت نشد")
 
-        basic_metrics = self._calculate_basic_metrics(trades)
-        session_analysis = self._analyze_by_session(trades)
-        weekday_analysis = self._analyze_by_weekday(trades)
-        hour_analysis = self._analyze_by_hour(trades)
-        custom_time_analysis = self._analyze_by_custom_intervals(trades)
-        consistency_analysis = self._calculate_consistency(trades)
+        basic = self._calculate_basic_metrics(trades)
+        session_a = self._analyze_by_session(trades)
+        weekday_a = self._analyze_by_weekday(trades)
+        hour_a = self._analyze_by_hour(trades)
+        custom_a = self._analyze_by_custom_intervals(trades)
+        consist_a = self._calculate_consistency(trades)
 
-        # ── ۱. به‌روزرسانی AnalysisResult (جاری) ──
-        existing = self.db.query(AnalysisResult).filter(
-            AnalysisResult.version_id == version_id
-        ).first()
+        existing = self.db.query(AnalysisResult).filter(AnalysisResult.scope == scope, AnalysisResult.scope_key == scope_key).first()
         if existing:
             self.db.delete(existing)
             self.db.commit()
 
         result = AnalysisResult(
-            version_id=version_id,
-            total_trades=basic_metrics["total_trades"],
-            win_rate=basic_metrics["win_rate"],
-            profit_factor=basic_metrics["profit_factor"],
-            net_pnl=basic_metrics["net_pnl"],
-            net_r=basic_metrics["net_r"],
-            max_dd=basic_metrics["max_dd"],
-            expectancy=basic_metrics["expectancy"],
-            expectancy_r=basic_metrics["expectancy_r"],
-            avg_win=basic_metrics["avg_win"],
-            avg_loss=basic_metrics["avg_loss"],
-            largest_win=basic_metrics["largest_win"],
-            largest_loss=basic_metrics["largest_loss"],
-            max_consecutive_losses=basic_metrics["max_consecutive_losses"],
-            consistency_analysis=consistency_analysis,
-            session_analysis=session_analysis,
-            weekday_analysis=weekday_analysis,
-            hour_analysis=hour_analysis,
-            custom_time_analysis=custom_time_analysis,
+            scope=scope, scope_key=scope_key, version_id=version_id,
+            prop_stage_id=prop_stage_id, finance_account_id=finance_account_id,
+            total_trades=basic["total_trades"], win_rate=basic["win_rate"],
+            profit_factor=basic["profit_factor"], net_pnl=basic["net_pnl"],
+            net_r=basic["net_r"], max_dd=basic["max_dd"],
+            expectancy=basic["expectancy"], expectancy_r=basic["expectancy_r"],
+            avg_win=basic["avg_win"], avg_loss=basic["avg_loss"],
+            largest_win=basic["largest_win"], largest_loss=basic["largest_loss"],
+            max_consecutive_losses=basic["max_consecutive_losses"],
+            consistency_analysis=consist_a, session_analysis=session_a,
+            weekday_analysis=weekday_a, hour_analysis=hour_a,
+            custom_time_analysis=custom_a,
         )
         self.db.add(result)
 
-        # ── ۲. افزودن AnalysisRun (تاریخچه) ──
-        full_metrics_snapshot = {
-            "basic": basic_metrics,
-            "consistency": consistency_analysis,
-            "session": session_analysis,
-            "weekday": weekday_analysis,
-            "hour": hour_analysis,
-            "custom_time": custom_time_analysis,
-        }
-
+        snap = {"basic": basic, "consistency": consist_a, "session": session_a,
+                "weekday": weekday_a, "hour": hour_a, "custom_time": custom_a}
         run = AnalysisRun(
-            version_id=version_id,
-            total_trades=basic_metrics["total_trades"],
-            win_rate=basic_metrics["win_rate"],
-            profit_factor=basic_metrics["profit_factor"],
-            net_pnl=basic_metrics["net_pnl"],
-            net_r=basic_metrics["net_r"],
-            max_dd=basic_metrics["max_dd"],
-            expectancy=basic_metrics["expectancy"],
-            expectancy_r=basic_metrics["expectancy_r"],
-            avg_win=basic_metrics["avg_win"],
-            avg_loss=basic_metrics["avg_loss"],
-            largest_win=basic_metrics["largest_win"],
-            largest_loss=basic_metrics["largest_loss"],
-            max_consecutive_losses=basic_metrics["max_consecutive_losses"],
-            full_metrics=full_metrics_snapshot,
+            scope=scope, scope_key=scope_key, version_id=version_id,
+            prop_stage_id=prop_stage_id, finance_account_id=finance_account_id,
+            total_trades=basic["total_trades"], win_rate=basic["win_rate"],
+            profit_factor=basic["profit_factor"], net_pnl=basic["net_pnl"],
+            net_r=basic["net_r"], max_dd=basic["max_dd"],
+            expectancy=basic["expectancy"], expectancy_r=basic["expectancy_r"],
+            avg_win=basic["avg_win"], avg_loss=basic["avg_loss"],
+            largest_win=basic["largest_win"], largest_loss=basic["largest_loss"],
+            max_consecutive_losses=basic["max_consecutive_losses"],
+            full_metrics=snap,
         )
         self.db.add(run)
         self.db.commit()
         self.db.refresh(result)
 
-        return {
-            "result": result,
-            "run_id": run.id,
-            "message": "تحلیل انجام شد و در تاریخچه ذخیره گردید",
-        }
+        return {"result": result, "run_id": run.id,
+                "message": "تحلیل انجام شد و در تاریخچه ذخیره گردید"}
 
-    # ═════════════════════════════════════════════
-    # مقایسه‌ی چند نسخه
-    # ═════════════════════════════════════════════
+
     def compare_versions(self, version_ids: List[int], min_trades: int = 0) -> Dict[str, Any]:
         """
         مقایسه‌ی چند نسخه با پیشنهاد هوشمند و دلایل.
@@ -118,7 +113,7 @@ class AnalysisService:
                 continue
 
             analysis = self.db.query(AnalysisResult).filter(
-                AnalysisResult.version_id == vid
+                AnalysisResult.scope == AnalysisScope.VERSION, AnalysisResult.scope_key == str(vid)
             ).first()
             if not analysis:
                 skipped.append({
@@ -140,7 +135,7 @@ class AnalysisService:
                 Strategy.id == version.strategy_id
             ).first()
 
-            trades = self.db.query(Trade).filter(Trade.version_id == vid).all()
+            trades = self.db.query(Trade).filter(Trade.version_id == vid, analysis_trades_filter()).all()
             symbols = list(set(t.symbol for t in trades if t.symbol))
 
             health_score = self._calculate_score(analysis)

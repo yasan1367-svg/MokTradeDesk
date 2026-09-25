@@ -9,6 +9,7 @@ from math import sqrt
 from ..core.database import get_db
 from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus
 from ..utils.enums import enum_value
+from ..utils.trade_scope import analysis_trades_filter
 
 router = APIRouter()
 
@@ -313,11 +314,12 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
         }
 
     # 3. دریافت معاملات — فاز ۱۵.۳: فقط ۳ ستون لازم (بدون لود ORM)
+    # معاملات REAL در آمار Backtest/Forward شمرده نمی‌شوند
     version_ids = [v.id for v in versions]
     _net = _net_expr()
     _rows = (
         db.query(Trade)
-        .filter(Trade.version_id.in_(version_ids))
+        .filter(Trade.version_id.in_(version_ids), analysis_trades_filter())
         .with_entities(Trade.close_time, Trade.open_time, _net.label("net"))
         .order_by(Trade.id.asc())
         .all()

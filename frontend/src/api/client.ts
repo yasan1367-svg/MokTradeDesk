@@ -139,6 +139,24 @@ export const getVersionAnalysisHistory = (versionId: number) =>
   api.get(`/api/analytics/${versionId}/history`);
 
 // ─────────────────────────────────────────────
+// فاز ۲۰.۳ — تحلیل ۶گانه (نوع + scope)
+// ─────────────────────────────────────────────
+export const analyzeVersionScoped = (versionId: number, testType?: string) =>
+  api.post(`/api/analytics/analyze/version/${versionId}`, null,
+    { params: testType ? { test_type: testType } : {} });
+export const analyzePropStage = (propStageId: number) =>
+  api.post(`/api/analytics/analyze/prop/${propStageId}`);
+export const analyzeBroker = (financeAccountId: number) =>
+  api.post(`/api/analytics/analyze/broker/${financeAccountId}`);
+export const getAnalysisVersion = (versionId: number, testType?: string) =>
+  api.get(`/api/analytics/analysis/version/${versionId}`,
+    { params: testType ? { test_type: testType } : {} });
+export const getAnalysisProp = (propStageId: number) =>
+  api.get(`/api/analytics/analysis/prop/${propStageId}`);
+export const getAnalysisBroker = (financeAccountId: number) =>
+  api.get(`/api/analytics/analysis/broker/${financeAccountId}`);
+
+// ─────────────────────────────────────────────
 // Prop Desk
 // ─────────────────────────────────────────────
 export const getPropFirms = () => api.get('/api/prop/firms');

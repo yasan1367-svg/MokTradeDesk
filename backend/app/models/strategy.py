@@ -1,4 +1,7 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey
+from sqlalchemy import (
+    Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey,
+    UniqueConstraint,
+)
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
@@ -32,6 +35,21 @@ class TestType(str, enum.Enum):
     BACKTEST = "backtest"
     FORWARD = "forward"
     REAL = "real"
+
+
+class AnalysisScope(str, enum.Enum):
+    """دامنه‌ی تحلیل (فاز ۲۰) — هر scope مجموعه‌ی معاملات مستقل خودش را دارد.
+
+    - VERSION    : تحلیل نسخه‌ی استراتژی (Backtest / Forward)
+    - PROP_STAGE : تحلیل مرحله‌ی پراپ (stage_1 / stage_2 / funded_real)
+    - BROKER     : تحلیل حساب بروکر (Account.type = BROKER)
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
+    ('VERSION' / 'PROP_STAGE' / 'BROKER') نه value.
+    """
+    VERSION = "version"
+    PROP_STAGE = "prop_stage"
+    BROKER = "broker"
 
 
 # ═════════════════════════════════════════════
@@ -160,7 +178,21 @@ class AnalysisResult(Base):
     __tablename__ = "analysis_results"
 
     id = Column(Integer, primary_key=True, index=True)
-    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=False)
+
+    # ── فاز ۲۰: دامنه‌ی تحلیل ──
+    # scope مشخص می‌کند این تحلیل مربوط به «نسخه»، «مرحله‌ی پراپ» یا «حساب بروکر» است.
+    scope = Column(
+        Enum(AnalysisScope), nullable=False,
+        default=AnalysisScope.VERSION, index=True,
+    )
+    # کلید متنی دامنه = str(id) همان scope.
+    # چرا؟ چون FKها nullable هستند و UniqueConstraint روی NULL کار نمی‌کند.
+    scope_key = Column(String, nullable=False, index=True)
+
+    # فقط یکی از این سه پر می‌شود (بسته به scope)
+    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
+    prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
+    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
     total_trades = Column(Integer, default=0)
     win_rate = Column(Float, default=0.0)
@@ -187,6 +219,11 @@ class AnalysisResult(Base):
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # یک رکورد «جاری» برای هر دامنه (نسخه / مرحله‌ی پراپ / حساب بروکر)
+    __table_args__ = (
+        UniqueConstraint("scope", "scope_key", name="uq_analysis_results_scope_key"),
+    )
+
     version = relationship("StrategyVersion", back_populates="analysis_results")
 
 
@@ -194,7 +231,18 @@ class AnalysisRun(Base):
     __tablename__ = "analysis_runs"
 
     id = Column(Integer, primary_key=True, index=True)
-    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=False)
+
+    # ── فاز ۲۰: دامنه (مثل AnalysisResult) ──
+    # بدون UniqueConstraint — این جدول تاریخچه‌ی اجراهاست، نه وضعیت جاری.
+    scope = Column(
+        Enum(AnalysisScope), nullable=False,
+        default=AnalysisScope.VERSION, index=True,
+    )
+    scope_key = Column(String, nullable=False, index=True)
+
+    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
+    prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
+    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
     # متریک‌های اصلی (همان‌هایی که در Dashboard و مقایسه استفاده می‌شوند)
     total_trades = Column(Integer, default=0)
