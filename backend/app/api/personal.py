@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -9,6 +9,7 @@ import hashlib
 from ..core.database import get_db
 from ..models.personal import JournalReview, Screenshot
 from ..models.strategy import Trade
+from ..utils.uploads import read_upload_limited
 
 router = APIRouter()
 
@@ -65,7 +66,7 @@ async def upload_review_screenshot(
     file_name = f"review_{review_id}_{timestamp}{ext}"
     file_path = f"storage/screenshots/{file_name}"
 
-    content = await file.read()
+    content = await read_upload_limited(file)
     with open(file_path, "wb") as f:
         f.write(content)
 
@@ -128,14 +129,16 @@ def delete_review_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
 @router.get("/journal/reviews")
 def get_reviews(db: Session = Depends(get_db)):
     """لیست همه‌ی مرورها"""
-    reviews = db.query(JournalReview).order_by(JournalReview.created_at.desc()).all()
+    # selectinload: trade و screenshots هر کدام در یک کوئری (رفع N+1 — فاز ۱۵.۲)
+    reviews = (
+        db.query(JournalReview)
+        .options(selectinload(JournalReview.trade), selectinload(JournalReview.screenshots))
+        .order_by(JournalReview.created_at.desc())
+        .all()
+    )
     result = []
     for r in reviews:
-        trade = db.query(Trade).filter(Trade.id == r.trade_id).first()
-        screenshots = db.query(Screenshot).filter(
-            Screenshot.entity_type == "review",
-            Screenshot.entity_id == r.id,
-        ).all()
+        trade = r.trade
         result.append({
             "id": r.id,
             "trade_id": r.trade_id,
@@ -147,7 +150,7 @@ def get_reviews(db: Session = Depends(get_db)):
             "notes": r.notes,
             "lessons": r.lessons,
             "rating": r.rating,
-            "screenshots_count": len(screenshots),
+            "screenshots_count": len(r.screenshots),
             "created_at": r.created_at,
         })
     return result
@@ -181,10 +184,11 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
 def get_prop_accounts_for_ledger(db: Session = Depends(get_db)):
     """لیست اکانت‌های پراپ (برای انتخاب در دفتر کل)"""
     from ..models.prop import PropAccount, PropFirm
-    accounts = db.query(PropAccount).all()
+    # selectinload: firm در یک کوئری (رفع N+1 — فاز ۱۵.۲)
+    accounts = db.query(PropAccount).options(selectinload(PropAccount.firm)).all()
     result = []
     for a in accounts:
-        firm = db.query(PropFirm).filter(PropFirm.id == a.prop_firm_id).first()
+        firm = a.firm
         result.append({
             "id": a.id,
             "label": a.account_label,

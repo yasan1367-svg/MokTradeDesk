@@ -1,5 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -7,8 +8,31 @@ from math import sqrt
 
 from ..core.database import get_db
 from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus
+from ..utils.enums import enum_value
 
 router = APIRouter()
+
+
+def _net_expr():
+    """عبارت SQL سود/زیان خالص: pnl + commission + swap (فاز ۱۵.۳)"""
+    return (
+        func.coalesce(Trade.pnl, 0.0)
+        + func.coalesce(Trade.commission, 0.0)
+        + func.coalesce(Trade.swap, 0.0)
+    )
+
+
+def _trades_count_by_version(db: Session, version_ids: List[int]) -> dict:
+    """شمارش معاملات هر نسخه در یک کوئری گروهی (رفع N+1 — فاز ۱۵.۲)"""
+    if not version_ids:
+        return {}
+    rows = (
+        db.query(Trade.version_id, func.count(Trade.id))
+        .filter(Trade.version_id.in_(version_ids))
+        .group_by(Trade.version_id)
+        .all()
+    )
+    return {version_id: count for version_id, count in rows}
 
 
 # ═════════════════════════════════════════════
@@ -40,16 +64,16 @@ class VersionUpdate(BaseModel):
 # ═════════════════════════════════════════════
 @router.get("/")
 def get_strategies(db: Session = Depends(get_db)):
-    strategies = db.query(Strategy).all()
+    # selectinload: شمارش نسخه‌ها در یک کوئری (رفع N+1 — فاز ۱۵.۲)
+    strategies = db.query(Strategy).options(selectinload(Strategy.versions)).all()
     result = []
     for s in strategies:
-        versions = db.query(StrategyVersion).filter(StrategyVersion.strategy_id == s.id).all()
         result.append({
             "id": s.id,
             "name": s.name,
             "description": s.description,
             "created_at": s.created_at,
-            "versions_count": len(versions),
+            "versions_count": len(s.versions),
         })
     return result
 
@@ -106,19 +130,20 @@ def delete_strategy(strategy_id: int, db: Session = Depends(get_db)):
 @router.get("/versions/all")
 def get_all_versions(db: Session = Depends(get_db)):
     """دریافت لیست همه‌ی نسخه‌ها با نام استراتژی"""
-    versions = db.query(StrategyVersion).all()
+    # selectinload برای استراتژی + یک کوئری گروهی برای شمارش معاملات (رفع N+1 — فاز ۱۵.۲)
+    versions = db.query(StrategyVersion).options(selectinload(StrategyVersion.strategy)).all()
+    counts = _trades_count_by_version(db, [v.id for v in versions])
     result = []
     for v in versions:
-        strategy = db.query(Strategy).filter(Strategy.id == v.strategy_id).first()
-        trades_count = db.query(Trade).filter(Trade.version_id == v.id).count()
+        strategy = v.strategy
         result.append({
             "id": v.id,
             "version_name": v.version_name,
             "strategy_id": v.strategy_id,
             "strategy_name": strategy.name if strategy else "نامشخص",
-            "status": v.status.value if hasattr(v.status, 'value') else str(v.status),
+            "status": enum_value(v.status),
             "rules_note": v.rules_note,
-            "trades_count": trades_count,
+            "trades_count": counts.get(v.id, 0),
             "created_at": v.created_at,
         })
     return result
@@ -135,16 +160,17 @@ def get_strategy_versions(strategy_id: int, db: Session = Depends(get_db)):
         StrategyVersion.strategy_id == strategy_id
     ).all()
 
+    # یک کوئری گروهی برای شمارش معاملات همه‌ی نسخه‌ها (رفع N+1 — فاز ۱۵.۲)
+    counts = _trades_count_by_version(db, [v.id for v in versions])
     result = []
     for v in versions:
-        trades_count = db.query(Trade).filter(Trade.version_id == v.id).count()
         result.append({
             "id": v.id,
             "version_name": v.version_name,
             "strategy_id": v.strategy_id,
             "rules_note": v.rules_note,
-            "status": v.status.value if hasattr(v.status, 'value') else str(v.status),
-            "trades_count": trades_count,
+            "status": enum_value(v.status),
+            "trades_count": counts.get(v.id, 0),
             "created_at": v.created_at,
         })
     return result
@@ -231,7 +257,7 @@ def fork_version(version_id: int, db: Session = Depends(get_db)):
         "strategy_id": forked.strategy_id,
         "rules_note": forked.rules_note,
         "forked_from_version_id": forked.forked_from_version_id,
-        "status": forked.status.value if hasattr(forked.status, 'value') else str(forked.status),
+        "status": enum_value(forked.status),
         "created_at": forked.created_at,
         "trades_count": 0,
     }
@@ -286,9 +312,17 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
             "message": "این استراتژی هیچ نسخه‌ای ندارد",
         }
 
-    # 3. دریافت همه معاملات از همه نسخه‌ها
+    # 3. دریافت معاملات — فاز ۱۵.۳: فقط ۳ ستون لازم (بدون لود ORM)
     version_ids = [v.id for v in versions]
-    all_trades = db.query(Trade).filter(Trade.version_id.in_(version_ids)).all()
+    _net = _net_expr()
+    _rows = (
+        db.query(Trade)
+        .filter(Trade.version_id.in_(version_ids))
+        .with_entities(Trade.close_time, Trade.open_time, _net.label("net"))
+        .order_by(Trade.id.asc())
+        .all()
+    )
+    all_trades = [(ct, ot, float(n or 0.0)) for ct, ot, n in _rows]
 
     if not all_trades:
         return {
@@ -300,17 +334,13 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
             "message": "هیچ معامله‌ای برای این استراتژی یافت نشد",
         }
 
-    # ─── 4. Helper: net_pnl ───
-    def _net_pnl(t: Trade) -> float:
-        return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-
     total = len(all_trades)
-    wins = [t for t in all_trades if _net_pnl(t) > 0]
-    losses = [t for t in all_trades if _net_pnl(t) < 0]
+    wins = [t for t in all_trades if t[2] > 0]
+    losses = [t for t in all_trades if t[2] < 0]
 
-    gross_profit = sum(_net_pnl(t) for t in wins) if wins else 0
-    gross_loss = abs(sum(_net_pnl(t) for t in losses)) if losses else 0
-    net_pnl = sum(_net_pnl(t) for t in all_trades)
+    gross_profit = sum(t[2] for t in wins) if wins else 0
+    gross_loss = abs(sum(t[2] for t in losses)) if losses else 0
+    net_pnl = sum(t[2] for t in all_trades)
 
     # ─── Win Rate ───
     win_rate = round((len(wins) / total * 100), 2) if total > 0 else 0
@@ -324,12 +354,12 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
         profit_factor = 0.0
 
     # ─── Max Drawdown ───
-    sorted_trades = sorted(all_trades, key=lambda t: t.close_time or t.open_time)
+    sorted_trades = sorted(all_trades, key=lambda t: t[0] or t[1])
     equity = 0.0
     peak = 0.0
     max_dd = 0.0
     for t in sorted_trades:
-        equity += _net_pnl(t)
+        equity += t[2]
         if equity > peak:
             peak = equity
         dd = peak - equity
@@ -338,7 +368,7 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
     max_dd = round(max_dd, 2)
 
     # ─── Sharpe Ratio ───
-    pnl_values = [_net_pnl(t) for t in all_trades]
+    pnl_values = [t[2] for t in all_trades]
     mean_pnl = sum(pnl_values) / len(pnl_values) if pnl_values else 0
     if len(pnl_values) > 1:
         variance = sum((p - mean_pnl) ** 2 for p in pnl_values) / (len(pnl_values) - 1)
@@ -357,14 +387,14 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
     expectancy = round((win_rate_ratio * avg_win) - (loss_rate_ratio * avg_loss), 2)
 
     # ─── Largest Win / Loss ───
-    largest_win = round(max((_net_pnl(t) for t in wins), default=0), 2)
-    largest_loss = round(abs(min((_net_pnl(t) for t in losses), default=0)), 2)
+    largest_win = round(max((t[2] for t in wins), default=0), 2)
+    largest_loss = round(abs(min((t[2] for t in losses), default=0)), 2)
 
     # ─── Max Consecutive Losses ───
     streak = 0
     max_streak = 0
     for t in sorted_trades:
-        npnl = _net_pnl(t)
+        npnl = t[2]
         if npnl < 0:
             streak += 1
             max_streak = max(max_streak, streak)

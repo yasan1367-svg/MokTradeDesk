@@ -1,19 +1,23 @@
-from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form
+from fastapi import APIRouter, Depends, UploadFile, File, HTTPException, Form, Request
 from sqlalchemy.orm import Session
 import tempfile
 import os
 from typing import Optional
 
 from ..core.database import get_db
+from ..core.rate_limit import limiter, IMPORT_RATE_LIMIT
 from ..services.import_service import Soft4XImporter, MT4Importer
 from ..models.strategy import StrategyVersion
 from ..utils.trade_validator import TradeValidator
+from ..utils.uploads import read_upload_limited
 
 router = APIRouter()
 
 
 @router.post("/soft4x")
+@limiter.limit(IMPORT_RATE_LIMIT)
 async def import_soft4x(
+    request: Request,
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
@@ -33,7 +37,7 @@ async def import_soft4x(
         raise HTTPException(status_code=400, detail=error)
 
     with tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx") as tmp_file:
-        content = await file.read()
+        content = await read_upload_limited(file)
         tmp_file.write(content)
         tmp_path = tmp_file.name
 
@@ -92,7 +96,9 @@ async def import_soft4x(
 
 
 @router.post("/mt4")
+@limiter.limit(IMPORT_RATE_LIMIT)
 async def import_mt4(
+    request: Request,
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
@@ -110,7 +116,7 @@ async def import_mt4(
     if not valid:
         raise HTTPException(status_code=400, detail=error)
 
-    content = await file.read()
+    content = await read_upload_limited(file)
 
     html_content = None
     for encoding in ['utf-8', 'utf-16', 'windows-1256', 'iso-8859-1', 'cp1252']:

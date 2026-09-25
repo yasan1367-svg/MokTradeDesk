@@ -129,11 +129,11 @@ return (
     <div className='space-y-6'>
       <div className='flex items-center justify-between'>
         <div className='flex items-center gap-4'>
-          <h2 className='text-[var(--text-primary)] dark:text-white text-2xl font-extrabold'>📅 تقویم معاملات</h2>
+          <h2 className='text-[var(--text-primary)] text-2xl font-extrabold'>📅 تقویم معاملات</h2>
           <span className='text-[var(--text-secondary)] text-sm'>{JALALI_MONTHS[jalaliMonth-1]} {jalaliYear}</span>
         </div>
         <div className='flex gap-2'>
-          <button onClick={goToday} className='bg-[#3F7CFF] hover:bg-[#3F7CFF]/80 text-white px-4 py-2 rounded-xl text-sm transition-all'>امروز</button>
+          <button onClick={goToday} className='bg-[var(--accent)] hover:bg-[var(--accent-strong)] text-white px-4 py-2 rounded-xl text-sm transition-all'>امروز</button>
           <button onClick={() => nav(-1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[#1E2F4D]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>◀</button>
           <button onClick={() => nav(1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[#1E2F4D]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>▶</button>
         </div>
@@ -162,7 +162,7 @@ return (
             {selectedDay ? (
               <>
                 <div className='flex items-center justify-between mb-4'>
-                  <h3 className='text-[var(--text-primary)] dark:text-white font-bold text-base'>
+                  <h3 className='text-[var(--text-primary)] font-bold text-base'>
                     {(() => { const [y,m,d] = isoToJalali(selectedDay.date); return `${d} ${JALALI_MONTHS[m-1]} ${y}`; })()}
                   </h3>
                   <span className={`text-sm font-bold ${selectedDay.total_pnl>=0?'text-[var(--profit)]':'text-[var(--loss)]'}`}>

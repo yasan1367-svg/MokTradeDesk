@@ -26,10 +26,9 @@ export const analyzeVersion = (versionId: number) =>
   api.post(`/api/analytics/analyze/${versionId}`);
 export const getAnalysis = (versionId: number) =>
   api.get(`/api/analytics/${versionId}`);
-export const compareVersions = (versionIds: number[], minTrades: number = 0) =>
-  api.post('/api/analytics/compare', { version_ids: versionIds, min_trades: minTrades });
 export const getIntervals = (symbol?: string) =>
   api.get('/api/analytics/intervals/', { params: symbol ? { symbol } : {} });
+// فاز ۱۵.۸: تابع تکراری compareVersions حذف شد — این نسخهٔ واحد استفاده می‌شود
 export const compareVersionsWithDetails = (versionIds: number[], minTrades: number = 0) =>
   api.post('/api/analytics/compare', { version_ids: versionIds, min_trades: minTrades });
 export const getPropAnalytics = () => api.get('/api/prop/analytics');
@@ -62,7 +61,13 @@ export const getCalendarData = (params?: {
 // ─────────────────────────────────────────────
 // Dashboard
 // ─────────────────────────────────────────────
-export const getDashboardData = () => api.get('/api/analytics/dashboard');
+export const getDashboardData = (params?: { date_from?: string; date_to?: string }) =>
+  api.get('/api/analytics/dashboard', { params });
+
+export const getYesterdayData = () => api.get('/api/analytics/yesterday');
+
+export const getRiskAdvanced = (params?: { date_from?: string; date_to?: string }) =>
+  api.get('/api/analytics/risk-advanced', { params });
 
 // ─────────────────────────────────────────────
 // Risk Management
@@ -271,6 +276,7 @@ export const getTrades = (params?: {
   test_type?: string;
   source?: string;
   direction?: string;
+  status?: string;
   search?: string;
   date_from?: string;
   date_to?: string;

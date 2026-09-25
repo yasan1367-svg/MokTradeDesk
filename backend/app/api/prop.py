@@ -1,17 +1,21 @@
 from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
+from sqlalchemy.orm import Session, selectinload
 from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
+import logging
 
 from ..core.database import get_db
 from ..models.prop import (
     PropFirm, PropFirmDefaultRules, PropAccount, PropStage, PropWithdrawal, PropCost,
-    StageType, StageStatus, FailureReason
+    PropAlert, StageType, StageStatus, FailureReason
 )
 from ..models.finance import (
     Account, AccountType, Category, CategoryType, Currency, Transaction, TransactionType
 )
+from ..utils.enums import enum_value
+
+logger = logging.getLogger("moktrade")
 
 router = APIRouter()
 
@@ -20,10 +24,13 @@ router = APIRouter()
 # Helpers — Prop ↔ Finance (فاز ۵)
 # ═════════════════════════════════════════════
 def _to_currency(value: Optional[str]) -> Currency:
-    """تبدیل ارز رشته‌ای پراپ به Enum مالی (IRR|USD) با fallback امن"""
+    """تبدیل ارز رشته‌ای پراپ به Enum مالی (IRR|USD) با fallback امن + لاگ (فاز ۱۵.۱۰)"""
+    raw = (value or "USD").upper()
     try:
-        return Currency((value or "USD").upper())
+        return Currency(raw)
     except ValueError:
+        # پیش‌تر این fallback بی‌صدا بود؛ حالا هشدار لاگ می‌شود تا تبدیل ناخواسته دیده شود.
+        logger.warning("Invalid currency %r — falling back to USD", value)
         return Currency.USD
 
 
@@ -141,10 +148,10 @@ class PropCostCreate(BaseModel):
 # ═════════════════════════════════════════════
 @router.get("/firms")
 def get_firms(db: Session = Depends(get_db)):
-    firms = db.query(PropFirm).all()
+    # selectinload: شمارش اکانت‌ها در یک کوئری (رفع N+1 — فاز ۱۵.۲)
+    firms = db.query(PropFirm).options(selectinload(PropFirm.accounts)).all()
     result = []
     for f in firms:
-        accounts = db.query(PropAccount).filter(PropAccount.prop_firm_id == f.id).all()
         result.append({
             "id": f.id,
             "name": f.name,
@@ -152,7 +159,7 @@ def get_firms(db: Session = Depends(get_db)):
             "website": f.website,
             "notes": f.notes,
             "created_at": f.created_at,
-            "accounts_count": len(accounts),
+            "accounts_count": len(f.accounts),
         })
     return result
 
@@ -181,7 +188,7 @@ def get_firm_default_rules(firm_id: int, db: Session = Depends(get_db)):
 
     return [
         {
-            "stage_type": r.stage_type.value if hasattr(r.stage_type, 'value') else str(r.stage_type),
+            "stage_type": enum_value(r.stage_type),
             "profit_target": r.profit_target,
             "max_daily_dd": r.max_daily_dd,
             "max_total_dd": r.max_total_dd,
@@ -197,11 +204,15 @@ def get_firm_default_rules(firm_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 @router.get("/accounts")
 def get_accounts(db: Session = Depends(get_db)):
-    accounts = db.query(PropAccount).all()
+    # selectinload: firm و stages هر کدام در یک کوئری (رفع N+1 — فاز ۱۵.۲)
+    accounts = (
+        db.query(PropAccount)
+        .options(selectinload(PropAccount.firm), selectinload(PropAccount.stages))
+        .all()
+    )
     result = []
     for a in accounts:
-        firm = db.query(PropFirm).filter(PropFirm.id == a.prop_firm_id).first()
-        stages = db.query(PropStage).filter(PropStage.prop_account_id == a.id).all()
+        firm = a.firm
         result.append({
             "id": a.id,
             "account_label": a.account_label,
@@ -210,7 +221,7 @@ def get_accounts(db: Session = Depends(get_db)):
             "is_active": a.is_active,
             "firm_id": a.prop_firm_id,
             "firm_name": firm.name if firm else "نامشخص",
-            "stages_count": len(stages),
+            "stages_count": len(a.stages),
             "created_at": a.created_at,
         })
     return result
@@ -626,8 +637,6 @@ def get_stage_withdrawals(stage_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = None):
     """بررسی خودکار و ایجاد هشدار برای یک مرحله پراپ"""
-    from ..models.prop import PropAlert
-
     if not evaluation:
         from ..services.prop_rule_engine import PropRuleEngine
         evaluation = PropRuleEngine.evaluate_stage(db, stage_id)

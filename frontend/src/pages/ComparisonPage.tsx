@@ -236,7 +236,7 @@ export default function ComparisonPage() {
               onClick={handleCompare}
               disabled={loading || selectedIds.length < 2}
               className="text-white px-7 py-2.5 rounded-[10px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+              style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
             >
               {loading ? '⏳ در حال مقایسه...' : '🚀 مقایسه کن'}
             </button>
@@ -394,7 +394,7 @@ export default function ComparisonPage() {
                       </td>
                     ))}
                   </tr>
-                  <tr className="bg-[#EDF3FF]/50">
+                  <tr className="bg-[var(--accent-soft)]">
                     <td className="py-4 px-5 text-[13px] text-[var(--text-primary)] font-extrabold">⭐ Health Score</td>
                     {comparison.items.map((item: any) => (
                       <td key={item.version_id} className={`py-4 px-5 text-[16px] ${getCellStyle(item, comparison.items, 'health_score')}`}>
@@ -493,9 +493,9 @@ export default function ComparisonPage() {
 
             <div
               className="rounded-[18px] p-6 mb-5 border border-[var(--border-accent)] relative overflow-hidden"
-              style={{ background: 'linear-gradient(135deg, #EDF3FF 0%, #F0F6FF 100%)' }}
+              style={{ background: 'linear-gradient(135deg, var(--accent-soft) 0%, var(--accent-light) 100%)' }}
             >
-              <div className="absolute top-0 right-0 left-0 h-1" style={{ background: 'linear-gradient(90deg, #3F7CFF, #7959D6)' }} />
+              <div className="absolute top-0 right-0 left-0 h-1" style={{ background: 'linear-gradient(90deg, var(--accent), var(--purple))' }} />
               <div className="flex items-center justify-between flex-wrap gap-4">
                 <div>
                   <div className="text-[22px] font-extrabold text-[var(--text-primary)] mb-1">
@@ -565,11 +565,11 @@ export default function ComparisonPage() {
                       </div>
                     </div>
                     <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-white/60 rounded-[10px] p-3">
+                      <div className="bg-[var(--bg-card-translucent)] rounded-[10px] p-3">
                         <div className="text-[10px] text-[var(--text-secondary)] font-semibold mb-1">نرخ برد</div>
                         <div className="text-[16px] font-extrabold text-[var(--text-primary)]">{sb.win_rate}٪</div>
                       </div>
-                      <div className="bg-white/60 rounded-[10px] p-3">
+                      <div className="bg-[var(--bg-card-translucent)] rounded-[10px] p-3">
                         <div className="text-[10px] text-[var(--text-secondary)] font-semibold mb-1">سود خالص</div>
                         <div className={`text-[16px] font-extrabold ${sb.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                           {sb.net_pnl >= 0 ? '+' : ''}{sb.net_pnl} $
@@ -613,7 +613,7 @@ export default function ComparisonPage() {
                           ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
                           : 'bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--accent)]'
                       }`}
-                      style={isActive ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+                      style={isActive ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
                     >
                       {tab.label}
                     </button>

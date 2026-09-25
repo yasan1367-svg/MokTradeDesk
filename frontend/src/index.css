@@ -7,6 +7,7 @@
 :root {
   --bg-base: #EEF2F9;
   --bg-card: #FFFFFF;
+  --bg-card-translucent: rgba(255, 255, 255, 0.7);
   --bg-input: #F8FAFF;
   --bg-elevated: #F5F7FB;
   --bg-sidebar: #152238;
@@ -56,6 +57,7 @@
 .dark {
   --bg-base: #0F1923;
   --bg-card: #1A2736;
+  --bg-card-translucent: rgba(26, 39, 54, 0.7);
   --bg-input: #1E2F41;
   --bg-elevated: #243447;
   --bg-sidebar: #0A131C;

@@ -1,33 +1,42 @@
 import { AreaChart, Area, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 
 interface EquityCurveChartProps {
-  trades: any[];
+  trades?: any[];
   initialBalance?: number;
   height?: number;
+  /** سری آماده از endpoint داشبورد: [{date, equity}] */
+  data?: { date: string; equity: number }[];
 }
 
-export default function EquityCurveChart({ trades, initialBalance = 0, height = 250 }: EquityCurveChartProps) {
-  const sorted = [...trades]
-    .filter((t) => t.close_time)
-    .sort((a, b) => new Date(a.close_time).getTime() - new Date(b.close_time).getTime());
+export default function EquityCurveChart({ trades = [], initialBalance = 0, height = 250, data: series }: EquityCurveChartProps) {
+  let data: { index: number; date: string; equity: number; pnl?: number }[];
 
-  let equity = initialBalance;
-  const data = sorted.map((t, idx) => {
-    equity += t.pnl || 0;
-    return {
-      index: idx + 1,
-      date: new Date(t.close_time).toLocaleDateString('fa-IR'),
-      equity: Math.round(equity * 100) / 100,
-      pnl: t.pnl || 0,
-    };
-  });
+  if (series && series.length > 0) {
+    // استفادهٔ مستقیم از equity_curve آمادهٔ بک‌اند
+    data = series.map((p, idx) => ({ index: idx, date: p.date, equity: p.equity }));
+  } else {
+    const sorted = [...trades]
+      .filter((t) => t.close_time)
+      .sort((a, b) => new Date(a.close_time).getTime() - new Date(b.close_time).getTime());
 
-  data.unshift({
-    index: 0,
-    date: 'شروع',
-    equity: initialBalance,
-    pnl: 0,
-  });
+    let equity = initialBalance;
+    data = sorted.map((t, idx) => {
+      equity += t.pnl || 0;
+      return {
+        index: idx + 1,
+        date: new Date(t.close_time).toLocaleDateString('fa-IR'),
+        equity: Math.round(equity * 100) / 100,
+        pnl: t.pnl || 0,
+      };
+    });
+
+    data.unshift({
+      index: 0,
+      date: 'شروع',
+      equity: initialBalance,
+      pnl: 0,
+    });
+  }
 
   if (data.length < 2) {
     return (

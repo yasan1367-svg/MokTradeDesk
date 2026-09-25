@@ -3,11 +3,12 @@ import csv
 from datetime import datetime, timezone
 from typing import Optional
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session, joinedload
 
 from ..core.database import get_db
+from ..core.rate_limit import limiter, EXPORT_RATE_LIMIT
 from ..models.strategy import Trade, StrategyVersion, Strategy
 from ..services.analysis_service import AnalysisService
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
@@ -76,18 +77,12 @@ def _colored_pnl(value, fmt=".2f"):
     elif v < 0:
         return Paragraph(f"<font color='#E45D72'>{v:{fmt}}</font>", style)
     return Paragraph(f"<font color='#6B7A94'>{v:{fmt}}</font>", style)
-    """BytesIO -> StreamingResponse"""
-    buffer.seek(0)
-    ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
+
+
 def _build_pdf_response(buffer, filename_prefix):
     """BytesIO -> StreamingResponse"""
     buffer.seek(0)
     ts = datetime.now(timezone.utc).strftime("%Y%m%d_%H%M%S")
-    return StreamingResponse(
-        buffer,
-        media_type="application/pdf",
-        headers={"Content-Disposition": f"attachment; filename={filename_prefix}_{ts}.pdf"},
-    )
     return StreamingResponse(
         buffer,
         media_type="application/pdf",
@@ -134,7 +129,9 @@ def _draw_table(elements, data, col_widths, title):
 # CSV Export — Trades
 # ═════════════════════════════════════════════
 @router.get("/trades/csv")
+@limiter.limit(EXPORT_RATE_LIMIT)
 def export_trades_csv(
+    request: Request,
     version_id: Optional[int] = None,
     strategy_id: Optional[int] = None,
     symbol: Optional[str] = None,
@@ -193,7 +190,9 @@ def export_trades_csv(
 # PDF Export — Trades
 # ═════════════════════════════════════════════
 @router.get("/trades/pdf")
+@limiter.limit(EXPORT_RATE_LIMIT)
 def export_trades_pdf(
+    request: Request,
     version_id: Optional[int] = None,
     strategy_id: Optional[int] = None,
     symbol: Optional[str] = None,
@@ -311,7 +310,9 @@ def export_trades_pdf(
 # PDF Export — Analysis Report
 # ═════════════════════════════════════════════
 @router.get("/analysis/pdf")
+@limiter.limit(EXPORT_RATE_LIMIT)
 def export_analysis_pdf(
+    request: Request,
     version_id: int = Query(..., description="Version ID for analysis report"),
     db: Session = Depends(get_db),
 ):
@@ -409,7 +410,8 @@ def export_analysis_pdf(
 # PDF Export — Dashboard Summary
 # ═════════════════════════════════════════════
 @router.get("/dashboard/pdf")
-def export_dashboard_pdf(db: Session = Depends(get_db)):
+@limiter.limit(EXPORT_RATE_LIMIT)
+def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
     """Export dashboard summary as PDF"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import inch

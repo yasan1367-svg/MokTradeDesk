@@ -19,6 +19,27 @@ router = APIRouter()
 
 
 # ═════════════════════════════════════════════
+# Helpers — امنیت دادهٔ حساس
+# ═════════════════════════════════════════════
+def _mask_card_number(value: Optional[str]) -> Optional[str]:
+    """ماسک‌کردن شمارهٔ کارت برای جلوگیری از افشای دادهٔ حساس در پاسخ API
+
+    مثال: «6037 9911 2233 4455» → «****4455»
+    """
+    if not value:
+        return value
+    text = str(value).strip()
+    if len(text) <= 4:
+        return "****"
+    return "****" + text[-4:]
+
+
+def _is_masked(value) -> bool:
+    """آیا مقدار، همان مقدار ماسک‌شدهٔ برگشتی از API است؟ (برای جلوگیری از ذخیرهٔ اشتباهی)"""
+    return isinstance(value, str) and "*" in value
+
+
+# ═════════════════════════════════════════════
 # Schemas
 # ═════════════════════════════════════════════
 class AccountCreate(BaseModel):
@@ -84,6 +105,25 @@ class TransactionUpdate(BaseModel):
     related_prop_account_id: Optional[int] = None
 
 
+# ── فاز ۱۵.۱۲: Schemas برداشت (Withdrawal) ──
+class WithdrawalCreate(BaseModel):
+    account_id: int
+    amount: float
+    currency: Currency = Currency.USD
+    date: Optional[datetime] = None
+    description: Optional[str] = None
+    category_id: Optional[int] = None
+
+
+class WithdrawalUpdate(BaseModel):
+    account_id: Optional[int] = None
+    amount: Optional[float] = None
+    currency: Optional[Currency] = None
+    date: Optional[datetime] = None
+    description: Optional[str] = None
+    category_id: Optional[int] = None
+
+
 # ═════════════════════════════════════════════
 # Accounts
 # ═════════════════════════════════════════════
@@ -108,7 +148,7 @@ def get_accounts(
             "type": a.type.value if a.type else None,
             "currency": a.currency.value if a.currency else None,
             "balance": a.balance,
-            "card_number": a.card_number,
+            "card_number": _mask_card_number(a.card_number),
             "broker_name": a.broker_name,
             "prop_firm_name": a.prop_firm_name,
             "prop_firm_id": a.prop_firm_id,
@@ -138,6 +178,9 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
     for field, value in data.model_dump(exclude_unset=True).items():
+        # از ذخیرهٔ مقدار ماسک‌شده (مثل «****4455») جلوگیری کن تا شمارهٔ واقعی کارت خراب نشود
+        if field == "card_number" and _is_masked(value):
+            continue
         setattr(account, field, value)
     db.commit()
     db.refresh(account)
@@ -212,6 +255,9 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="دسته‌بندی پیدا نشد")
     db.delete(cat)
     db.commit()
+    return {"message": "دسته‌بندی حذف شد"}
+
+
 # ═════════════════════════════════════════════
 # Transactions
 # ═════════════════════════════════════════════
@@ -475,6 +521,107 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
             for w in history
         ],
     }
+
+
+# ═════════════════════════════════════════════
+# Withdrawals — CRUD (فاز ۱۵.۱۲)
+# برداشت‌ها در همان مدل Transaction با type=withdrawal ذخیره می‌شوند.
+# ═════════════════════════════════════════════
+def _serialize_withdrawal(w: Transaction) -> dict:
+    return {
+        "id": w.id,
+        "account_id": w.account_id,
+        "account_name": w.account.name if w.account else None,
+        "category_id": w.category_id,
+        "category_name": w.category.name if w.category else None,
+        "amount": w.amount,
+        "currency": w.currency.value if w.currency else None,
+        "date": w.date.isoformat() if w.date else None,
+        "description": w.description,
+        "type": w.type.value if w.type else None,
+        "created_at": w.created_at.isoformat() if w.created_at else None,
+    }
+
+
+def _withdrawal_query(db: Session):
+    """کوئری پایهٔ برداشت‌ها (فقط type=withdrawal و حذف‌نشده)"""
+    return db.query(Transaction).filter(
+        Transaction.is_deleted == False,
+        Transaction.type == TransactionType.WITHDRAWAL,
+    )
+
+
+@router.get("/withdrawals")
+def list_withdrawals(
+    account_id: Optional[int] = None,
+    date_from: Optional[str] = Query(None, description="e.g. 2025-01-01"),
+    date_to: Optional[str] = Query(None, description="e.g. 2025-12-31"),
+    db: Session = Depends(get_db),
+):
+    """لیست برداشت‌ها با فیلتر حساب و بازهٔ تاریخ (فاز ۱۵.۱۲)"""
+    q = _withdrawal_query(db).order_by(Transaction.date.desc())
+    if account_id:
+        q = q.filter(Transaction.account_id == account_id)
+    if date_from:
+        q = q.filter(Transaction.date >= date_from)
+    if date_to:
+        q = q.filter(Transaction.date <= date_to)
+    return [_serialize_withdrawal(w) for w in q.all()]
+
+
+@router.post("/withdrawals")
+def create_withdrawal(data: WithdrawalCreate, db: Session = Depends(get_db)):
+    """ایجاد برداشت جدید (Transaction با type=withdrawal) — فاز ۱۵.۱۲"""
+    account = db.query(Account).filter(Account.id == data.account_id).first()
+    if not account:
+        raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
+
+    w = Transaction(
+        account_id=data.account_id,
+        category_id=data.category_id,
+        amount=data.amount,
+        currency=data.currency,
+        date=data.date or datetime.now(timezone.utc),
+        description=data.description,
+        type=TransactionType.WITHDRAWAL,
+    )
+    db.add(w)
+    db.commit()
+    db.refresh(w)
+    return {"id": w.id, "message": "برداشت ثبت شد"}
+
+
+# هم PUT و هم PATCH پذیرفته می‌شود (PUT طبق درخواست، PATCH طبق قرارداد بقیهٔ پروژه)
+@router.put("/withdrawals/{withdrawal_id}")
+@router.patch("/withdrawals/{withdrawal_id}")
+def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = Depends(get_db)):
+    """ویرایش برداشت (فاز ۱۵.۱۲)"""
+    w = _withdrawal_query(db).filter(Transaction.id == withdrawal_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+
+    payload = data.model_dump(exclude_unset=True)
+    if "account_id" in payload:
+        account = db.query(Account).filter(Account.id == payload["account_id"]).first()
+        if not account:
+            raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
+
+    for field, value in payload.items():
+        setattr(w, field, value)
+    db.commit()
+    db.refresh(w)
+    return {"message": "برداشت به‌روزرسانی شد", "withdrawal": _serialize_withdrawal(w)}
+
+
+@router.delete("/withdrawals/{withdrawal_id}")
+def delete_withdrawal(withdrawal_id: int, db: Session = Depends(get_db)):
+    """حذف نرم برداشت (فاز ۱۵.۱۲)"""
+    w = _withdrawal_query(db).filter(Transaction.id == withdrawal_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+    w.is_deleted = True
+    db.commit()
+    return {"message": "برداشت حذف شد"}
 
 
 @router.get("/charts/cashflow")
@@ -974,14 +1121,3 @@ def seed_categories(db: Session = Depends(get_db)):
         "skipped": skipped,
         "total": len(DEFAULT_CATEGORIES),
     }
-
-
-@router.delete("/accounts/{account_id}")
-def delete_account(account_id: int, db: Session = Depends(get_db)):
-    """حذف حساب مالی"""
-    account = db.query(Account).filter(Account.id == account_id).first()
-    if not account:
-        raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
-    db.delete(account)
-    db.commit()
-    return {"message": "حساب مالی حذف شد"}

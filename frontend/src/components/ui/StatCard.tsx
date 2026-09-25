@@ -1,3 +1,5 @@
+import type { ReactNode } from 'react';
+
 interface StatCardProps {
   icon: string;
   label: string;
@@ -6,6 +8,8 @@ interface StatCardProps {
   changeType?: 'up' | 'down' | 'neutral';
   color?: 'profit' | 'loss' | 'accent' | 'purple' | 'warning';
   sparkData?: number[];
+  /** نمودار سفارشی کارت (جایگزین sparkline) */
+  chart?: ReactNode;
 }
 
 const COLOR_CONFIG = {
@@ -59,8 +63,18 @@ export default function StatCard({
   changeType = 'up',
   color = 'accent',
   sparkData = [30, 55, 40, 70, 60, 85, 75, 95],
+  chart,
 }: StatCardProps) {
   const cfg = COLOR_CONFIG[color];
+
+  // نرمال‌سازی sparkData به بازهٔ ۱۲–۱۰۰٪ (رفع باگ مقیاس — فاز ۱۴.۱)
+  const values = (sparkData || []).map((v) => (Number.isFinite(Number(v)) ? Number(v) : 0));
+  const min = values.length ? Math.min(...values) : 0;
+  const max = values.length ? Math.max(...values) : 0;
+  const span = max - min;
+  const normalized = values.length === 0
+    ? [60]
+    : values.map((v) => (span === 0 ? 60 : 12 + ((v - min) / span) * 88));
 
   const changeBadgeClass =
     changeType === 'up'
@@ -100,15 +114,19 @@ export default function StatCard({
         {value}
       </div>
 
-      <div className="flex items-end gap-[3px] h-[38px] mt-3.5 relative">
-        {sparkData.map((height, idx) => (
-          <div
-            key={idx}
-            className={`flex-1 rounded-t-[3px] ${cfg.bar} opacity-50 group-hover:opacity-90 transition-all duration-300`}
-            style={{ height: `${height}%` }}
-          />
-        ))}
-      </div>
+      {chart ? (
+        <div className="mt-3.5 relative">{chart}</div>
+      ) : (
+        <div className="flex items-end gap-[3px] h-[38px] mt-3.5 relative">
+          {normalized.map((height, idx) => (
+            <div
+              key={idx}
+              className={`flex-1 rounded-t-[3px] ${cfg.bar} opacity-50 group-hover:opacity-90 transition-all duration-300`}
+              style={{ height: `${Math.max(0, Math.min(height, 100))}%` }}
+            />
+          ))}
+        </div>
+      )}
     </div>
   );
 }

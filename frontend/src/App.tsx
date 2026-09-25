@@ -1,22 +1,26 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, lazy, Suspense } from 'react';
 import Sidebar from './components/Sidebar';
 import ErrorBoundary from './components/ErrorBoundary';
 import CommandPalette from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
 import { useToast } from './components/ToastProvider';
-import AnalysisPage from './pages/AnalysisPage';
-import ComparisonPage from './pages/ComparisonPage';
-import StrategyPage from './pages/StrategyPage';
-import TradesPage from './pages/TradesPage';
-import JournalPage from './pages/JournalPage';
-import PropPage from './pages/PropPage';
-import RiskManagementPage from './pages/RiskManagementPage';
-import ImportPage from './pages/ImportPage';
-import DashboardPage from './pages/DashboardPage';
-import SettingsPage from './pages/SettingsPage';
 
-import CalendarPage from './pages/CalendarPage';
-import FinancePage from './pages/FinancePage';
+// ── فاز ۱۵.۴: Code Splitting — هر صفحه یک chunk جداگانه ──
+const DashboardPage = lazy(() => import('./pages/DashboardPage'));
+const AnalysisPage = lazy(() => import('./pages/AnalysisPage'));
+const ComparisonPage = lazy(() => import('./pages/ComparisonPage'));
+const StrategyPage = lazy(() => import('./pages/StrategyPage'));
+const TradesPage = lazy(() => import('./pages/TradesPage'));
+const JournalPage = lazy(() => import('./pages/JournalPage'));
+const PropPage = lazy(() => import('./pages/PropPage'));
+const CalendarPage = lazy(() => import('./pages/CalendarPage'));
+const RiskManagementPage = lazy(() => import('./pages/RiskManagementPage'));
+const ImportPage = lazy(() => import('./pages/ImportPage'));
+const FinancePage = lazy(() => import('./pages/FinancePage'));
+const SettingsPage = lazy(() => import('./pages/SettingsPage'));
+
+// preload صفحهٔ پیش‌فرض (Dashboard) — فاز ۱۵.۴
+const preloadDashboard = () => { void import('./pages/DashboardPage'); };
 
 type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'settings';
 
@@ -34,6 +38,18 @@ const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   finance: { title: '💰 مالی', subtitle: 'مدیریت حساب‌ها و تراکنش‌های مالی' },
   settings: { title: '⚙️ تنظیمات', subtitle: 'تنظیمات نرم‌افزار' },
 };
+
+// ── فاز ۱۵.۴: fallback آگاه از Dark Mode (با CSS Variables) ──
+function PageLoading() {
+  return (
+    <div className="flex items-center justify-center min-h-[320px] h-full w-full">
+      <div className="flex flex-col items-center gap-3 text-[var(--text-secondary)]">
+        <div className="w-9 h-9 rounded-full border-2 border-[var(--border-subtle)] border-t-[var(--accent)] animate-spin" />
+        <span className="text-xs">در حال بارگذاری…</span>
+      </div>
+    </div>
+  );
+}
 
 function useTheme() {
   const [theme, setTheme] = useState<'light' | 'dark'>(() => {
@@ -76,6 +92,9 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const toast = useToast();
+
+  // ── preload صفحهٔ پیش‌فرض (فاز ۱۵.۴) ──
+  useEffect(() => { preloadDashboard(); }, []);
 
 // ── میانبرهای کیبورد ──
   useEffect(() => {
@@ -174,18 +193,20 @@ export default function App() {
         </div>
 
         <div className="flex-1 overflow-y-auto p-7">
-          {page === 'dashboard' && <ErrorBoundary label="داشبورد"><DashboardPage /></ErrorBoundary>}
-          {page === 'analysis' && <ErrorBoundary label="تحلیل"><AnalysisPage /></ErrorBoundary>}
-          {page === 'comparison' && <ErrorBoundary label="مقایسه"><ComparisonPage /></ErrorBoundary>}
-          {page === 'strategy' && <ErrorBoundary label="استراتژی"><StrategyPage /></ErrorBoundary>}
-          {page === 'trades' && <ErrorBoundary label="معاملات"><TradesPage /></ErrorBoundary>}
-          {page === 'journal' && <ErrorBoundary label="ژورنال"><JournalPage /></ErrorBoundary>}
-          {page === 'prop' && <ErrorBoundary label="پراپ"><PropPage /></ErrorBoundary>}
-          {page === 'calendar' && <ErrorBoundary label="تقویم"><CalendarPage /></ErrorBoundary>}
-          {page === 'risk' && <ErrorBoundary label="مدیریت ریسک"><RiskManagementPage /></ErrorBoundary>}
-          {page === 'import' && <ErrorBoundary label="واردات"><ImportPage /></ErrorBoundary>}
-          {page === 'finance' && <ErrorBoundary label="مالی"><FinancePage /></ErrorBoundary>}
-          {page === 'settings' && <ErrorBoundary label="تنظیمات"><SettingsPage /></ErrorBoundary>}
+          <Suspense fallback={<PageLoading />}>
+            {page === 'dashboard' && <ErrorBoundary label="داشبورد"><DashboardPage onNavigate={(p) => setPage(p as Page)} /></ErrorBoundary>}
+            {page === 'analysis' && <ErrorBoundary label="تحلیل"><AnalysisPage /></ErrorBoundary>}
+            {page === 'comparison' && <ErrorBoundary label="مقایسه"><ComparisonPage /></ErrorBoundary>}
+            {page === 'strategy' && <ErrorBoundary label="استراتژی"><StrategyPage /></ErrorBoundary>}
+            {page === 'trades' && <ErrorBoundary label="معاملات"><TradesPage /></ErrorBoundary>}
+            {page === 'journal' && <ErrorBoundary label="ژورنال"><JournalPage /></ErrorBoundary>}
+            {page === 'prop' && <ErrorBoundary label="پراپ"><PropPage /></ErrorBoundary>}
+            {page === 'calendar' && <ErrorBoundary label="تقویم"><CalendarPage /></ErrorBoundary>}
+            {page === 'risk' && <ErrorBoundary label="مدیریت ریسک"><RiskManagementPage /></ErrorBoundary>}
+            {page === 'import' && <ErrorBoundary label="واردات"><ImportPage /></ErrorBoundary>}
+            {page === 'finance' && <ErrorBoundary label="مالی"><FinancePage /></ErrorBoundary>}
+            {page === 'settings' && <ErrorBoundary label="تنظیمات"><SettingsPage /></ErrorBoundary>}
+          </Suspense>
         </div>
       </main>
 

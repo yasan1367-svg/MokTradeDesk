@@ -6,6 +6,13 @@ python-multipart
 openpyxl
 beautifulsoup4
 pydantic-settings
+slowapi
+
+# Export / PDF (فاز ۱۵.۳ — وابستگی‌های گم‌شده که export.py استفاده می‌کند)
+reportlab
+jdatetime
+arabic-reshaper
+python-bidi
 
 # Testing (فاز ۱۲)
 pytest

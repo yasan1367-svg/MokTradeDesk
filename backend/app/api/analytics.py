@@ -1,12 +1,13 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, joinedload
+from sqlalchemy import func, case, and_
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 from ..core.database import get_db
 from ..services.analysis_service import AnalysisService
-from ..models.strategy import AnalysisResult, AnalysisRun, CustomTimeInterval
+from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
     CustomTimeIntervalResponse,
@@ -15,6 +16,44 @@ from ..schemas.analytics import (
 )
 
 router = APIRouter()
+
+
+# ═════════════════════════════════════════════
+# Helpers — فاز ۱۵.۳ (SQL Aggregation)
+# ═════════════════════════════════════════════
+def _net_expr():
+    """عبارت SQL سود/زیان خالص: pnl + commission + swap (با COALESCE)"""
+    return (
+        func.coalesce(Trade.pnl, 0.0)
+        + func.coalesce(Trade.commission, 0.0)
+        + func.coalesce(Trade.swap, 0.0)
+    )
+
+
+def _parse_bound(value: Optional[str], end: bool = False):
+    """تبدیل رشتهٔ ISO به datetime آگاه از timezone (UTC)"""
+    if not value:
+        return None
+    try:
+        dt = datetime.fromisoformat(value)
+    except ValueError:
+        return None
+    if dt.tzinfo is None:
+        if end and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
+            dt = dt.replace(hour=23, minute=59, second=59)
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt
+
+
+def _scope_filter(query, df_bound, dt_bound):
+    """اعمال فیلتر بازه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳)"""
+    if df_bound or dt_bound:
+        query = query.filter(Trade.close_time.isnot(None))
+    if df_bound:
+        query = query.filter(Trade.close_time >= df_bound)
+    if dt_bound:
+        query = query.filter(Trade.close_time <= dt_bound)
+    return query
 
 
 # ═════════════════════════════════════════════
@@ -39,63 +78,144 @@ def analyze_version(version_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/dashboard")
-def get_dashboard_data(db: Session = Depends(get_db)):
-    """داده‌های مورد نیاز برای صفحه داشبورد"""
-    from ..models.strategy import Trade
+def get_dashboard_data(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """داده‌های داشبورد — فاز ۱۵.۳: محاسبات در SQL (بدون لود کل جدول)"""
     from ..services.prop_rule_engine import PropRuleEngine
     from ..models.prop import PropStage, StageStatus
 
-    def _ensure_utc(dt):
-        """اگر datetime بدون timezone باشد، آن را UTC در نظر بگیر (سازگاری با داده‌های قدیمی)"""
-        if dt is not None and dt.tzinfo is None:
-            return dt.replace(tzinfo=timezone.utc)
-        return dt
+    df_bound = _parse_bound(date_from)
+    dt_bound = _parse_bound(date_to, end=True)
+    net = _net_expr()
+    is_closed = Trade.close_time.isnot(None)
+    win_cond = and_(is_closed, net > 0)
+    loss_cond = and_(is_closed, net < 0)
+    scope = _scope_filter(db.query(Trade), df_bound, dt_bound)
+    closed_scope = scope.filter(is_closed)
 
-    all_trades = db.query(Trade).all()
-    # استانداردسازی datetime داده‌های قدیمی (که ممکن است naive ذخیره شده باشند)
-    for _t in all_trades:
-        _t.close_time = _ensure_utc(_t.close_time)
-        _t.open_time = _ensure_utc(_t.open_time)
+    # ── ۱) آمار کلی در یک کوئری (بدون لود ردیف‌ها) ──
+    agg = scope.with_entities(
+        func.count(Trade.id),
+        func.sum(case((is_closed, 1), else_=0)),
+        func.sum(net),
+        func.sum(case((win_cond, net), else_=0.0)),
+        func.sum(case((loss_cond, net), else_=0.0)),
+        func.sum(case((win_cond, 1), else_=0)),
+        func.sum(case((loss_cond, 1), else_=0)),
+        func.max(case((win_cond, net), else_=0.0)),
+        func.min(case((loss_cond, net), else_=0.0)),
+    ).one()
+    total_trades = int(agg[0] or 0)
+    closed_count = int(agg[1] or 0)
+    tnp = float(agg[2] or 0.0)
+    gp = float(agg[3] or 0.0)
+    gl = abs(float(agg[4] or 0.0))
+    wins_n = int(agg[5] or 0)
+    losses_n = int(agg[6] or 0)
+    largest_win = float(agg[7] or 0.0)
+    largest_loss = abs(float(agg[8] or 0.0))
 
-    closed_trades = [t for t in all_trades if t.close_time is not None]
-    def net_pnl(t): return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-    tnp = sum(net_pnl(t) for t in all_trades)
-    wins = [t for t in closed_trades if net_pnl(t) > 0]
-    losses = [t for t in closed_trades if net_pnl(t) < 0]
-    wr = (len(wins) / len(closed_trades) * 100) if closed_trades else 0
-    gp = sum(net_pnl(t) for t in wins) if wins else 0
-    gl = abs(sum(net_pnl(t) for t in losses)) if losses else 0
+    wr = (wins_n / closed_count * 100) if closed_count else 0
     pf = (gp / gl) if gl > 0 else (100.0 if gp > 0 else 0.0)
-    st = sorted(closed_trades, key=lambda t: t.close_time)
-    eq = 0; pk = 0; md = 0; sp = []
-    for t in st:
-        eq += net_pnl(t)
+    avg_win = (gp / wins_n) if wins_n else 0.0
+    avg_loss = (gl / losses_n) if losses_n else 0.0
+    win_ratio = (wins_n / closed_count) if closed_count else 0.0
+    loss_ratio = (losses_n / closed_count) if closed_count else 0.0
+    expectancy = (win_ratio * avg_win) - (loss_ratio * avg_loss)
+
+    # ── ۲) سکانس مرتب با فقط ۲ ستون برای DD/streak/اکوییتی (بدون ORM) ──
+    narrow = (
+        closed_scope.with_entities(Trade.close_time, net.label("net"), Trade.id)
+        .order_by(Trade.close_time.asc(), Trade.id.asc())
+        .all()
+    )
+    seq = []
+    for _ct, _n, _id in narrow:
+        if _ct is not None and _ct.tzinfo is None:
+            _ct = _ct.replace(tzinfo=timezone.utc)
+        seq.append((_ct, float(_n or 0.0)))
+
+    eq = 0.0; pk = 0.0; md = 0.0; sp = []
+    for _ct, _n in seq:
+        eq += _n
         if eq > pk: pk = eq
         d = pk - eq
         if d > md: md = d
         sp.append(round(eq, 2))
+    spd = sp[-20:] if len(sp) >= 20 else sp
+    max_consecutive_losses = 0; _streak = 0
+    for _ct, _n in seq:
+        if _n < 0:
+            _streak += 1
+            if _streak > max_consecutive_losses: max_consecutive_losses = _streak
+        elif _n > 0:
+            _streak = 0
+
     now = datetime.now(timezone.utc)
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    td_t = [t for t in closed_trades if t.close_time >= ts]
-    tdp = sum(net_pnl(t) for t in td_t)
-    opn = db.query(Trade).filter(Trade.close_time == None).count()
-    spd = sp[-20:] if len(sp) >= 20 else sp
+    opn = db.query(Trade).filter(Trade.close_time.is_(None)).count()
+    # ── ۳) منحنی اکوییتی روزانه ──
+    daily_pnl = defaultdict(float)
+    for _ct, _n in seq:
+        if _ct is None:
+            continue
+        daily_pnl[_ct.astimezone(timezone.utc).date().isoformat()] += _n
+    equity_curve = []
+    _cum = 0.0
+    for dkey in sorted(daily_pnl.keys()):
+        _cum += daily_pnl[dkey]
+        equity_curve.append({"date": dkey, "equity": round(_cum, 2)})
+
+    # ── ۴) توزیع PnL (یک کوئری GROUP BY) ──
+    _bucket_defs = [
+        ("< -500", net < -500),
+        ("-500..-200", and_(net >= -500, net < -200)),
+        ("-200..-50", and_(net >= -200, net < -50)),
+        ("-50..0", and_(net >= -50, net < 0)),
+        ("0..50", and_(net >= 0, net < 50)),
+        ("50..200", and_(net >= 50, net < 200)),
+        ("200..500", and_(net >= 200, net < 500)),
+        ("> 500", net >= 500),
+    ]
+    _bucket_case = case(*[(cond, label) for label, cond in _bucket_defs], else_="> 500")
+    _bmap = {
+        label: int(cnt)
+        for label, cnt in closed_scope.with_entities(_bucket_case, func.count(Trade.id))
+        .group_by(_bucket_case)
+        .all()
+    }
+    pnl_distribution = [{"range": label, "count": _bmap.get(label, 0)} for label, _ in _bucket_defs]
+
+    # ── ۵) دوره‌ها و امروز (یک کوئری) ──
     cm = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    mp = sum(net_pnl(t) for t in closed_trades if t.close_time >= cm)
     qm = ((now.month - 1) // 3) * 3 + 1
     cq = now.replace(month=qm, day=1, hour=0, minute=0, second=0, microsecond=0)
-    qp = sum(net_pnl(t) for t in closed_trades if t.close_time >= cq)
     ys = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
-    yp = sum(net_pnl(t) for t in closed_trades if t.close_time >= ys)
-    pms = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    if pms.month == 1: pms = pms.replace(year=pms.year - 1, month=12)
-    else: pms = pms.replace(month=pms.month - 1)
-    pv = sum(net_pnl(t) for t in closed_trades if pms <= t.close_time < cm)
+    pms = cm.replace(year=cm.year - 1, month=12) if cm.month == 1 else cm.replace(month=cm.month - 1)
+    per = closed_scope.with_entities(
+        func.sum(case((Trade.close_time >= ts, net), else_=0.0)),
+        func.sum(case((Trade.close_time >= ts, 1), else_=0)),
+        func.sum(case((and_(Trade.close_time >= ts, net > 0), 1), else_=0)),
+        func.sum(case((Trade.close_time >= cm, net), else_=0.0)),
+        func.sum(case((and_(Trade.close_time >= pms, Trade.close_time < cm), net), else_=0.0)),
+        func.sum(case((Trade.close_time >= cq, net), else_=0.0)),
+        func.sum(case((Trade.close_time >= ys, net), else_=0.0)),
+    ).one()
+    tdp = float(per[0] or 0.0)
+    td_count = int(per[1] or 0)
+    today_wins_n = int(per[2] or 0)
+    mp = float(per[3] or 0.0)
+    pv = float(per[4] or 0.0)
+    qp = float(per[5] or 0.0)
+    yp = float(per[6] or 0.0)
     mcp = ((mp - pv) / abs(pv) * 100) if pv != 0 else (100 if mp > 0 else -100 if mp < 0 else 0)
+    today_wr = (today_wins_n / td_count * 100) if td_count else 0
 
-    # ── Today ──
-    today_wins = [t for t in td_t if net_pnl(t) > 0]
-    today_wr = (len(today_wins) / len(td_t) * 100) if td_t else 0
+    # ── برد/باخت ──
+    win_loss = {"wins": wins_n, "losses": losses_n}
 
     # ── Prop Progress ──
     active_stages = db.query(PropStage).filter(
@@ -114,13 +234,29 @@ def get_dashboard_data(db: Session = Depends(get_db)):
             "win_rate": round(wr, 2),
             "max_dd": round(md, 2),
             "profit_factor": round(pf, 2),
+            "total_trades": total_trades,
+            "open_trades": opn,
+            "closed_trades": closed_count,
+            "gross_profit": round(gp, 2),
+            "gross_loss": round(gl, 2),
+            "avg_win": round(avg_win, 2),
+            "avg_loss": round(avg_loss, 2),
+            "largest_win": round(largest_win, 2),
+            "largest_loss": round(largest_loss, 2),
+            "expectancy": round(expectancy, 2),
+            "max_consecutive_losses": max_consecutive_losses,
         },
         "today": {
             "pnl": round(tdp, 2),
-            "trades_count": len(td_t),
+            "trades_count": td_count,
             "win_rate": round(today_wr, 2),
+            "winning_trades": today_wins_n,
+            "losing_trades": td_count - today_wins_n,
         },
         "sparkline": spd,
+        "equity_curve": equity_curve,
+        "pnl_distribution": pnl_distribution,
+        "win_loss": win_loss,
         "periods": {
             "month": {
                 "pnl": round(mp, 2),
@@ -137,28 +273,127 @@ def get_dashboard_data(db: Session = Depends(get_db)):
     }
 
 
-@router.get("/risk-metrics")
-def get_risk_metrics(db: Session = Depends(get_db)):
-    """محاسبه شاخص‌های مدیریت ریسک"""
-    import math
+# ═════════════════════════════════════════════
+# Yesterday (فاز ۱۴.۲)
+# ═════════════════════════════════════════════
+_WEEKDAYS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج‌شنبه", "جمعه", "شنبه", "یکشنبه"]
+
+
+@router.get("/yesterday")
+def get_yesterday_data(db: Session = Depends(get_db)):
+    """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC)"""
     from ..models.strategy import Trade
     from ..models.finance import Account as FinanceAccount, AccountType
-    all_trades = db.query(Trade).all()
-    # استانداردسازی datetime داده‌های قدیمی (که ممکن است naive ذخیره شده باشند)
-    for _t in all_trades:
-        if _t.close_time is not None and _t.close_time.tzinfo is None:
-            _t.close_time = _t.close_time.replace(tzinfo=timezone.utc)
-    closed_trades = [t for t in all_trades if t.close_time is not None]
-    open_trades = [t for t in all_trades if t.close_time is None]
-    def net_pnl(t): return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-    returns = [net_pnl(t) for t in closed_trades]
+    from .finance import _gregorian_to_jalali
+
+    def _ensure_utc(dt):
+        if dt is not None and dt.tzinfo is None:
+            return dt.replace(tzinfo=timezone.utc)
+        return dt
+
+    def net_pnl(t):
+        return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
+
+    now = datetime.now(timezone.utc)
+    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    y_start = today_start - timedelta(days=1)
+    y_end = today_start
+
+    yt = []
+    for t in db.query(Trade).filter(Trade.close_time != None).all():
+        ct = _ensure_utc(t.close_time)
+        if ct is not None and y_start <= ct < y_end:
+            t.close_time = ct
+            yt.append(t)
+
+    # انواع حساب مالی برای تفکیک منبع
+    acct_ids = {t.finance_account_id for t in yt if t.finance_account_id}
+    acct_types = {}
+    if acct_ids:
+        for a in db.query(FinanceAccount).filter(FinanceAccount.id.in_(acct_ids)).all():
+            acct_types[a.id] = a.type
+
+    def classify(t):
+        if t.prop_stage_id:
+            return "prop"
+        at = acct_types.get(t.finance_account_id) if t.finance_account_id else None
+        if at == AccountType.PROP:
+            return "prop"
+        if at == AccountType.BROKER:
+            return "broker"
+        return "personal"
+
+    by_source = {
+        "prop": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
+        "broker": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
+        "personal": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
+    }
+    winning = losing = 0
+    net_total = 0.0
+    for t in yt:
+        p = net_pnl(t)
+        net_total += p
+        src = classify(t)
+        by_source[src]["trades"] += 1
+        by_source[src]["pnl"] += p
+        if p > 0:
+            winning += 1
+            by_source[src]["winning"] += 1
+        elif p < 0:
+            losing += 1
+            by_source[src]["losing"] += 1
+
+    total = len(yt)
+    jy, jm, jd = _gregorian_to_jalali(y_start.year, y_start.month, y_start.day)
+
+    return {
+        "date": f"{jy}/{jm:02d}/{jd:02d}",
+        "day_of_week": _WEEKDAYS_FA[y_start.weekday()],
+        "total_trades": total,
+        "winning_trades": winning,
+        "losing_trades": losing,
+        "win_rate": round((winning / total * 100) if total else 0.0, 2),
+        "net_pnl": round(net_total, 2),
+        "by_source": {
+            k: {
+                "trades": v["trades"],
+                "winning": v["winning"],
+                "losing": v["losing"],
+                "pnl": round(v["pnl"], 2),
+            }
+            for k, v in by_source.items()
+        },
+    }
+
+
+@router.get("/risk-metrics")
+def get_risk_metrics(db: Session = Depends(get_db)):
+    """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی"""
+    import math
+    from ..models.finance import Account as FinanceAccount, AccountType
+
+    # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
+    _net = _net_expr()
+    _rows = (
+        db.query(Trade)
+        .filter(Trade.close_time.isnot(None))
+        .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple, Trade.sl, Trade.open_price)
+        .order_by(Trade.id.asc())
+        .all()
+    )
+    closed_trades = []
+    for _ct, _n, _r, _sl, _op in _rows:
+        if _ct is not None and _ct.tzinfo is None:
+            _ct = _ct.replace(tzinfo=timezone.utc)
+        closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r, "sl": _sl, "open_price": _op})
+    returns = [c["net"] for c in closed_trades]
     accts = db.query(FinanceAccount).filter(FinanceAccount.type == AccountType.BROKER).all()
     avg_b = sum(a.balance or 0 for a in accts) / len(accts) if accts else 10000
     ps = []
     for rp in [1, 2, 3]:
         ra = avg_b * rp / 100
-        st = [t for t in closed_trades if t.sl and t.open_price and t.sl > 0]
-        asp = sum(abs((t.sl - t.open_price) / t.open_price) * 100 for t in st) / len(st) if st else 0
+        st = [c for c in closed_trades if c["sl"] and c["open_price"] and c["sl"] > 0]
+        asp = sum(abs((c["sl"] - c["open_price"]) / c["open_price"]) * 100 for c in st) / len(st) if st else 0
         ss = ra / (asp / 100 * avg_b) if asp > 0 else 0
         ps.append({"risk_percent": rp, "risk_amount": round(ra, 2), "avg_sl_percent": round(asp, 2),
             "suggested_size": round(ss, 4), "suggested_lots": round(ss * 10, 2)})
@@ -183,17 +418,18 @@ def get_risk_metrics(db: Session = Depends(get_db)):
         p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1
         ror = min(p ** bu, 1) if rr * wr > 1 - wr else 0
     else: ror = 0.5
-    rv = [t.r_multiple for t in closed_trades if t.r_multiple and t.r_multiple != 0]
+    rv = [c["r_multiple"] for c in closed_trades if c["r_multiple"] and c["r_multiple"] != 0]
     arm = sum(rv) / len(rv) if rv else 0
-    oe = sum(abs(t.pnl or 0) for t in open_trades)
+    oe = float(db.query(func.sum(func.abs(func.coalesce(Trade.pnl, 0.0))))
+               .filter(Trade.close_time.is_(None)).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
     streak = 0; ms = 0
     for r in returns:
         if r < 0: streak += 1; ms = max(ms, streak)
         elif r > 0: streak = 0
     eq = 0; pk = 0; dd_d = 0; md = 0; cd = 0
-    for t in sorted(closed_trades, key=lambda t: t.close_time):
-        eq += net_pnl(t)
+    for c in sorted(closed_trades, key=lambda c: c["close_time"]):
+        eq += c["net"]
         if eq > pk: pk = eq; cd = 0
         elif eq < pk:
             d = pk - eq
@@ -211,6 +447,191 @@ def get_risk_metrics(db: Session = Depends(get_db)):
             "max_drawdown_depth": round(dd_d, 2), "max_drawdown_duration": md,
             "open_exposure": round(oe, 2), "open_risk_percent": round(orp, 2), "total_trades": len(returns)},
         "status": status}
+
+
+# ═════════════════════════════════════════════
+# Advanced Risk (فاز ۱۴.۴)
+# ═════════════════════════════════════════════
+def _percentile(sorted_vals, p: float) -> float:
+    """درصدک با درون‌یابی خطی (بدون numpy)"""
+    n = len(sorted_vals)
+    if n == 0:
+        return 0.0
+    if n == 1:
+        return float(sorted_vals[0])
+    k = (n - 1) * p
+    f = int(k)
+    c = min(f + 1, n - 1)
+    if f == k:
+        return float(sorted_vals[f])
+    return float(sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f))
+
+
+@router.get("/risk-advanced")
+def get_risk_advanced(
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    db: Session = Depends(get_db),
+):
+    """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...)"""
+    import math
+    from ..models.finance import Account as FinanceAccount, AccountType
+
+    df_bound = _parse_bound(date_from)
+    dt_bound = _parse_bound(date_to, end=True)
+
+    # فاز ۱۵.۳: فیلتر بازه در SQL + واکشی فقط ۳ ستون (بدون لود ORM)
+    _net = _net_expr()
+    _rows = (
+        _scope_filter(db.query(Trade), df_bound, dt_bound)
+        .filter(Trade.close_time.isnot(None))
+        .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple)
+        .order_by(Trade.close_time.asc(), Trade.id.asc())
+        .all()
+    )
+    closed = []
+    for _ct, _n, _r in _rows:
+        if _ct is not None and _ct.tzinfo is None:
+            _ct = _ct.replace(tzinfo=timezone.utc)
+        closed.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r})
+
+    returns = [c["net"] for c in closed]
+    total = len(returns)
+
+    # ── پایه ──
+    wins = [r for r in returns if r > 0]
+    losses = [r for r in returns if r < 0]
+    wr = (len(wins) / total) if total else 0.0
+    avg_win = (sum(wins) / len(wins)) if wins else 0.0
+    avg_loss = (abs(sum(losses) / len(losses))) if losses else 0.0
+    rr = (avg_win / avg_loss) if avg_loss > 0 else 0.0
+    net = sum(returns)
+    mean_ret = (net / total) if total else 0.0
+
+    # ── Sharpe / Sortino ──
+    sharpe = 0.0
+    sortino = 0.0
+    if total > 1:
+        std = (sum((r - mean_ret) ** 2 for r in returns) / total) ** 0.5
+        sharpe = (mean_ret / std) * math.sqrt(252) if std > 0 else 0.0
+        neg = [r for r in returns if r < 0]
+        if neg:
+            ddev = (sum(r ** 2 for r in neg) / total) ** 0.5
+            sortino = (mean_ret / ddev) * math.sqrt(252) if ddev > 0 else 0.0
+
+    # ── Equity / Drawdown / Ulcer ──
+    equity = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    ulcer_acc = 0.0
+    drawdown_curve = []
+    for idx, c in enumerate(closed):
+        equity += c["net"]
+        if equity > peak:
+            peak = equity
+        dd_abs = peak - equity
+        dd_pct = (dd_abs / peak * 100) if peak > 0 else 0.0
+        if dd_abs > max_dd:
+            max_dd = dd_abs
+        ulcer_acc += dd_pct ** 2
+        drawdown_curve.append({
+            "index": idx + 1,
+            "date": c["close_time"].date().isoformat(),
+            "drawdown": round(dd_abs, 2),
+            "drawdown_pct": round(dd_pct, 2),
+        })
+    ulcer_index = (ulcer_acc / total) ** 0.5 if total else 0.0
+
+    # ── Calmar (سالیانه) / Recovery Factor ──
+    if closed:
+        span_days = max((closed[-1]["close_time"] - closed[0]["close_time"]).days, 1)
+    else:
+        span_days = 1
+    annual_return = net * (365.0 / span_days) if total else 0.0
+    calmar = (annual_return / max_dd) if max_dd > 0 else 0.0
+    recovery_factor = (net / max_dd) if max_dd > 0 else 0.0
+
+    # ── VaR / CVaR 95% ──
+    sorted_ret = sorted(returns)
+    var_95 = _percentile(sorted_ret, 0.05)
+    tail = [r for r in sorted_ret if r <= var_95]
+    cvar_95 = (sum(tail) / len(tail)) if tail else var_95
+
+    # ── برد/باخت متوالی ──
+    max_cl = 0
+    max_cw = 0
+    cur_l = 0
+    cur_w = 0
+    for r in returns:
+        if r < 0:
+            cur_l += 1
+            cur_w = 0
+            if cur_l > max_cl:
+                max_cl = cur_l
+        elif r > 0:
+            cur_w += 1
+            cur_l = 0
+            if cur_w > max_cw:
+                max_cw = cur_w
+        else:
+            cur_l = 0
+            cur_w = 0
+
+    # ── R-Multiple ──
+    rv = [c["r_multiple"] for c in closed if c["r_multiple"] is not None and c["r_multiple"] != 0]
+    avg_r = (sum(rv) / len(rv)) if rv else 0.0
+    expectancy_r = (mean_ret / avg_loss) if avg_loss > 0 else 0.0
+
+    # ── Kelly Criterion ──
+    kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
+
+    # ── Risk of Ruin ──
+    accts = db.query(FinanceAccount).filter(FinanceAccount.type == AccountType.BROKER).all()
+    avg_b = (sum(a.balance or 0 for a in accts) / len(accts)) if accts else 10000.0
+    if wr > 0 and rr > 0:
+        p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1.0
+        units = (avg_b / avg_loss) if avg_loss > 0 else 100.0
+        ror = min(p ** units, 1.0) if rr * wr > 1 - wr else 0.0
+    else:
+        ror = 0.5
+
+    # ── توزیع R-Multiple ──
+    _buckets = [
+        ("< -2R", lambda x: x < -2),
+        ("-2..-1R", lambda x: -2 <= x < -1),
+        ("-1..0R", lambda x: -1 <= x < 0),
+        ("0..1R", lambda x: 0 <= x < 1),
+        ("1..2R", lambda x: 1 <= x < 2),
+        ("2..3R", lambda x: 2 <= x < 3),
+        ("> 3R", lambda x: x >= 3),
+    ]
+    r_distribution = [
+        {"range": label, "count": sum(1 for v in rv if fn(v))}
+        for label, fn in _buckets
+    ]
+
+    return {
+        "has_enough_data": total >= 2,
+        "total_trades": total,
+        "sharpe_ratio": round(sharpe, 3),
+        "sortino_ratio": round(sortino, 3),
+        "calmar_ratio": round(calmar, 3),
+        "risk_of_ruin": round(ror, 4),
+        "var_95": round(var_95, 2),
+        "cvar_95": round(cvar_95, 2),
+        "max_consecutive_losses": max_cl,
+        "max_consecutive_wins": max_cw,
+        "avg_r_multiple": round(avg_r, 3),
+        "expectancy_r": round(expectancy_r, 3),
+        "kelly_criterion": round(kelly, 4),
+        "recovery_factor": round(recovery_factor, 2),
+        "ulcer_index": round(ulcer_index, 2),
+        "max_drawdown": round(max_dd, 2),
+        "r_multiple_distribution": r_distribution,
+        "drawdown_curve": drawdown_curve,
+    }
+
+
 # ═════════════════════════════════════════════
 # Calendar (تقویم شمسی معاملات)
 # ═════════════════════════════════════════════
@@ -223,8 +644,6 @@ def get_calendar_data(
     db: Session = Depends(get_db),
 ):
     """Get trades grouped by day for calendar view (supports Jalali year/month or Gregorian range)"""
-    from ..models.strategy import Trade
-
     now = datetime.now(timezone.utc)
     query = db.query(Trade).filter(Trade.close_time.isnot(None))
 
@@ -239,17 +658,25 @@ def get_calendar_data(
         dt_to = datetime(gy_end, gm_end, gd_end, tzinfo=timezone.utc)
         query = query.filter(Trade.close_time >= dt_from, Trade.close_time < dt_to)
 
-    trades = query.order_by(Trade.close_time).all()
+    # فاز ۱۵.۳: واکشی فقط ستون‌های لازم (بدون لود ORM)
+    _net = _net_expr()
+    trades = (
+        query.with_entities(
+            Trade.id, Trade.symbol, Trade.direction, Trade.size,
+            Trade.pnl, Trade.close_time, _net.label("net"),
+        )
+        .order_by(Trade.close_time.asc())
+        .all()
+    )
 
     days = defaultdict(list)
-    for t in trades:
-        day_key = t.close_time.strftime("%Y-%m-%d")
-        days[day_key].append(t)
+    for _id, _sym, _dir, _size, _pnl, _ct, _netv in trades:
+        days[_ct.strftime("%Y-%m-%d")].append((_id, _sym, _dir, _size, _pnl, _ct, float(_netv or 0.0)))
 
     result = []
     for day_key, day_trades in sorted(days.items()):
-        pnl = sum((t.pnl or 0) + (t.commission or 0) + (t.swap or 0) for t in day_trades)
-        wins = sum(1 for t in day_trades if (t.pnl or 0) + (t.commission or 0) + (t.swap or 0) > 0)
+        pnl = sum(d[6] for d in day_trades)
+        wins = sum(1 for d in day_trades if d[6] > 0)
         total = len(day_trades)
         result.append({
             "date": day_key,
@@ -258,14 +685,14 @@ def get_calendar_data(
             "win_rate": round(wins / total * 100, 1) if total > 0 else 0,
             "trades": [
                 {
-                    "id": t.id,
-                    "symbol": t.symbol,
-                    "direction": t.direction,
-                    "size": t.size,
-                    "pnl": round(t.pnl, 2) if t.pnl else 0,
-                    "close_time": t.close_time.isoformat() if t.close_time else None,
+                    "id": d[0],
+                    "symbol": d[1],
+                    "direction": d[2],
+                    "size": d[3],
+                    "pnl": round(d[4], 2) if d[4] else 0,
+                    "close_time": d[5].isoformat() if d[5] else None,
                 }
-                for t in day_trades
+                for d in day_trades
             ],
         })
 

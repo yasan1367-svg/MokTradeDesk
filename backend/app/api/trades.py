@@ -13,6 +13,7 @@ from ..models.personal import Screenshot
 from ..models.prop import PropStage
 from ..utils.trade_metrics import calculate_r_multiple
 from ..utils.trade_validator import TradeValidator
+from ..utils.uploads import read_upload_limited
 
 router = APIRouter()
 
@@ -199,6 +200,7 @@ def get_trades(
     test_type: Optional[str] = None,
     source: Optional[str] = None,
     direction: Optional[str] = None,
+    status: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     search: Optional[str] = None,
@@ -233,6 +235,10 @@ def get_trades(
         query = query.filter(Trade.source == source)
     if direction:
         query = query.filter(Trade.direction == direction)
+    if status == "open":
+        query = query.filter(Trade.close_time == None)
+    elif status == "closed":
+        query = query.filter(Trade.close_time != None)
     if search:
         query = query.filter(Trade.note.like(f"%{search}%"))
     if date_from:
@@ -596,7 +602,7 @@ async def upload_screenshot(
     file_name = f"trade_{trade_id}_{timestamp}{ext}"
     file_path = f"storage/screenshots/{file_name}"
 
-    content = await file.read()
+    content = await read_upload_limited(file)
     with open(file_path, "wb") as f:
         f.write(content)
 

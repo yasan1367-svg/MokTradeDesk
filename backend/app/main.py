@@ -1,11 +1,14 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
+from slowapi.errors import RateLimitExceeded
+from slowapi import _rate_limit_exceeded_handler
 import os
 import logging
 from datetime import datetime, timezone
 
 from .core.database import engine, Base
+from .core.rate_limit import limiter
 from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance
 from .api import settings as settings_api
 
@@ -33,13 +36,21 @@ app = FastAPI(title="MokTradeDesk API", version="1.0")
 # ═════════════════════════════════════════════
 # CORS
 # ═════════════════════════════════════════════
+# توجه: در production دامنهٔ واقعی فرانت‌اند را این‌جا اضافه کنید.
+# (پیش‌تر "*" بود که با allow_credentials=True ترکیب ناامن/نامعتبری می‌ساخت.)
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["http://localhost:5173", "http://localhost:3000", "*"],
+    allow_origins=["http://localhost:5173", "http://localhost:3000"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# ═════════════════════════════════════════════
+# Rate Limiting (فاز ۱۵.۲)
+# ═════════════════════════════════════════════
+app.state.limiter = limiter
+app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
 # ═════════════════════════════════════════════
 # Middleware — Request Logging
