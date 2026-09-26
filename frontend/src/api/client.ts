@@ -16,7 +16,7 @@ export const api = axios.create({
 export const getStrategies = () => api.get('/api/strategies/');
 export const createStrategy = (data: { name: string; description?: string }) =>
   api.post('/api/strategies/', data);
-export const createVersion = (strategyId: number, data: { version_name: string; rules_note?: string }) =>
+export const createVersion = (strategyId: number, data: { version_name: string; rules_note?: string; test_type?: string; status?: string }) =>
   api.post(`/api/strategies/${strategyId}/versions`, data);
 
 // ─────────────────────────────────────────────
@@ -274,14 +274,17 @@ export const getStrategyStats = (strategyId: number) =>
 
 export const updateVersion = (
   versionId: number,
-  data: { version_name?: string; rules_note?: string; status?: string }
+  data: { version_name?: string; rules_note?: string; status?: string; test_type?: string }
 ) => api.patch(`/api/strategies/versions/${versionId}`, data);
 
 export const deleteVersion = (versionId: number) =>
   api.delete(`/api/strategies/versions/${versionId}`);
 
-export const forkVersion = (versionId: number) =>
-  api.post(`/api/strategies/versions/${versionId}/fork`);
+export const forkVersion = (
+  versionId: number,
+  data?: { version_name?: string; rules_note?: string; test_type?: string; status?: string }
+) =>
+  api.post(`/api/strategies/versions/${versionId}/fork`, data ?? {});
 
 
 // ─────────────────────────────────────────────

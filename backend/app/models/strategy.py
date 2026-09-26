@@ -78,6 +78,8 @@ class StrategyVersion(Base):
     version_name = Column(String, nullable=False)
     rules_note = Column(Text, nullable=True)
     status = Column(Enum(StrategyStatus), default=StrategyStatus.RESEARCH)
+    # فاز 24: test_type for filtering in UI (BACKTEST / FORWARD / REAL)
+    test_type = Column(String, nullable=True)
     # زیرساخت Fork: اگه این نسخه از روی نسخه‌ی دیگه‌ای ساخته شده، اینجا لینک می‌شه
     # (خودِ قابلیت Fork - دکمه/endpoint - بعداً و جدا پیاده می‌شه، این فقط ستونشه)
     forked_from_version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)

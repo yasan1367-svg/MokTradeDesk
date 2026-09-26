@@ -52,6 +52,16 @@ class StrategyUpdate(BaseModel):
 class VersionCreate(BaseModel):
     version_name: str
     rules_note: Optional[str] = None
+    test_type: Optional[str] = None          # فاز 24: BACKTEST / FORWARD / REAL
+    status: Optional[str] = None             # فاز 24: وضعیت نسخه
+
+
+class ForkRequest(BaseModel):
+    """فاز 24: بدنهٔ درخواست Fork - همه فیلدها اختیاری"""
+    version_name: Optional[str] = None
+    rules_note: Optional[str] = None
+    test_type: Optional[str] = None          # پیش‌فرض: NULL
+    status: Optional[str] = None             # پیش‌فرض: research (از main)
 
 
 class VersionUpdate(BaseModel):
@@ -171,6 +181,8 @@ def get_strategy_versions(strategy_id: int, db: Session = Depends(get_db)):
             "strategy_id": v.strategy_id,
             "rules_note": v.rules_note,
             "status": enum_value(v.status),
+            "test_type": v.test_type,
+            "forked_from_version_id": v.forked_from_version_id,
             "trades_count": counts.get(v.id, 0),
             "created_at": v.created_at,
         })
@@ -183,10 +195,16 @@ def create_version(strategy_id: int, version: VersionCreate, db: Session = Depen
     if not strategy:
         raise HTTPException(status_code=404, detail="استراتژی پیدا نشد")
 
+    # فاز 24: test_type + status
+    test_type_val = version.test_type.lower() if version.test_type else None
+    status_val = version.status if version.status else None
+
     db_version = StrategyVersion(
         strategy_id=strategy_id,
         version_name=version.version_name,
         rules_note=version.rules_note,
+        test_type=test_type_val,
+        status=status_val,
     )
     db.add(db_version)
     db.commit()
@@ -236,17 +254,29 @@ def delete_version(version_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 # Fork Version
 # ═════════════════════════════════════════════
+
+
+
 @router.post("/versions/{version_id}/fork")
-def fork_version(version_id: int, db: Session = Depends(get_db)):
-    """ایجاد یک نسخه جدید بر اساس نسخه موجود (Fork)"""
+def fork_version(version_id: int, body: Optional[ForkRequest] = None, db: Session = Depends(get_db)):
+    """Create a new version based on existing version (Fork) - Phase 24"""
     original = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
     if not original:
-        raise HTTPException(status_code=404, detail="نسخه مبدأ پیدا نشد")
+        raise HTTPException(status_code=404, detail="Source version not found")
+
+    # Phase 24: optional parameters from body
+    if body is None:
+        body = ForkRequest()
+
+    _raw_test_type = body.test_type or original.test_type
+    test_type_val = _raw_test_type.lower() if _raw_test_type else None
 
     forked = StrategyVersion(
         strategy_id=original.strategy_id,
-        version_name=f"{original.version_name} - Fork",
-        rules_note=original.rules_note,
+        version_name=body.version_name or f"{original.version_name} - Fork",
+        rules_note=body.rules_note if body.rules_note is not None else original.rules_note,
+        test_type=test_type_val,
+        status=body.status or original.status,
         forked_from_version_id=version_id,
     )
     db.add(forked)
@@ -257,6 +287,7 @@ def fork_version(version_id: int, db: Session = Depends(get_db)):
         "version_name": forked.version_name,
         "strategy_id": forked.strategy_id,
         "rules_note": forked.rules_note,
+        "test_type": forked.test_type,
         "forked_from_version_id": forked.forked_from_version_id,
         "status": enum_value(forked.status),
         "created_at": forked.created_at,

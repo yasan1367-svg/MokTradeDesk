@@ -31,6 +31,8 @@ interface Version {
   strategy_id: number;
   rules_note: string | null;
   status: string;
+  test_type: string | null;
+  forked_from_version_id: number | null;
   trades_count: number;
   created_at: string;
 }
@@ -120,6 +122,22 @@ const getStatusStyle = (status: string) => {
   return styles[status] || styles.archived;
 };
 
+const TEST_TYPE_OPTIONS = [
+  { value: 'backtest', label: '🧪 بک تست', badge: 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' },
+  { value: 'forward', label: '🔭 فوروارد', badge: 'bg-[var(--purple-soft)] text-[var(--purple)] border-[var(--purple-border)]' },
+  { value: 'real', label: '💰 ریل', badge: 'bg-[var(--profit-soft)] text-[var(--profit)] border-[var(--profit-border)]' },
+];
+const getTestTypeLabel = (testType: string | null) => {
+  if (!testType) return 'نامشخص';
+  const found = TEST_TYPE_OPTIONS.find((o) => o.value === testType.toLowerCase());
+  return found ? found.label : testType;
+};
+const getTestTypeStyle = (testType: string | null) => {
+  if (!testType) return 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
+  const found = TEST_TYPE_OPTIONS.find((o) => o.value === testType.toLowerCase());
+  return found ? found.badge : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
+};
+
 export default function StrategyPage() {
   const [strategies, setStrategies] = useState<Strategy[]>([]);
   const [selectedStrategy, setSelectedStrategy] = useState<Strategy | null>(null);
@@ -135,6 +153,14 @@ export default function StrategyPage() {
   const [versionName, setVersionName] = useState('');
   const [versionRules, setVersionRules] = useState('');
   const [versionStatus, setVersionStatus] = useState('research');
+  const [versionTestType, setVersionTestType] = useState('');
+  const [showForkModal, setShowForkModal] = useState(false);
+  const [forkFromVersion, setForkFromVersion] = useState<Version | null>(null);
+  const [forkVersionName, setForkVersionName] = useState('');
+  const [forkTestType, setForkTestType] = useState('');
+  const [forkStatus, setForkStatus] = useState('research');
+  const [forkRulesNote, setForkRulesNote] = useState('');
+  const [versionTypeFilter, setVersionTypeFilter] = useState('');
 
   const [searchQuery, setSearchQuery] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -244,11 +270,13 @@ export default function StrategyPage() {
       setVersionName(version.version_name);
       setVersionRules(version.rules_note || '');
       setVersionStatus(version.status);
+      setVersionTestType(version.test_type || '');
     } else {
       setEditingVersionId(null);
       setVersionName('');
       setVersionRules('');
       setVersionStatus('research');
+      setVersionTestType('');
     }
     setShowVersionForm(true);
   };
@@ -271,6 +299,7 @@ export default function StrategyPage() {
         await createVersion(selectedStrategy.id, {
           version_name: versionName,
           rules_note: versionRules,
+          test_type: versionTestType || undefined,
         });
         setSuccessMessage('نسخه‌ی جدید ساخته شد');
       }
@@ -299,11 +328,25 @@ export default function StrategyPage() {
       setError(err.response?.data?.detail || 'خطا در حذف نسخه');
     }
   };
-const handleForkVersion = async (version: Version) => {
-    if (!confirm(`یک نسخه‌ی مشتق (Fork) از «${version.version_name}» ساخته شود؟`)) return;
+const handleForkVersion = (version: Version) => {
+    setForkFromVersion(version);
+    setForkVersionName(`${version.version_name} - Fork}`);
+    setForkTestType(version.test_type || '');
+    setForkStatus(version.status || 'research');
+    setForkRulesNote(version.rules_note || '');
+    setShowForkModal(true);
+  };
+  const handleSubmitFork = async () => {
+    if (!forkFromVersion) return;
     try {
-      await forkVersion(version.id);
-      setSuccessMessage(`نسخه‌ی «${version.version_name} - Fork» ساخته شد`);
+      await forkVersion(forkFromVersion.id, {
+        version_name: forkVersionName || undefined,
+        rules_note: forkRulesNote || undefined,
+        test_type: forkTestType || undefined,
+        status: forkStatus || undefined,
+      });
+      setSuccessMessage('نسخه فورک ساخته شد');
+      setShowForkModal(false);
       if (selectedStrategy) await loadVersions(selectedStrategy.id);
       await loadStrategies();
       setTimeout(() => setSuccessMessage(null), 3000);
@@ -383,6 +426,9 @@ const handleForkVersion = async (version: Version) => {
     }
   };
 
+  const filteredVersions = versionTypeFilter
+    ? versions.filter((v) => (v.test_type || '').toLowerCase() === versionTypeFilter)
+    : versions;
   const filteredStrategies = strategies.filter((s) =>
     s.name.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -525,7 +571,22 @@ const handleForkVersion = async (version: Version) => {
               />
             </div>
 
-            {editingVersionId && (
+            <div>
+              <label className='text-[13px] text-[var(--text-primary)] font-bold block mb-2'>
+                نوع آزمون
+              </label>
+              <select
+                value={versionTestType}
+                onChange={(e) => setVersionTestType(e.target.value)}
+                className='w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer'>
+                <option value=''>(بدون نوع)</option>
+                {TEST_TYPE_OPTIONS.map((o) => (
+                  <option key={o.value} value={o.value}>{o.label}</option>
+                ))}
+              </select>
+            </div>
+
+            {(
               <div>
                 <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
                   وضعیت
@@ -557,6 +618,86 @@ const handleForkVersion = async (version: Version) => {
             >
               ✕ لغو
             </button>
+          </div>
+        </div>
+      )}
+
+      {/* modale fork */}
+      {showForkModal && forkFromVersion && (
+        <div className='fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm'>
+          <div className='bg-[var(--bg-card)] border-2 border-[var(--purple)] rounded-[22px] p-6 shadow-xl w-[560px] max-h-[90vh] overflow-y-auto'>
+            <div className='flex items-center gap-3 mb-3 pb-4 border-b border-[var(--border-subtle)]'>
+              <div className='w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white'
+                style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>
+                🔱
+              </div>
+              <div>
+                <h3 className='text-lg font-extrabold text-[var(--text-primary)]'>ایجاد نسخه مشتق (Fork)</h3>
+                <p className='text-[12px] text-[var(--text-secondary)] mt-0.5'>از «{forkFromVersion.version_name}»</p>
+              </div>
+              <button onClick={() => setShowForkModal(false)} className='shrink-0 text-[var(--text-secondary)] hover:text-[var(--loss)] p-2 rounded-[8px] text-sm font-bold'>✕</button>
+            </div>
+
+            <div className='space-y-5'>
+              <div>
+                <label className='text-[13px] text-[var(--text-primary)] font-bold block mb-2'>نام نسخه جدید</label>
+                <input
+                  type='text'
+                  value={forkVersionName}
+                  onChange={(e) => setForkVersionName(e.target.value)}
+                  className='w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all'
+                />
+              </div>
+
+              <div className='grid grid-cols-2 gap-4'>
+                <div>
+                  <label className='text-[13px] text-[var(--text-primary)] font-bold block mb-2'>نوع آزمون</label>
+                  <select
+                    value={forkTestType}
+                    onChange={(e) => setForkTestType(e.target.value)}
+                    className='w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer'>
+                    <option value=''>(بدون نوع)</option>
+                    {TEST_TYPE_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+                <div>
+                  <label className='text-[13px] text-[var(--text-primary)] font-bold block mb-2'>وضعیت</label>
+                  <select
+                    value={forkStatus}
+                    onChange={(e) => setForkStatus(e.target.value)}
+                    className='w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-semibold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer'>
+                    {STATUS_OPTIONS.map((o) => (
+                      <option key={o.value} value={o.value}>{o.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div>
+                <label className='text-[13px] text-[var(--text-primary)] font-bold block mb-2'>قوانین / توضیحات</label>
+                <textarea
+                  value={forkRulesNote}
+                  onChange={(e) => setForkRulesNote(e.target.value)}
+                  rows={4}
+                />
+              </div>
+            </div>
+
+            <div className='flex gap-3 pt-4 border-t border-[var(--border-subtle)]'>
+              <button
+                onClick={handleSubmitFork}
+                className='text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(121,89,214,0.3)] hover:shadow-[0_10px_24px_rgba(121,89,214,0.4)] hover:-translate-y-0.5'
+                style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}     >
+                🔱 ساخت Fork
+              </button>
+              <button
+                onClick={() => setShowForkModal(false)}
+                className='bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] hover:border-[var(--border-accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] px-7 py-3 rounded-[12px] text-sm font-bold transition-all'>
+                ✕ لغو
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -659,13 +800,31 @@ const handleForkVersion = async (version: Version) => {
                 </button>
               </div>
 
+                            <div className='flex gap-2 mb-3 flex-wrap'>
+                <button
+                  onClick={() => setVersionTypeFilter('')}
+                  className=`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === '' ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`
+                >
+                  🗂
+                </button>
+                {TEST_TYPE_OPTIONS.map((t) => (
+                  <button
+                    key={t.value}
+                    onClick={() => setVersionTypeFilter(versionTypeFilter === t.value ? '' : t.value)}
+                    className=`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === t.value ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`
+                  >
+                    {t.label}
+                  </button>
+                ))}
+              </div>
+
               {versions.length === 0 ? (
                 <div className="text-[var(--text-muted)] text-sm text-center py-12">
                   هنوز نسخه‌ای نساخته‌اید
                 </div>
               ) : (
                 <div className="space-y-3">
-                  {versions.map((version) => (
+                  {filteredVersions.map((version) => (
                     <div
                       key={version.id}
                       className="bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[14px] p-4 hover:border-[var(--border-accent)] hover:bg-[var(--bg-card)] hover:shadow-sm transition-all"
@@ -674,6 +833,14 @@ const handleForkVersion = async (version: Version) => {
                         <div className="flex-1">
                           <div className="text-[15px] font-extrabold text-[var(--text-primary)]">
                             {version.version_name}
+                  {version.test_type && (
+                  <span className=`text-[11px] font-bold px-3 py-1 rounded-full border ${getTestTypeStyle(version.test_type)}`>
+                    {getTestTypeLabel(version.test_type)}
+                  </span>
+                  )}
+                  {version.forked_from_version_id && (
+                  <span className='text-[10px] text-[var(--purple-light)] font-semibold'>🔱 Fork</span>
+                  )}
                           </div>
                           <div className="flex items-center gap-2 mt-2 flex-wrap">
                             <span className={`text-[11px] font-bold px-3 py-1 rounded-full border ${getStatusStyle(version.status)}`}>
