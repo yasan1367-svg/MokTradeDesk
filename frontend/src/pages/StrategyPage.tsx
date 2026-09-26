@@ -803,7 +803,7 @@ const handleForkVersion = (version: Version) => {
                             <div className='flex gap-2 mb-3 flex-wrap'>
                 <button
                   onClick={() => setVersionTypeFilter('')}
-                  className=`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === '' ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`
+                  className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === '' ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`}
                 >
                   🗂
                 </button>
@@ -811,7 +811,7 @@ const handleForkVersion = (version: Version) => {
                   <button
                     key={t.value}
                     onClick={() => setVersionTypeFilter(versionTypeFilter === t.value ? '' : t.value)}
-                    className=`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === t.value ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`
+                    className={`text-[11px] font-bold px-3 py-1.5 rounded-full border transition-all ${versionTypeFilter === t.value ? 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]' : 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)] hover:border-[var(--border-accent)]'}`}
                   >
                     {t.label}
                   </button>
@@ -834,7 +834,7 @@ const handleForkVersion = (version: Version) => {
                           <div className="text-[15px] font-extrabold text-[var(--text-primary)]">
                             {version.version_name}
                   {version.test_type && (
-                  <span className=`text-[11px] font-bold px-3 py-1 rounded-full border ${getTestTypeStyle(version.test_type)}`>
+                  <span className={`text-[11px] font-bold px-3 py-1 rounded-full border ${getTestTypeStyle(version.test_type)}`}>
                     {getTestTypeLabel(version.test_type)}
                   </span>
                   )}
