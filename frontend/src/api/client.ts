@@ -540,6 +540,65 @@ export const getFinanceAccountComparison = (params?: {
 
 export const getFinanceProfitLoss = (params?: { year?: number; account_id?: number }) =>
   api.get('/api/finance/reports/profit-loss', { params });
+
+// ─────────────────────────────────────────────
+// Finance Reports — فاز ۲۲
+// ─────────────────────────────────────────────
+export type AssetBucket = { amount: number; currency: string };
+
+export const getSpendableAssets = () =>
+  api.get<Record<string, AssetBucket> & { total: { usd: number; irr: number } }>(
+    '/api/finance/spendable-assets',
+  );
+
+export const getRealPnl = () =>
+  api.get<{
+    prop_stage_3: { pnl: number; trades: number };
+    broker: { pnl: number; trades: number };
+    total: { pnl: number; trades: number };
+  }>('/api/finance/real-pnl');
+
+export const getNetProfit = () =>
+  api.get<{ real_pnl: number; expenses: number; net_profit: number }>(
+    '/api/finance/net-profit',
+  );
+
+export type MoneyFlow = {
+  from: string | null; to: string | null; amount: number;
+  currency: string | null; type: string | null; date?: string | null;
+};
+export const getMoneyFlow = () =>
+  api.get<{ flows: MoneyFlow[] }>('/api/finance/money-flow');
+
+export type ExpensesBreakdown = {
+  prop_purchase: number; prop_subscription: number; exchange_fee: number;
+  withdrawal_fee: number; other: number; total: number;
+};
+export const getFinanceExpenses = () =>
+  api.get<ExpensesBreakdown>('/api/finance/expenses');
+
+export const getMoneyCycle = () =>
+  api.get<{
+    total_deposits: number; total_withdrawals: number; total_exchanges: number;
+    total_transfers: number; current_balance: number;
+  }>('/api/finance/money-cycle');
+
+export type CalendarDay = {
+  date: string; pnl: number; trades: number; deposits: number; withdrawals: number;
+};
+export const getFinancialCalendar = () =>
+  api.get<{ days: CalendarDay[] }>('/api/finance/financial-calendar');
+
+export const getAssetTrend = (params?: { date_from?: string; date_to?: string }) =>
+  api.get<{ trend: { date: string; total_usd: number; total_irr: number }[] }>(
+    '/api/finance/asset-trend', { params },
+  );
+
+export const getExchangeRates = () =>
+  api.get<{ rates: { date: string; from: string; to: string; rate: number }[] }>(
+    '/api/finance/exchange-rates',
+  );
+
 // ─────────────────────────────────────────────
 // Payout History (فاز ۱۶)
 // ─────────────────────────────────────────────

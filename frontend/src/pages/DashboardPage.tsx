@@ -11,6 +11,7 @@ import {
   getDashboardData, getYesterdayData, exportDashboardPdf, getPropAlerts, markAlertRead,
   getFinanceSummary, getFinanceCashflow, getFinanceAccounts, getTrades, getRiskAdvanced,
   getPropPayoutsStats, getBrokerPayoutsStats,
+  getSpendableAssets, getNetProfit, getAssetTrend,
   listBackups, createBackup,
 } from '../api/client';
 import { DashboardSkeleton } from '../components/Skeleton';
@@ -198,6 +199,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 const [alerts, setAlerts] = useState<any[]>([]);
 const [payouts, setPayouts] = useState<any>(null);
 
+  // ── گزارشهای فاز ۲۲ ──
+  const [spendable, setSpendable] = useState<any>(null);
+  const [netProfit, setNetProfit] = useState<any>(null);
+  const [assetTrend, setAssetTrend] = useState<any[]>([]);
+
   // ── آمار برداشت‌ها (فاز ۱۶) ──
   useEffect(() => {
     Promise.all([getPropPayoutsStats(), getBrokerPayoutsStats()])
@@ -233,7 +239,7 @@ const [payouts, setPayouts] = useState<any>(null);
       const r = computeRange(rangeKey, customFrom, customTo);
       setRefreshing(true);
       try {
-        const [dash, yest, sum, flow, accs, riskRes, closed, open, alertsRes] = await Promise.all([
+        const [dash, yest, sum, flow, accs, riskRes, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
           getDashboardData({ date_from: r.from, date_to: r.to }),
           getYesterdayData(),
           getFinanceSummary(),
@@ -243,6 +249,9 @@ const [payouts, setPayouts] = useState<any>(null);
           getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc' }),
           getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc' }),
           getPropAlerts({ unread_only: true }),
+          getSpendableAssets(),
+          getNetProfit(),
+          getAssetTrend(),
         ]);
         setData(dash.data);
         setYesterday(yest.data);
@@ -251,6 +260,9 @@ const [payouts, setPayouts] = useState<any>(null);
         setRecentTrades(closed.data.trades || []);
         setOpenTrades(open.data.trades || []);
         setAlerts(alertsRes.data);
+        setSpendable(spendRes.data);
+        setNetProfit(npRes.data);
+        setAssetTrend(trendRes.data.trend || []);
         setError(null);
         if (showToast) toast.success('داشبورد به‌روزرسانی شد');
       } catch (err: any) {
@@ -614,6 +626,99 @@ const [payouts, setPayouts] = useState<any>(null);
             </div>
           ) : (
             <div className="text-[var(--text-secondary)] text-sm py-2">هنوز Backup‌ی ساخته نشده</div>
+          )}
+        </Card>
+      </ErrorBoundary>
+
+      {/* کارت‌های فاز ۲۲: دارایی قابل برداشت + سود خالص + روند دارایی */}
+      <ErrorBoundary label="گزارش‌های مالی (فاز ۲۲)">
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          <Card>
+            <CardHeader title="💵 دارایی قابل برداشت" subtitle="تفکیک منابع مالی" />
+            {spendable ? (
+              <div className="space-y-2">
+                {([
+                  ['prop_stage_3', '🏢 مرحلهٔ ۳ پراپ'],
+                  ['broker', '📊 بروکر'],
+                  ['exchange', '🔄 صرافی'],
+                  ['trust_wallet', '₿ تراست ولت'],
+                  ['bank', '🏦 بانک'],
+                ] as const).map(([key, label]) => (
+                  <div key={key} className="flex items-center justify-between bg-[var(--bg-elevated)] rounded-[12px] px-4 py-2.5">
+                    <span className="text-[13px] text-[var(--text-secondary)] font-bold">{label}</span>
+                    <span className="text-[14px] font-extrabold text-[var(--text-primary)]">
+                      {Number(spendable[key]?.amount ?? 0).toLocaleString('en-US')}{' '}
+                      <span className="text-[11px] text-[var(--text-secondary)]">{spendable[key]?.currency}</span>
+                    </span>
+                  </div>
+                ))}
+                <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-3 mt-1">
+                  <span className="text-[13px] font-extrabold text-[var(--text-primary)]">مجموع</span>
+                  <span className="text-[14px] font-black text-[var(--accent)]">
+                    {Number(spendable.total?.usd ?? 0).toLocaleString('en-US')} $
+                    <span className="mr-2 text-[12px] text-[var(--text-secondary)]">
+                      {Number(spendable.total?.irr ?? 0).toLocaleString('en-US')} IRR
+                    </span>
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
+            )}
+          </Card>
+
+          <Card>
+            <CardHeader title="🧾 سود خالص" subtitle="سود Real منهای هزینه‌ها" />
+            {netProfit ? (
+              <div className="space-y-4">
+                <div className="grid grid-cols-2 gap-3">
+                  <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                    <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
+                    <div className={`text-lg font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                      {netProfit.real_pnl >= 0 ? '+' : ''}{Number(netProfit.real_pnl).toLocaleString('en-US')} $
+                    </div>
+                  </div>
+                  <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                    <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
+                    <div className="text-lg font-extrabold text-[var(--loss)]">
+                      −{Number(netProfit.expenses).toLocaleString('en-US')} $
+                    </div>
+                  </div>
+                </div>
+                <div className="flex items-center justify-between bg-[var(--accent-soft)] rounded-[14px] px-4 py-3">
+                  <span className="text-[13px] font-extrabold text-[var(--text-primary)]">سود خالص</span>
+                  <span className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                    {netProfit.net_profit >= 0 ? '+' : ''}{Number(netProfit.net_profit).toLocaleString('en-US')} $
+                  </span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
+            )}
+          </Card>
+        </div>
+
+        <Card className="mt-5">
+          <CardHeader title="📈 روند دارایی" subtitle="مجموع تجمعی USD / IRR" />
+          {assetTrend.length > 1 ? (
+            <ResponsiveContainer width="100%" height={260}>
+              <AreaChart data={assetTrend} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="assetUsd" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="0%" stopColor="var(--accent)" stopOpacity={0.4} />
+                    <stop offset="100%" stopColor="var(--accent)" stopOpacity={0} />
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--text-secondary)" />
+                <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
+                <Tooltip contentStyle={MINI_TOOLTIP} />
+                <Area type="monotone" dataKey="total_usd" stroke="var(--accent)" fill="url(#assetUsd)" strokeWidth={2} name="USD" />
+                <Area type="monotone" dataKey="total_irr" stroke="#F59E0B" fillOpacity={0} strokeWidth={2} name="IRR" />
+              </AreaChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-[var(--text-muted)] text-sm py-6 text-center">دادهٔ کافی برای نمایش روند وجود ندارد</div>
           )}
         </Card>
       </ErrorBoundary>

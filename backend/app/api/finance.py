@@ -1086,6 +1086,409 @@ def get_profit_loss(
 
 
 # ═════════════════════════════════════════════
+# فاز ۲۲ — گزارش‌های مالی (توابع کمکی)
+# ═════════════════════════════════════════════
+def _trade_net_expr():
+    """net_pnl معامله = pnl + commission + swap (با COALESCE)"""
+    from sqlalchemy import func
+    from ..models.strategy import Trade
+    return (
+        func.coalesce(Trade.pnl, 0.0)
+        + func.coalesce(Trade.commission, 0.0)
+        + func.coalesce(Trade.swap, 0.0)
+    )
+
+
+def _jalali_date_str(dt) -> Optional[str]:
+    """تاریخ شمسی به قالب YYYY/MM/DD (بر پایهٔ UTC مثل بقیهٔ گزارش‌ها)"""
+    if not dt:
+        return None
+    try:
+        jy, jm, jd = _gregorian_to_jalali(dt.year, dt.month, dt.day)
+    except Exception:
+        return None
+    return f"{jy}/{jm:02d}/{jd:02d}"
+
+
+def _prop_stage3_tx_net(db: Session) -> float:
+    """سود خالص تحقق‌یافتهٔ مرحلهٔ ۳ پراپ از Transactionها (PROFIT - LOSS)"""
+    from sqlalchemy import func, case
+    from ..models.prop import PropAccount as PropAcct, PropStage as PS, StageType
+    return float(
+        db.query(
+            func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0.0)
+            - func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0.0)
+        )
+        .select_from(Transaction)
+        .join(Account, Transaction.account_id == Account.id)
+        .join(PropAcct, Account.id == PropAcct.finance_account_id)
+        .join(PS, PropAcct.id == PS.prop_account_id)
+        .filter(PS.stage_type == StageType.FUNDED_REAL, Transaction.is_deleted == False)
+        .scalar() or 0.0
+    )
+
+
+def _balance_sum(db: Session, acc_type: AccountType) -> float:
+    """مجموع موجودی همهٔ حساب‌های یک نوع"""
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(Account.balance), 0.0))
+        .filter(Account.type == acc_type)
+        .scalar() or 0.0
+    )
+
+
+def _compute_real_pnl(db: Session) -> dict:
+    """سود/زیان Real: مرحلهٔ ۳ پراپ + بروکر (از معاملات، net_pnl)"""
+    from sqlalchemy import func
+    from ..models.strategy import Trade
+    from ..models.prop import PropStage as PS, StageType
+
+    net = _trade_net_expr()
+
+    prop_row = (
+        db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
+        .select_from(Trade)
+        .join(PS, Trade.prop_stage_id == PS.id)
+        .filter(PS.stage_type == StageType.FUNDED_REAL, Trade.pnl.isnot(None))
+        .one()
+    )
+    prop_pnl = round(float(prop_row[0] or 0.0), 2)
+    prop_trades = int(prop_row[1] or 0)
+
+    broker_row = (
+        db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
+        .select_from(Trade)
+        .join(Account, Trade.finance_account_id == Account.id)
+        .filter(Account.type == AccountType.BROKER, Trade.pnl.isnot(None))
+        .one()
+    )
+    broker_pnl = round(float(broker_row[0] or 0.0), 2)
+    broker_trades = int(broker_row[1] or 0)
+
+    return {
+        "prop_stage_3": {"pnl": prop_pnl, "trades": prop_trades},
+        "broker": {"pnl": broker_pnl, "trades": broker_trades},
+        "total": {"pnl": round(prop_pnl + broker_pnl, 2), "trades": prop_trades + broker_trades},
+    }
+
+
+def _expenses_total(db: Session) -> float:
+    """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE)"""
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
+        .filter(
+            Transaction.is_deleted == False,
+            Transaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+        )
+        .scalar() or 0.0
+    )
+
+
+# ═════════════════════════════════════════════
+# فاز ۲۲.۱ — گزارش «دارایی قابل برداشت» / «سود/زیان Real» / «سود خالص»
+# ═════════════════════════════════════════════
+@router.get("/spendable-assets")
+def get_spendable_assets(db: Session = Depends(get_db)):
+    """دارایی قابل برداشت: تفکیک مرحلهٔ ۳ پراپ، بروکر، صرافی، Trust Wallet، بانک + مجموع"""
+    prop_stage_3 = round(_prop_stage3_tx_net(db), 2)
+    broker = round(_balance_sum(db, AccountType.BROKER), 2)
+    exchange = round(_balance_sum(db, AccountType.EXCHANGE), 2)
+    trust_wallet = round(_balance_sum(db, AccountType.CRYPTO_WALLET), 2)
+    bank = round(_balance_sum(db, AccountType.BANK), 2)
+
+    total_usd = round(prop_stage_3 + broker + exchange + trust_wallet, 2)
+    return {
+        "prop_stage_3": {"amount": prop_stage_3, "currency": "USD"},
+        "broker": {"amount": broker, "currency": "USD"},
+        "exchange": {"amount": exchange, "currency": "USD"},
+        "trust_wallet": {"amount": trust_wallet, "currency": "USD"},
+        "bank": {"amount": bank, "currency": "IRR"},
+        "total": {"usd": total_usd, "irr": bank},
+    }
+
+
+@router.get("/real-pnl")
+def get_real_pnl(db: Session = Depends(get_db)):
+    """سود/زیان Real: مرحلهٔ ۳ پراپ + بروکر (pnl + تعداد معاملات)"""
+    return _compute_real_pnl(db)
+
+
+@router.get("/net-profit")
+def get_net_profit(db: Session = Depends(get_db)):
+    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE)"""
+    real = _compute_real_pnl(db)
+    expenses = round(_expenses_total(db), 2)
+    real_pnl = real["total"]["pnl"]
+    return {
+        "real_pnl": real_pnl,
+        "expenses": expenses,
+        "net_profit": round(real_pnl - expenses, 2),
+    }
+
+
+# ═════════════════════════════════════════════
+# فاز ۲۲.۲ — «جریان پول» / «هزینه‌ها» / «چرخه پول»
+# ═════════════════════════════════════════════
+@router.get("/money-flow")
+def get_money_flow(db: Session = Depends(get_db)):
+    """جریان پول: تراکنش‌های واریز/برداشت/تبدیل و هر تراکنش دارای مبدأ/مقصد"""
+    from sqlalchemy.orm import joinedload
+    flow_types = [
+        TransactionType.DEPOSIT,
+        TransactionType.WITHDRAWAL,
+        TransactionType.EXCHANGE,
+    ]
+    txs = (
+        db.query(Transaction)
+        .options(
+            joinedload(Transaction.account),
+            joinedload(Transaction.from_account),
+            joinedload(Transaction.to_account),
+        )
+        .filter(Transaction.is_deleted == False)
+        .order_by(Transaction.date.desc())
+        .all()
+    )
+
+    flows = []
+    for t in txs:
+        has_link = t.from_account_id is not None or t.to_account_id is not None
+        if t.type not in flow_types and not has_link:
+            continue
+        own = t.account.type.value if t.account and t.account.type else None
+        from_side = t.from_account.type.value if t.from_account and t.from_account.type else None
+        to_side = t.to_account.type.value if t.to_account and t.to_account.type else None
+        flows.append({
+            "from": from_side or own,
+            "to": to_side or own,
+            "amount": t.amount,
+            "currency": t.currency.value if t.currency else None,
+            "type": t.type.value if t.type else None,
+            "date": t.date.isoformat() if t.date else None,
+        })
+    return {"flows": flows}
+
+
+@router.get("/expenses")
+def get_expenses(db: Session = Depends(get_db)):
+    """گزارش هزینه‌ها: تفکیک کارمزد/خرید به خرید پراپ، اشتراک پراپ، کارمزد صرافی، کارمزد برداشت و سایر"""
+    from sqlalchemy.orm import joinedload
+    txs = (
+        db.query(Transaction)
+        .options(joinedload(Transaction.category), joinedload(Transaction.account))
+        .filter(
+            Transaction.is_deleted == False,
+            Transaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+        )
+        .all()
+    )
+
+    buckets = {
+        "prop_purchase": 0.0,
+        "prop_subscription": 0.0,
+        "exchange_fee": 0.0,
+        "withdrawal_fee": 0.0,
+        "other": 0.0,
+    }
+
+    for t in txs:
+        amount = float(t.amount or 0.0)
+        cat_name = (t.category.name if t.category else "") or ""
+        text = f"{cat_name} {t.description or ''}"
+        acc_type = t.account.type if t.account else None
+
+        if t.type == TransactionType.PURCHASE and (acc_type == AccountType.PROP or "پراپ" in text):
+            buckets["prop_purchase"] += amount
+        elif "اشتراک" in text or (acc_type == AccountType.PROP and t.type == TransactionType.FEE):
+            buckets["prop_subscription"] += amount
+        elif acc_type == AccountType.EXCHANGE or "تبدیل" in text or "صرافی" in text:
+            buckets["exchange_fee"] += amount
+        elif "برداشت" in text:
+            buckets["withdrawal_fee"] += amount
+        else:
+            buckets["other"] += amount
+
+    total = round(sum(buckets.values()), 2)
+    result = {k: round(v, 2) for k, v in buckets.items()}
+    result["total"] = total
+    return result
+
+
+@router.get("/money-cycle")
+def get_money_cycle(db: Session = Depends(get_db)):
+    """چرخهٔ پول: مجموع واریز/برداشت/تبدیل/انتقال + موجودی فعلی همهٔ حساب‌ها"""
+    from sqlalchemy import func
+
+    def _total(types) -> float:
+        return float(
+            db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
+            .filter(Transaction.is_deleted == False, Transaction.type.in_(types))
+            .scalar() or 0.0
+        )
+
+    deposits = _total([TransactionType.DEPOSIT])
+    withdrawals = _total([TransactionType.WITHDRAWAL])
+    exchanges = _total([TransactionType.EXCHANGE])
+    transfers = float(
+        db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
+        .filter(
+            Transaction.is_deleted == False,
+            Transaction.from_account_id.isnot(None),
+            Transaction.to_account_id.isnot(None),
+        )
+        .scalar() or 0.0
+    )
+    current_balance = float(
+        db.query(func.coalesce(func.sum(Account.balance), 0.0)).scalar() or 0.0
+    )
+
+    return {
+        "total_deposits": round(deposits, 2),
+        "total_withdrawals": round(withdrawals, 2),
+        "total_exchanges": round(exchanges, 2),
+        "total_transfers": round(transfers, 2),
+        "current_balance": round(current_balance, 2),
+    }
+
+
+# ═════════════════════════════════════════════
+# فاز ۲۲.۳ — «تقویم مالی» / «روند دارایی» / «نرخ تبدیل»
+# ═════════════════════════════════════════════
+@router.get("/financial-calendar")
+def get_financial_calendar(db: Session = Depends(get_db)):
+    """تقویم مالی: به تفکیک روز شمسی — سود/زیان معاملات + واریز/برداشت"""
+    from collections import defaultdict
+    from ..models.strategy import Trade
+
+    days: dict = defaultdict(
+        lambda: {"pnl": 0.0, "trades": 0, "deposits": 0.0, "withdrawals": 0.0}
+    )
+
+    for t in db.query(Trade).filter(Trade.close_time.isnot(None)).all():
+        d = _jalali_date_str(t.close_time)
+        if not d:
+            continue
+        days[d]["pnl"] += (t.pnl or 0.0) + (t.commission or 0.0) + (t.swap or 0.0)
+        days[d]["trades"] += 1
+
+    txs = (
+        db.query(Transaction)
+        .filter(
+            Transaction.is_deleted == False,
+            Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]),
+        )
+        .all()
+    )
+    for tx in txs:
+        d = _jalali_date_str(tx.date)
+        if not d:
+            continue
+        if tx.type == TransactionType.DEPOSIT:
+            days[d]["deposits"] += float(tx.amount or 0.0)
+        else:
+            days[d]["withdrawals"] += float(tx.amount or 0.0)
+
+    result = [
+        {
+            "date": d,
+            "pnl": round(v["pnl"], 2),
+            "trades": v["trades"],
+            "deposits": round(v["deposits"], 2),
+            "withdrawals": round(v["withdrawals"], 2),
+        }
+        for d, v in sorted(days.items())
+    ]
+    return {"days": result}
+
+
+@router.get("/asset-trend")
+def get_asset_trend(
+    date_from: Optional[str] = Query(None, description="e.g. 2025-01-01"),
+    date_to: Optional[str] = Query(None, description="e.g. 2025-12-31"),
+    db: Session = Depends(get_db),
+):
+    """روند دارایی: مجموع تجمعی USD و IRR به تفکیک روز شمسی (از جریان تراکنش‌ها)"""
+    from collections import defaultdict
+
+    sign = {
+        TransactionType.DEPOSIT: 1,
+        TransactionType.PROFIT: 1,
+        TransactionType.WITHDRAWAL: -1,
+        TransactionType.LOSS: -1,
+        TransactionType.FEE: -1,
+        TransactionType.PURCHASE: -1,
+    }
+
+    q = db.query(Transaction).filter(Transaction.is_deleted == False)
+    if date_from:
+        q = q.filter(Transaction.date >= date_from)
+    if date_to:
+        q = q.filter(Transaction.date <= date_to)
+
+    per_day: dict = defaultdict(lambda: {"USD": 0.0, "IRR": 0.0})
+    for t in q.order_by(Transaction.date).all():
+        d = _jalali_date_str(t.date)
+        if not d:
+            continue
+        factor = sign.get(t.type, 0)
+        if factor == 0:
+            continue  # تبدیل، سنتی است و خالص آن صفر فرض می‌شود
+        cur = t.currency.value if t.currency else "USD"
+        per_day[d][cur] = per_day[d].get(cur, 0.0) + factor * float(t.amount or 0.0)
+
+    trend = []
+    run_usd = 0.0
+    run_irr = 0.0
+    for d in sorted(per_day):
+        run_usd += per_day[d].get("USD", 0.0)
+        run_irr += per_day[d].get("IRR", 0.0)
+        trend.append({
+            "date": d,
+            "total_usd": round(run_usd, 2),
+            "total_irr": round(run_irr, 2),
+        })
+    return {"trend": trend}
+
+
+@router.get("/exchange-rates")
+def get_exchange_rates(db: Session = Depends(get_db)):
+    """نرخ تبدیل: نرخ ضمنی روزانهٔ IRR→USD از تراکنش‌های تبدیل
+
+    چون هر تراکنش تبدیل فقط یک مبلغ/ارز ذخیره می‌کند، نرخ از نسبت مجموع
+    مبلغ‌های IRR به مجموع مبلغ‌های USD در همان روز شمسی استخراج می‌شود.
+    """
+    from collections import defaultdict
+
+    txs = (
+        db.query(Transaction)
+        .filter(Transaction.is_deleted == False, Transaction.type == TransactionType.EXCHANGE)
+        .all()
+    )
+    per_day: dict = defaultdict(lambda: {"IRR": 0.0, "USD": 0.0})
+    for t in txs:
+        d = _jalali_date_str(t.date)
+        if not d:
+            continue
+        cur = t.currency.value if t.currency else "USD"
+        per_day[d][cur] = per_day[d].get(cur, 0.0) + float(t.amount or 0.0)
+
+    rates = []
+    for d in sorted(per_day):
+        irr = per_day[d].get("IRR", 0.0)
+        usd = per_day[d].get("USD", 0.0)
+        if irr > 0 and usd > 0:
+            rates.append({
+                "date": d,
+                "from": "IRR",
+                "to": "USD",
+                "rate": round(irr / usd, 2),
+            })
+    return {"rates": rates}
+
+
+# ═════════════════════════════════════════════
 # Seed
 # ═════════════════════════════════════════════
 DEFAULT_CATEGORIES = [

@@ -27,6 +27,14 @@ import {
   getFinanceCategoryBreakdown,
   getFinanceAccountComparison,
   getFinanceProfitLoss,
+  getSpendableAssets,
+  getRealPnl,
+  getNetProfit,
+  getMoneyFlow,
+  getFinanceExpenses,
+  getMoneyCycle,
+  getFinancialCalendar,
+  getExchangeRates,
   api,
 } from '../api/client';
 
@@ -41,7 +49,8 @@ import ConfirmDialog from '../components/ui/ConfirmDialog';
 import InfoTooltip from '../components/ui/Tooltip';
 import { useToast } from '../components/ToastProvider';
 
-type Tab = 'accounts' | 'transactions' | 'categories' | 'reports' | 'advanced';
+type Tab = 'accounts' | 'transactions' | 'categories' | 'reports' | 'advanced'
+  | 'real' | 'moneyflow' | 'expenses' | 'cycle' | 'calendar' | 'rates';
 
 type Account = {
   id: number; name: string; type: string; currency: string;
@@ -65,6 +74,10 @@ type Transaction = {
 
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
   bank: '🏦', exchange: '🔄', crypto_wallet: '₿', broker: '📊', prop: '🏢',
+};
+
+const ACCOUNT_TYPE_NAMES: Record<string, string> = {
+  bank: 'بانک', exchange: 'صرافی', crypto_wallet: 'تراست ولت', broker: 'بروکر', prop: 'پراپ',
 };
 
 const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
@@ -172,6 +185,16 @@ export default function FinancePage() {
     trend: Array<{ label: string; net: number; cumulative: number }>;
   } | null>(null);
 
+  // فاز ۲۲ — گزارش‌های مالی جدید
+  const [spendableAssets, setSpendableAssets] = useState<Record<string, any> | null>(null);
+  const [realPnl, setRealPnl] = useState<any>(null);
+  const [netProfit, setNetProfit] = useState<any>(null);
+  const [moneyFlow, setMoneyFlow] = useState<Array<any>>([]);
+  const [expenses, setExpenses] = useState<any>(null);
+  const [moneyCycle, setMoneyCycle] = useState<any>(null);
+  const [calendar, setCalendar] = useState<Array<any>>([]);
+  const [exchangeRates, setExchangeRates] = useState<Array<any>>([]);
+
   // Load functions
   const loadAccounts = async () => {
     const { data } = await getFinanceAccounts();
@@ -253,11 +276,36 @@ export default function FinancePage() {
     }
   };
 
+  // فاز ۲۲ — بارگذاری همهٔ گزارش‌های جدید
+  const loadPhase22 = async () => {
+    try {
+      const [spRes, rpRes, npRes, mfRes, exRes, mcRes, calRes, rtRes] = await Promise.all([
+        getSpendableAssets(),
+        getRealPnl(),
+        getNetProfit(),
+        getMoneyFlow(),
+        getFinanceExpenses(),
+        getMoneyCycle(),
+        getFinancialCalendar(),
+        getExchangeRates(),
+      ]);
+      setSpendableAssets(spRes.data);
+      setRealPnl(rpRes.data);
+      setNetProfit(npRes.data);
+      setMoneyFlow(mfRes.data.flows || []);
+      setExpenses(exRes.data);
+      setMoneyCycle(mcRes.data);
+      setCalendar(calRes.data.days || []);
+      setExchangeRates(rtRes.data.rates || []);
+    } catch { /* silent */ }
+  };
+
   useEffect(() => { loadAll(); }, []);
   useEffect(() => {
     if (tab === 'transactions') loadTransactions();
     if (tab === 'reports') loadReports();
     if (tab === 'advanced') loadAdvancedReports();
+    if ((['real', 'moneyflow', 'expenses', 'cycle', 'calendar', 'rates'] as Tab[]).includes(tab)) loadPhase22();
   },
     [tab, filterDateFrom, filterDateTo, filterAccountId, filterType, filterCategoryId, advYear, advMonth, advAccountId]);
 
@@ -269,6 +317,12 @@ export default function FinancePage() {
     { key: 'categories', icon: '🏷️', label: 'دسته‌بندی‌ها' },
     { key: 'reports', icon: '📊', label: 'گزارش‌ها' },
     { key: 'advanced', icon: '📈', label: 'گزارش‌های پیشرفته' },
+    { key: 'real', icon: '💰', label: 'سود/زیان Real' },
+    { key: 'moneyflow', icon: '🔀', label: 'جریان پول' },
+    { key: 'expenses', icon: '🧾', label: 'هزینه‌ها' },
+    { key: 'cycle', icon: '♻️', label: 'چرخهٔ پول' },
+    { key: 'calendar', icon: '🗓️', label: 'تقویم مالی' },
+    { key: 'rates', icon: '💱', label: 'نرخ تبدیل' },
   ];
 
   if (loading) return <FinanceSkeleton />;
@@ -288,12 +342,12 @@ export default function FinancePage() {
       />
 
       {/* Tabs */}
-      <div className="flex gap-2 mb-6 border-b border-[var(--border-subtle)] pb-3">
+      <div className="flex gap-2 mb-6 border-b border-[var(--border-subtle)] pb-3 overflow-x-auto flex-wrap">
         {TABS.map((t) => (
           <button
             key={t.key}
             onClick={() => setTab(t.key)}
-            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all ${
+            className={`px-5 py-2.5 rounded-xl text-sm font-bold transition-all whitespace-nowrap ${
               tab === t.key
                 ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
@@ -973,6 +1027,295 @@ export default function FinancePage() {
                         <td className="py-3 px-3 text-[#22c55e]">{y.income.toLocaleString()}</td>
                         <td className="py-3 px-3 text-[#ef4444]">{y.expense.toLocaleString()}</td>
                         <td className={`py-3 px-3 font-bold ${y.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{y.net.toLocaleString()}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Real PnL Tab (فاز ۲۲.۱) ═══ */}
+      {tab === 'real' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+              <div className="text-xs text-[var(--text-secondary)] mb-1">🏢 مرحلهٔ ۳ پراپ</div>
+              <div className={`text-2xl font-extrabold ${(realPnl?.prop_stage_3?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                {realPnl ? `${realPnl.prop_stage_3.pnl >= 0 ? '+' : ''}${realPnl.prop_stage_3.pnl.toLocaleString()}` : '—'} $
+              </div>
+              <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.prop_stage_3?.trades ?? '—'}</div>
+            </div>
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+              <div className="text-xs text-[var(--text-secondary)] mb-1">📊 بروکر</div>
+              <div className={`text-2xl font-extrabold ${(realPnl?.broker?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                {realPnl ? `${realPnl.broker.pnl >= 0 ? '+' : ''}${realPnl.broker.pnl.toLocaleString()}` : '—'} $
+              </div>
+              <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.broker?.trades ?? '—'}</div>
+            </div>
+            <div className="bg-[var(--bg-card)] border border-[var(--border-accent)] rounded-[22px] p-5">
+              <div className="text-xs text-[var(--text-secondary)] mb-1">Σ مجموع Real</div>
+              <div className={`text-2xl font-black ${(realPnl?.total?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                {realPnl ? `${realPnl.total.pnl >= 0 ? '+' : ''}${realPnl.total.pnl.toLocaleString()}` : '—'} $
+              </div>
+              <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد کل: {realPnl?.total?.trades ?? '—'}</div>
+            </div>
+          </div>
+
+          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+            <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">💰 سود/زیان Real بر اساس منبع</div>
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                    <th className="text-right py-3 px-3">منبع</th>
+                    <th className="text-right py-3 px-3">سود/زیان (net_pnl)</th>
+                    <th className="text-right py-3 px-3">تعداد معاملات</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    ['🏢 مرحلهٔ ۳ پراپ', realPnl?.prop_stage_3],
+                    ['📊 بروکر', realPnl?.broker],
+                    ['Σ مجموع', realPnl?.total],
+                  ].map(([label, v]: any, i) => (
+                    <tr key={i} className={`border-b border-[var(--border-subtle)]/50 ${i === 2 ? 'font-bold' : ''}`}>
+                      <td className="py-3 px-3 text-[var(--text-primary)]">{label}</td>
+                      <td className={`py-3 px-3 font-bold ${(v?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                        {v ? v.pnl.toLocaleString() : '—'}
+                      </td>
+                      <td className="py-3 px-3 text-[var(--text-secondary)]">{v?.trades ?? '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+
+          {/* سود خالص (فاز ۲۲.۱) */}
+          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+            <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">🧾 سود خالص</div>
+            {netProfit ? (
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                  <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
+                  <div className={`text-xl font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.real_pnl.toLocaleString()} $</div>
+                </div>
+                <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
+                  <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
+                  <div className="text-xl font-extrabold text-[#ef4444]">−{netProfit.expenses.toLocaleString()} $</div>
+                </div>
+                <div className="bg-[var(--accent-soft)] rounded-[14px] p-4">
+                  <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود خالص</div>
+                  <div className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.net_profit.toLocaleString()} $</div>
+                </div>
+              </div>
+            ) : (
+              <div className="text-sm text-[var(--text-secondary)]">در حال بارگذاری…</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Money Flow Tab (فاز ۲۲.۲) ═══ */}
+      {tab === 'moneyflow' && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+          <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">🔀 جریان پول بین حساب‌ها</div>
+          {spendableAssets && (
+            <div className="flex flex-wrap gap-3 mb-5">
+              {([
+                ['prop_stage_3', '🏢 پراپ ۳'],
+                ['broker', '📊 بروکر'],
+                ['exchange', '🔄 صرافی'],
+                ['trust_wallet', '₿ تراست'],
+                ['bank', '🏦 بانک'],
+              ] as const).map(([k, label]) => (
+                <div key={k} className="bg-[var(--bg-elevated)] rounded-[12px] px-4 py-2">
+                  <span className="text-[11px] text-[var(--text-secondary)] font-bold ml-2">{label}</span>
+                  <span className="text-[13px] font-extrabold text-[var(--text-primary)]">
+                    {Number(spendableAssets[k]?.amount ?? 0).toLocaleString()}{' '}
+                    <span className="text-[10px] text-[var(--text-secondary)]">{spendableAssets[k]?.currency}</span>
+                  </span>
+                </div>
+              ))}
+              <div className="bg-[var(--accent-soft)] rounded-[12px] px-4 py-2">
+                <span className="text-[11px] text-[var(--text-secondary)] font-bold ml-2">Σ مجموع</span>
+                <span className="text-[13px] font-black text-[var(--accent)]">
+                  {Number(spendableAssets.total?.usd ?? 0).toLocaleString()} $ | {Number(spendableAssets.total?.irr ?? 0).toLocaleString()} IRR
+                </span>
+              </div>
+            </div>
+          )}
+          {moneyFlow.length === 0 ? (
+            <div className="text-center py-12 text-[var(--text-secondary)]">جریانی برای نمایش وجود ندارد</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                    <th className="text-right py-3 px-3">از</th>
+                    <th className="text-right py-3 px-3">به</th>
+                    <th className="text-right py-3 px-3">مبلغ</th>
+                    <th className="text-right py-3 px-3">ارز</th>
+                    <th className="text-right py-3 px-3">نوع</th>
+                    <th className="text-right py-3 px-3">تاریخ</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {moneyFlow.map((f, i) => (
+                    <tr key={i} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
+                      <td className="py-3 px-3 text-[var(--text-primary)]">{ACCOUNT_TYPE_LABELS[f.from] || ''} {ACCOUNT_TYPE_NAMES[f.from] || f.from || '—'}</td>
+                      <td className="py-3 px-3 text-[var(--text-primary)]">{ACCOUNT_TYPE_LABELS[f.to] || ''} {ACCOUNT_TYPE_NAMES[f.to] || f.to || '—'}</td>
+                      <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{Number(f.amount).toLocaleString()}</td>
+                      <td className="py-3 px-3 text-[var(--text-secondary)]">{f.currency}</td>
+                      <td className="py-3 px-3"><span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] font-bold">{TRANSACTION_TYPE_LABELS[f.type] || f.type}</span></td>
+                      <td className="py-3 px-3 text-xs text-[var(--text-secondary)]">{f.date ? new Date(f.date).toLocaleDateString('fa-IR') : '—'}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Expenses Tab (فاز ۲۲.۲) ═══ */}
+      {tab === 'expenses' && (
+        <div className="space-y-6">
+          <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+            {([
+              ['prop_purchase', '🛒 خرید پراپ'],
+              ['prop_subscription', '📄 اشتراک پراپ'],
+              ['exchange_fee', '💱 کارمزد صرافی'],
+              ['withdrawal_fee', '🏧 کارمزد برداشت'],
+              ['other', '📦 سایر'],
+              ['total', 'Σ مجموع'],
+            ] as const).map(([key, label]) => (
+              <div key={key} className={`bg-[var(--bg-card)] border rounded-[22px] p-4 ${key === 'total' ? 'border-[var(--border-accent)]' : 'border-[var(--border-subtle)]'}`}>
+                <div className="text-[11px] text-[var(--text-secondary)] mb-1">{label}</div>
+                <div className={`text-lg font-extrabold ${key === 'total' ? 'text-[var(--accent)]' : 'text-[#ef4444]'}`}>
+                  {expenses ? Number(expenses[key] ?? 0).toLocaleString() : '—'} $
+                </div>
+              </div>
+            ))}
+          </div>
+
+          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+            <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">🧾 تفکیک هزینه‌ها</div>
+            {expenses && expenses.total > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <BarChart data={[
+                  { name: 'خرید پراپ', value: expenses.prop_purchase },
+                  { name: 'اشتراک پراپ', value: expenses.prop_subscription },
+                  { name: 'کارمزد صرافی', value: expenses.exchange_fee },
+                  { name: 'کارمزد برداشت', value: expenses.withdrawal_fee },
+                  { name: 'سایر', value: expenses.other },
+                ]}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                  <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'Vazirmatn' }} stroke="var(--text-secondary)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [`${Number(v).toLocaleString()} $`, '']} />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#ef4444" />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-12 text-[var(--text-secondary)]">هزینه‌ای ثبت نشده</div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* ═══ Money Cycle Tab (فاز ۲۲.۲) ═══ */}
+      {tab === 'cycle' && (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+          {([
+            ['total_deposits', '💵 مجموع واریز', '#22c55e'],
+            ['total_withdrawals', '🏧 مجموع برداشت', '#ef4444'],
+            ['total_exchanges', '🔄 مجموع تبدیل', '#8b5cf6'],
+            ['total_transfers', '🔀 مجموع انتقال', '#3F7CFF'],
+            ['current_balance', '🏦 موجودی فعلی', '#13AE81'],
+          ] as const).map(([key, label, color]) => (
+            <div key={key} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6">
+              <div className="text-xs text-[var(--text-secondary)] mb-2">{label}</div>
+              <div className="text-2xl font-black" style={{ color }}>
+                {moneyCycle ? Number(moneyCycle[key] ?? 0).toLocaleString() : '—'}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* ═══ Financial Calendar Tab (فاز ۲۲.۳) ═══ */}
+      {tab === 'calendar' && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+          <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">🗓️ تقویم مالی (به تفکیک روز شمسی)</div>
+          {calendar.length === 0 ? (
+            <div className="text-center py-12 text-[var(--text-secondary)]">داده‌ای برای نمایش وجود ندارد</div>
+          ) : (
+            <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3">
+              {calendar.map((d) => (
+                <div key={d.date} className="rounded-[16px] p-3 border border-[var(--border-subtle)]"
+                  style={{ background: d.pnl > 0 ? 'rgba(34,197,94,0.08)' : d.pnl < 0 ? 'rgba(239,68,68,0.08)' : 'var(--bg-elevated)' }}>
+                  <div className="text-[11px] font-bold text-[var(--text-secondary)] mb-1">{d.date}</div>
+                  <div className={`text-base font-extrabold ${d.pnl > 0 ? 'text-[#22c55e]' : d.pnl < 0 ? 'text-[#ef4444]' : 'text-[var(--text-primary)]'}`}>
+                    {d.pnl >= 0 ? '+' : ''}{d.pnl.toLocaleString()} $
+                  </div>
+                  <div className="text-[10px] text-[var(--text-secondary)] mt-1">{d.trades} معامله</div>
+                  {(d.deposits > 0 || d.withdrawals > 0) && (
+                    <div className="text-[10px] mt-1 text-[var(--text-secondary)]">
+                      {d.deposits > 0 && <span className="text-[#22c55e]">+{d.deposits.toLocaleString()} </span>}
+                      {d.withdrawals > 0 && <span className="text-[#ef4444]">−{d.withdrawals.toLocaleString()}</span>}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ═══ Exchange Rates Tab (فاز ۲۲.۳) ═══ */}
+      {tab === 'rates' && (
+        <div className="space-y-6">
+          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+            <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">💱 روند نرخ تبدیل IRR → USD</div>
+            {exchangeRates.length > 0 ? (
+              <ResponsiveContainer width="100%" height={300}>
+                <LineChart data={exchangeRates}>
+                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--text-secondary)" />
+                  <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [Number(v).toLocaleString(), 'نرخ']} />
+                  <Line type="monotone" dataKey="rate" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
+                </LineChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="text-center py-12 text-[var(--text-secondary)]">نرخ تبدیلی برای نمایش وجود ندارد</div>
+            )}
+          </div>
+
+          {exchangeRates.length > 0 && (
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
+              <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">📋 تاریخچهٔ نرخ‌ها</div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                      <th className="text-right py-3 px-3">تاریخ</th>
+                      <th className="text-right py-3 px-3">از</th>
+                      <th className="text-right py-3 px-3">به</th>
+                      <th className="text-right py-3 px-3">نرخ</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {exchangeRates.map((r, i) => (
+                      <tr key={i} className="border-b border-[var(--border-subtle)]/50">
+                        <td className="py-3 px-3 text-[var(--text-primary)]">{r.date}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{r.from}</td>
+                        <td className="py-3 px-3 text-[var(--text-secondary)]">{r.to}</td>
+                        <td className="py-3 px-3 font-bold text-[var(--accent)]">{Number(r.rate).toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
