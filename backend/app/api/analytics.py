@@ -83,13 +83,19 @@ def analyze_version(version_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 @router.post("/analyze/version/{version_id}")
 def analyze_version_scoped(version_id: int, test_type: Optional[str] = None, db: Session = Depends(get_db)):
-    """تحلیل Backtest/Forward یک نسخه — scope=VERSION"""
+    """تحلیل Backtest/Forward یک نسخه — scope=VERSION (فاز ۲۳: مستقل از هم)"""
     from ..models.strategy import TestType as TT
-    tt = TT(test_type) if test_type else None
+    try:
+        tt = TT(test_type.lower()) if test_type else None
+    except ValueError:
+        raise HTTPException(400, detail="نوع تست نامعتبر است (BACKTEST/FORWARD/REAL)")
+    if tt == TT.REAL:
+        raise HTTPException(400, detail="تحلیل نسخه فقط برای BACKTEST یا FORWARD است؛ REAL از مسیر پراپ/بروکر تحلیل می‌شود")
     try:
         r = AnalysisService(db).analyze_version(version_id, test_type=tt)
         return {"message": r["message"], "analysis_id": r["result"].id,
-                "run_id": r["run_id"], "version_id": version_id}
+                "run_id": r["run_id"], "version_id": version_id,
+                "test_type": tt.name if tt else None}
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
 
@@ -835,14 +841,22 @@ def _jalali_to_gregorian(jy: int, jm: int, jd: int):
 # ═════════════════════════════════════════════
 @router.get("/analysis/version/{version_id}")
 def get_analysis_version(version_id: int, test_type: Optional[str] = None, db: Session = Depends(get_db)):
-    """دریافت تحلیل Backtest/Forward یک نسخه (فاز ۲۰)"""
+    """دریافت تحلیل Backtest/Forward یک نسخه (فاز ۲۰/۲۳ — مستقل از هم)"""
+    from ..models.strategy import TestType as TT
+    from ..utils.trade_scope import version_scope_key
+    tt = None
+    if test_type:
+        try:
+            tt = TT(test_type.lower())
+        except ValueError:
+            raise HTTPException(400, detail="نوع تست نامعتبر است (BACKTEST/FORWARD)")
     result = db.query(AnalysisResult).filter(
         AnalysisResult.scope == AnalysisScope.VERSION,
-        AnalysisResult.scope_key == str(version_id),
+        AnalysisResult.scope_key == version_scope_key(version_id, tt),
     ).first()
     if not result:
         raise HTTPException(404, detail="تحلیلی برای این نسخه یافت نشد. ابتدا POST analyze را اجرا کنید.")
-    _guard_analyzable(db, version_id=version_id, result=result)
+    _guard_analyzable(db, version_id=version_id, result=result, test_type=tt)
     return _analysis_response(result)
 
 
@@ -872,20 +886,28 @@ def get_analysis_broker(finance_account_id: int, db: Session = Depends(get_db)):
     return _analysis_response(result)
 
 
-def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_account_id=None):
-    """گارد سازگاری فاز ۱۹ — تحلیل کهنه سرو نشود"""
+def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_account_id=None, test_type=None):
+    """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type)"""
     from ..models.strategy import Trade
     q = db.query(Trade)
+    scope_label = "این دامنه"
     if version_id is not None:
         from ..utils.trade_scope import analysis_trades_filter
         q = q.filter(Trade.version_id == version_id, analysis_trades_filter())
+        if test_type is not None:
+            q = q.filter(Trade.test_type == test_type)
+            scope_label = "فوروارد" if test_type.name == "FORWARD" else "بک‌تست"
+        else:
+            scope_label = "بک‌تست/فوروارد"
     elif prop_stage_id is not None:
         q = q.filter(Trade.prop_stage_id == prop_stage_id)
+        scope_label = "این مرحله پراپ"
     elif finance_account_id is not None:
         q = q.filter(Trade.finance_account_id == finance_account_id)
+        scope_label = "این حساب بروکر"
     count = q.count()
     if count == 0:
-        raise HTTPException(404, detail="هیچ معامله‌ای برای این دامنه یافت نشد.")
+        raise HTTPException(404, detail=f"هیچ معامله‌ای برای {scope_label} یافت نشد.")
     if result.total_trades != count:
         raise HTTPException(404, detail=f"تحلیل کهنه است ({result.total_trades} در برابر {count} معامله). دوباره تحلیل کنید.")
 

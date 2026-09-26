@@ -23,3 +23,20 @@ def analysis_trades_filter() -> ColumnElement:
     مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود ('REAL') نه value ('real').
     """
     return or_(Trade.test_type.is_(None), Trade.test_type != TestType.REAL)
+
+
+def version_scope_key(version_id: int, test_type=None) -> str:
+    """کلید دامنهٔ نسخه در `AnalysisResult` / `AnalysisRun`.
+
+    یک نسخه می‌تواند هم‌زمان معاملات Backtest و Forward داشته باشد؛ بنابراین
+    این دو باید مستقل ذخیره شوند و کلید شامل نام `test_type` است
+    (مثلاً «12:BACKTEST» و «12:FORWARD»).
+
+    حالت legacy (`test_type=None`) همان `str(version_id)` می‌ماند تا رکوردهای
+    موجود قبلی و endpointهای قدیمی سازگار بمانند.
+    """
+    if test_type is None:
+        return str(version_id)
+    name = getattr(test_type, "name", None) or str(test_type)
+    return f"{version_id}:{name}"
+

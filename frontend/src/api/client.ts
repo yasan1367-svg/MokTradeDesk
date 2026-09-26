@@ -290,6 +290,7 @@ export const forkVersion = (versionId: number) =>
 export const getTrades = (params?: {
   version_id?: number;
   prop_stage_id?: number;
+  finance_account_id?: number;
   symbol?: string;
   test_type?: string;
   source?: string;

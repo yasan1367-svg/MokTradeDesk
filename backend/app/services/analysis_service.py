@@ -5,7 +5,7 @@ from ..models.strategy import (
     Trade, AnalysisResult, AnalysisRun, CustomTimeInterval,
     StrategyVersion, Strategy, AnalysisScope, TestType,
 )
-from ..utils.trade_scope import analysis_trades_filter
+from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 
 
 class AnalysisService:
@@ -15,11 +15,20 @@ class AnalysisService:
         self.db = db
 
     def analyze_version(self, version_id: int, test_type: Optional[TestType] = None) -> Dict[str, Any]:
-        """تحلیل Backtest/Forward یک نسخه (معاملات REAL حذف می‌شوند)."""
+        """تحلیل Backtest/Forward یک نسخه (معاملات REAL حذف می‌شوند).
+
+        فاز ۲۳: Backtest و Forward مستقل ذخیره می‌شوند (کلید دامنه شامل test_type است).
+        """
         q = self.db.query(Trade).filter(Trade.version_id == version_id, analysis_trades_filter())
         if test_type is not None:
             q = q.filter(Trade.test_type == test_type)
-        return self._analyze(q.all(), scope=AnalysisScope.VERSION, scope_key=str(version_id), version_id=version_id, test_type=test_type)
+        return self._analyze(
+            q.all(),
+            scope=AnalysisScope.VERSION,
+            scope_key=version_scope_key(version_id, test_type),
+            version_id=version_id,
+            test_type=test_type,
+        )
 
     def analyze_prop_stage(self, prop_stage_id: int) -> Dict[str, Any]:
         """تحلیل کامل یک مرحله پراپ + PropRuleEngine.evaluate_stage()"""
@@ -42,6 +51,13 @@ class AnalysisService:
                 self.db.delete(stale)
                 self.db.commit()
             if scope == AnalysisScope.VERSION:
+                if test_type is not None:
+                    label = {
+                        TestType.BACKTEST: "بک‌تست",
+                        TestType.FORWARD: "فوروارد",
+                        TestType.REAL: "رییل",
+                    }.get(test_type, test_type.name)
+                    raise ValueError(f"این استراتژی معاملات {label} ندارد")
                 raise ValueError("هیچ معامله‌ای برای تحلیل این نسخه یافت نشد (معاملات REAL در تحلیل Backtest/Forward شمرده نمی‌شوند)")
             raise ValueError("هیچ معامله‌ای برای این دامنه یافت نشد")
 

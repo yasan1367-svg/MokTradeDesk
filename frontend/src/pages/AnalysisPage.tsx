@@ -4,7 +4,7 @@ import MetricCard from '../components/MetricCard';
 import AnalysisTable from '../components/AnalysisTable';
 import {
   getAllVersions,
-  getVersionTrades,
+  getTrades,
   exportAnalysisPdf,
   analyzeVersionScoped,
   analyzePropStage,
@@ -38,6 +38,13 @@ interface BrokerOption { id: number; name: string; type: string; }
 
 const SCOPE_KEY = 'analysis_selected_scope';
 
+// فاز ۲۳ — هر تب مرحله فقط مراحل همان نوع را نشان می‌دهد
+const STAGE_TYPE_BY_SCOPE: Record<string, string> = {
+  prop_stage_1: 'stage_1',
+  prop_stage_2: 'stage_2',
+  prop_stage_3: 'funded_real',
+};
+
 export default function AnalysisPage() {
   const [scope, setScope] = useState<ScopeType>(() =>
     (typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem(SCOPE_KEY) || '"backtest"') as ScopeType) : 'backtest')
@@ -67,6 +74,16 @@ export default function AnalysisPage() {
   }, []);
 
   // ═════════════════════════════════════════════
+  // فاز ۲۳ — انتخاب خودکار اولین مرحلهٔ مربوط به تب جاری (۱/۲/۳)
+  // ═════════════════════════════════════════════
+  useEffect(() => {
+    if (!scope.startsWith('prop_stage_')) return;
+    const stageType = STAGE_TYPE_BY_SCOPE[scope];
+    const first = propStages.find((s) => s.stage_type === stageType);
+    setSelectedId(first ? first.id : null);
+  }, [scope, propStages]);
+
+  // ═════════════════════════════════════════════
   // ۲. بارگذاری تحلیل و معاملات بر اساس scope
   // ═════════════════════════════════════════════
   useEffect(() => {
@@ -89,8 +106,15 @@ export default function AnalysisPage() {
           console.log('تحلیلی یافت نشد');
         }
         try {
-          const tradesRes = await getVersionTrades(selectedId);
-          tradesData = tradesRes.data;
+          // فاز ۲۳ — لیست معاملات بر اساس scope (نسخه/مرحله/بروکر)
+          const isVersionScope = scope === 'backtest' || scope === 'forward';
+          const tt = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
+          const tradesRes = isVersionScope
+            ? await getTrades({ version_id: selectedId, test_type: tt, limit: 500 })
+            : scope.startsWith('prop_stage_')
+              ? await getTrades({ prop_stage_id: selectedId, limit: 500 })
+              : await getTrades({ finance_account_id: selectedId, limit: 500 });
+          tradesData = tradesRes.data.trades || [];
         } catch (e) {
           console.log('معامله‌ای یافت نشد');
         }
@@ -176,8 +200,10 @@ export default function AnalysisPage() {
             ) : scope.startsWith('prop_stage_') ? (
               <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
                 className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
-                <option value="">— مرحله پراپی وجود ندارد —</option>
-                {propStages.map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
+                <option value="">— مرحله‌ای از این نوع وجود ندارد —</option>
+                {propStages
+                  .filter((s) => s.stage_type === STAGE_TYPE_BY_SCOPE[scope])
+                  .map((s) => <option key={s.id} value={s.id}>{s.display_name}</option>)}
               </select>
             ) : (
               <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
@@ -192,7 +218,7 @@ export default function AnalysisPage() {
             className="bg-[var(--accent)] hover:bg-accent/80 text-white px-6 py-3 rounded-xl transition-all disabled:opacity-50 mt-6">
             {loading ? '⏳ در حال تحلیل...' : '🔄 تحلیل مجدد'}
           </button>
-          {analysis && selectedId && (
+          {analysis && selectedId && (scope === 'backtest' || scope === 'forward') && (
             <button onClick={async () => {
               try {
                 const res = await exportAnalysisPdf(selectedId!);
@@ -388,7 +414,7 @@ export default function AnalysisPage() {
 
             {trades.length === 0 ? (
               <div className="text-[var(--text-secondary)] text-sm text-center py-8">
-                معامله‌ای برای این نسخه ثبت نشده است
+                معامله‌ای برای این دامنه ثبت نشده است
               </div>
             ) : (
               <div className="overflow-x-auto">
