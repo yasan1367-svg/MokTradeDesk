@@ -455,8 +455,13 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
             trade.sl,
         )
 
-    db.commit()
     db.refresh(trade)
+
+    # فاز ۲۱: همگام‌سازی خودکار با حسابداری
+    if trade.close_time is not None and (trade.finance_account_id or trade.prop_stage_id):
+        from ..services.finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
+
     return {"message": "معامله به‌روزرسانی شد"}
 
 
@@ -574,6 +579,11 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     db.add(trade)
     db.commit()
     db.refresh(trade)
+
+    # فاز ۲۱: همگام‌سازی خودکار با حسابداری
+    if trade.close_time is not None and (trade.finance_account_id or trade.prop_stage_id):
+        from ..services.finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
 
     return {"id": trade.id, "message": "معامله‌ی دستی ثبت شد"}
 

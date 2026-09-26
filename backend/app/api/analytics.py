@@ -256,25 +256,41 @@ def get_dashboard_data(
     # ── برد/باخت ──
     win_loss = {"wins": wins_n, "losses": losses_n}
 
-    # ── فاز ۲۰.۴: پول قابل خرج (بروکر + مرحله ۳ پراپ) ──
+    # ── فاز ۲۱: پول قابل خرج (از Transactionها) ──
     from ..models.finance import Account as FinAccount, AccountType, Transaction, TransactionType
     from ..models.prop import PropStage as PS, StageType
 
-    _net = _net_expr()
-    broker_pnl = float(
-        db.query(func.coalesce(func.sum(_net), 0))
-        .select_from(Trade)
-        .join(FinAccount, Trade.finance_account_id == FinAccount.id)
-        .filter(FinAccount.type == AccountType.BROKER)
-        .scalar() or 0.0
-    )
+    def _spendable_tx(type_name: AccountType):
+        """سود خالص یک نوع حساب از Transactionهای PROFIT/LOSS"""
+        return float(
+            db.query(
+                func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0) -
+                func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0)
+            )
+            .select_from(Transaction)
+            .join(FinAccount, Transaction.account_id == FinAccount.id)
+            .filter(FinAccount.type == type_name, Transaction.is_deleted == False)
+            .scalar() or 0.0
+        )
+
+    broker_pnl = _spendable_tx(AccountType.BROKER)
+
+    # سود خالص مرحله ۳ پراپ: Transaction → Account(id) → PropAccount(finance_account_id) → PropStage(prop_account_id)
+    from ..models.prop import PropAccount as PropAcct
     funded_pnl = float(
-        db.query(func.coalesce(func.sum(_net), 0))
-        .select_from(Trade)
-        .join(PS, Trade.prop_stage_id == PS.id)
-        .filter(PS.stage_type == StageType.FUNDED_REAL)
+        db.query(
+            func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0) -
+            func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0)
+        )
+        .select_from(Transaction)
+        .join(FinAccount, Transaction.account_id == FinAccount.id)
+        .join(PropAcct, FinAccount.id == PropAcct.finance_account_id)
+        .join(PS, PropAcct.id == PS.prop_account_id)
+        .filter(PS.stage_type == StageType.FUNDED_REAL, Transaction.is_deleted == False)
         .scalar() or 0.0
     )
+
+    spendable_net = round(broker_pnl + funded_pnl, 2)
     spendable_net = round(broker_pnl + funded_pnl, 2)
 
     broker_balance = float(

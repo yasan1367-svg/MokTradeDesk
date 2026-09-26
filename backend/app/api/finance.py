@@ -445,6 +445,14 @@ def get_account_stats(account_id: int, db: Session = Depends(get_db)):
     }
 
 
+@router.post("/sync/trades")
+def sync_trades(db: Session = Depends(get_db)):
+    """همگام‌سازی دستی معاملات بسته‌شده با حسابداری (فاز ۲۱)"""
+    from ..services.finance_sync_service import FinanceSyncService
+    created = FinanceSyncService(db).sync_closed_trades()
+    return {"message": f"{created} تراکنش ساخته شد", "created": created}
+
+
 @router.get("/withdrawals/stats")
 def get_withdrawal_stats(db: Session = Depends(get_db)):
     """آمار برداشت‌ها: از پراپ، از بروکر، تعداد، تاریخچه"""

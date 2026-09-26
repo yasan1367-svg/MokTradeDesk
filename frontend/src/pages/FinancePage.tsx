@@ -27,6 +27,7 @@ import {
   getFinanceCategoryBreakdown,
   getFinanceAccountComparison,
   getFinanceProfitLoss,
+  api,
 } from '../api/client';
 
 import {
@@ -312,6 +313,16 @@ export default function FinancePage() {
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all"
               style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
               🆕 حساب جدید
+            </button>
+            <button onClick={async () => {
+              try {
+                const res = await api.post('/api/finance/sync/trades');
+                toast.toast(res.data.message || 'همگام‌سازی انجام شد', 'success');
+              } catch { toast.toast('خطا در همگام‌سازی', 'error'); }
+            }}
+              className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(34,197,94,0.3)] hover:shadow-[0_10px_24px_rgba(34,197,94,0.4)] hover:-translate-y-0.5 transition-all"
+              style={{ background: 'linear-gradient(135deg, #22C55E, #4ADE80)' }}>
+              🔄 همگام‌سازی معاملات
             </button>
           </div>
 
