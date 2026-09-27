@@ -411,7 +411,10 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
 
     # محاسبه‌ی موجودی نهایی از معاملات (با commission)
     from ..models.strategy import Trade
-    trades = db.query(Trade).filter(Trade.prop_stage_id == stage_id).all()
+    # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در محاسبه‌ی موجودی نهایی لحاظ نمی‌شوند
+    trades = db.query(Trade).filter(
+        Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+    ).all()
     total_pnl = sum(
         (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
         for t in trades
@@ -506,7 +509,10 @@ def update_stage_rules(stage_id: int, rules: StageRulesUpdate, db: Session = Dep
 def get_stage_trades(stage_id: int, db: Session = Depends(get_db)):
     """دریافت معاملات یک مرحله"""
     from ..models.strategy import Trade
-    trades = db.query(Trade).filter(Trade.prop_stage_id == stage_id).all()
+    # فاز ۲۵: معاملات حذف‌شده نمایش داده نمی‌شوند
+    trades = db.query(Trade).filter(
+        Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+    ).all()
     return [
         {
             "id": t.id,

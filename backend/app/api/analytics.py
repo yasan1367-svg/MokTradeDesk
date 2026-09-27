@@ -48,6 +48,8 @@ def _parse_bound(value: Optional[str], end: bool = False):
 
 def _scope_filter(query, df_bound, dt_bound):
     """اعمال فیلتر بازه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳)"""
+    # فاز ۲۵: معاملات حذف‌شده (Soft Delete) همیشه کنار گذاشته می‌شوند
+    query = query.filter(Trade.is_deleted == False)
     if df_bound or dt_bound:
         query = query.filter(Trade.close_time.isnot(None))
     if df_bound:
@@ -201,7 +203,9 @@ def get_dashboard_data(
 
     now = datetime.now(timezone.utc)
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    opn = db.query(Trade).filter(Trade.close_time.is_(None)).count()
+    opn = db.query(Trade).filter(
+        Trade.close_time.is_(None), Trade.is_deleted == False
+    ).count()
     # ── ۳) منحنی اکوییتی روزانه ──
     daily_pnl = defaultdict(float)
     for _ct, _n in seq:
@@ -405,7 +409,9 @@ def get_yesterday_data(db: Session = Depends(get_db)):
     y_end = today_start
 
     yt = []
-    for t in db.query(Trade).filter(Trade.close_time != None).all():
+    for t in db.query(Trade).filter(
+        Trade.close_time != None, Trade.is_deleted == False
+    ).all():
         ct = _ensure_utc(t.close_time)
         if ct is not None and y_start <= ct < y_end:
             t.close_time = ct
@@ -481,7 +487,7 @@ def get_risk_metrics(db: Session = Depends(get_db)):
     _net = _net_expr()
     _rows = (
         db.query(Trade)
-        .filter(Trade.close_time.isnot(None))
+        .filter(Trade.close_time.isnot(None), Trade.is_deleted == False)
         .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple, Trade.sl, Trade.open_price)
         .order_by(Trade.id.asc())
         .all()
@@ -526,7 +532,7 @@ def get_risk_metrics(db: Session = Depends(get_db)):
     rv = [c["r_multiple"] for c in closed_trades if c["r_multiple"] and c["r_multiple"] != 0]
     arm = sum(rv) / len(rv) if rv else 0
     oe = float(db.query(func.sum(func.abs(func.coalesce(Trade.pnl, 0.0))))
-               .filter(Trade.close_time.is_(None)).scalar() or 0.0)
+               .filter(Trade.close_time.is_(None), Trade.is_deleted == False).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
     streak = 0; ms = 0
     for r in returns:
@@ -750,7 +756,9 @@ def get_calendar_data(
 ):
     """Get trades grouped by day for calendar view (supports Jalali year/month or Gregorian range)"""
     now = datetime.now(timezone.utc)
-    query = db.query(Trade).filter(Trade.close_time.isnot(None))
+    query = db.query(Trade).filter(
+        Trade.close_time.isnot(None), Trade.is_deleted == False
+    )
 
     # ── اگر سال و ماه شمسی داده شده ──
     if year is not None and month is not None:
@@ -890,6 +898,8 @@ def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_a
     """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type)"""
     from ..models.strategy import Trade
     q = db.query(Trade)
+    # فاز ۲۵: حذف‌شده‌ها در گارد سازگاری شمرده نمی‌شوند
+    q = q.filter(Trade.is_deleted == False)
     scope_label = "این دامنه"
     if version_id is not None:
         from ..utils.trade_scope import analysis_trades_filter

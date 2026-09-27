@@ -146,6 +146,8 @@ def export_trades_csv(
 ):
     """Export trades as CSV with optional filters"""
     query = db.query(Trade).options(joinedload(Trade.version).joinedload(StrategyVersion.strategy))
+    # فاز ۲۵: معاملات حذف‌شده در خروجی نمی‌آیند
+    query = query.filter(Trade.is_deleted == False)
     if version_id: query = query.filter(Trade.version_id == version_id)
     if strategy_id: query = query.join(StrategyVersion, Trade.version_id == StrategyVersion.id).filter(StrategyVersion.strategy_id == strategy_id)
     if symbol: query = query.filter(Trade.symbol == symbol)
@@ -212,6 +214,8 @@ def export_trades_pdf(
     from reportlab.lib.styles import getSampleStyleSheet
 
     query = db.query(Trade).options(joinedload(Trade.version).joinedload(StrategyVersion.strategy))
+    # فاز ۲۵: معاملات حذف‌شده در خروجی نمی‌آیند
+    query = query.filter(Trade.is_deleted == False)
     if version_id: query = query.filter(Trade.version_id == version_id)
     if strategy_id: query = query.join(StrategyVersion, Trade.version_id == StrategyVersion.id).filter(StrategyVersion.strategy_id == strategy_id)
     if symbol: query = query.filter(Trade.symbol == symbol)

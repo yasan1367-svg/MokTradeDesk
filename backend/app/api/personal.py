@@ -33,7 +33,10 @@ class JournalReviewCreate(BaseModel):
 @router.post("/journal/review")
 def create_review(data: JournalReviewCreate, db: Session = Depends(get_db)):
     """ثبت مرور معامله"""
-    trade = db.query(Trade).filter(Trade.id == data.trade_id).first()
+    # فاز ۲۵: برای معامله‌ی حذف‌شده نمی‌توان مرور ثبت کرد
+    trade = db.query(Trade).filter(
+        Trade.id == data.trade_id, Trade.is_deleted == False
+    ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 

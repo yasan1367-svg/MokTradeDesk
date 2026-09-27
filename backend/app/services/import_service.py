@@ -147,7 +147,10 @@ class Soft4XImporter:
         if not stage:
             return
 
-        all_trades = self.db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
+        # فاز ۲۵: معاملات حذف‌شده در محاسبه‌ی سود مرحله لحاظ نمی‌شوند
+        all_trades = self.db.query(Trade).filter(
+            Trade.prop_stage_id == prop_stage_id, Trade.is_deleted == False
+        ).all()
         total_pnl = sum(t.pnl or 0 for t in all_trades)
 
         if stage.stage_type == StageType.FUNDED_REAL:
@@ -379,7 +382,10 @@ class MT4Importer:
         if not stage:
             return
 
-        all_trades = self.db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
+        # فاز ۲۵: معاملات حذف‌شده در محاسبه‌ی سود مرحله لحاظ نمی‌شوند
+        all_trades = self.db.query(Trade).filter(
+            Trade.prop_stage_id == prop_stage_id, Trade.is_deleted == False
+        ).all()
         total_pnl = sum(t.pnl or 0 for t in all_trades)
 
         if stage.stage_type == StageType.FUNDED_REAL:

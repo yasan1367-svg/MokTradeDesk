@@ -32,7 +32,11 @@ class AnalysisService:
 
     def analyze_prop_stage(self, prop_stage_id: int) -> Dict[str, Any]:
         """تحلیل کامل یک مرحله پراپ + PropRuleEngine.evaluate_stage()"""
-        trades = self.db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
+        # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
+        trades = self.db.query(Trade).filter(
+            Trade.prop_stage_id == prop_stage_id,
+            Trade.is_deleted == False,
+        ).all()
         result = self._analyze(trades, scope=AnalysisScope.PROP_STAGE, scope_key=str(prop_stage_id), prop_stage_id=prop_stage_id)
         from ..services.prop_rule_engine import PropRuleEngine
         result["prop_rules"] = PropRuleEngine.evaluate_stage(self.db, prop_stage_id)
@@ -40,7 +44,11 @@ class AnalysisService:
 
     def analyze_broker(self, finance_account_id: int) -> Dict[str, Any]:
         """تحلیل کامل یک حساب بروکر (معاملات REAL)."""
-        trades = self.db.query(Trade).filter(Trade.finance_account_id == finance_account_id).all()
+        # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
+        trades = self.db.query(Trade).filter(
+            Trade.finance_account_id == finance_account_id,
+            Trade.is_deleted == False,
+        ).all()
         return self._analyze(trades, scope=AnalysisScope.BROKER, scope_key=str(finance_account_id), finance_account_id=finance_account_id)
 
     def _analyze(self, trades, scope, scope_key, version_id=None, prop_stage_id=None, finance_account_id=None, test_type=None) -> Dict[str, Any]:

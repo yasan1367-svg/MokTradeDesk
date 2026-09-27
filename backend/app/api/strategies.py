@@ -29,7 +29,7 @@ def _trades_count_by_version(db: Session, version_ids: List[int]) -> dict:
         return {}
     rows = (
         db.query(Trade.version_id, func.count(Trade.id))
-        .filter(Trade.version_id.in_(version_ids))
+        .filter(Trade.version_id.in_(version_ids), Trade.is_deleted == False)
         .group_by(Trade.version_id)
         .all()
     )
@@ -239,7 +239,9 @@ def delete_version(version_id: int, db: Session = Depends(get_db)):
     if not version:
         raise HTTPException(status_code=404, detail="نسخه پیدا نشد")
 
-    trades_count = db.query(Trade).filter(Trade.version_id == version_id).count()
+    trades_count = db.query(Trade).filter(
+        Trade.version_id == version_id, Trade.is_deleted == False
+    ).count()
     if trades_count > 0:
         raise HTTPException(
             status_code=400,
@@ -298,7 +300,9 @@ def fork_version(version_id: int, body: Optional[ForkRequest] = None, db: Sessio
 # ═════════════════════════════════════════════
 @router.get("/versions/{version_id}/trades")
 def get_version_trades(version_id: int, db: Session = Depends(get_db)):
-    trades = db.query(Trade).filter(Trade.version_id == version_id).all()
+    trades = db.query(Trade).filter(
+        Trade.version_id == version_id, Trade.is_deleted == False
+    ).all()
     return [
         {
             "id": t.id,

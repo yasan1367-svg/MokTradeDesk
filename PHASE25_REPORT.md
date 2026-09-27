@@ -167,6 +167,6 @@ export const batchDeleteTrades = (tradeIds: number[], hard = false) =>
 
 1. **Hard Delete در UI ندارد**: فعلاً فقط از طریق API (`?hard=true` یا `{"hard": true}`) و برای ادمین است؛ در UI دکمه‌ی «حذف کامل» اضافه نشد (مطابق دامنه‌ی درخواست).
 2. **بازگشت (Restore)**: هیچ endpoint «بازگردانی» اضافه نشد؛ داده با `is_deleted=True` در DB هست و قابل بازگردانی دستی است (چون Soft Delete هدفش حفظ تاریخچه بود).
-3. **فیلترهای تحلیل**: `analysis_trades_filter` پوشش داده شد، ولی برخی کوئری‌های مستقیم دیگر (مثل `prop.py` / `finance.py` که مستقیماً `Trade.prop_stage_id` را می‌خوانند) هنوز `is_deleted` را لحاظ نمی‌کنند. اگر بخواهید، در فاز بعدی می‌توان به‌طور یکسان اعمال کرد.
+3. **فیلترهای تحلیل**: `analysis_trades_filter` در همین فاز پوشش داده شد. کوئری‌های مستقیم دیگر (`prop.py` / `finance.py` / `analytics.py` / `analysis_service.py` / `strategies.py` / `export.py`) در **بخش ۲** رفع شدند → `PHASE25_PART2_REPORT.md`.
 4. **Route Order**: چون مسیر `POST /batch-delete` یک سگمنت ثابت است و هیچ `POST /{trade_id}` وجود ندارد، تضاد مسیر ندارد (با `app.openapi()` تأیید شد).
 5. **SQLite**: برای سازگاری از `batch_alter_table` استفاده شد؛ روی PostgreSQL هم بدون مشکل اجرا می‌شود.

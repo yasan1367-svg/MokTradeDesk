@@ -355,7 +355,10 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
 @router.patch("/{trade_id}")
 def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)):
     """ویرایش کنترل‌شده‌ی معامله (Classification + Execution + note)"""
-    trade = db.query(Trade).filter(Trade.id == trade_id).first()
+    # فاز ۲۵: معامله‌ی حذف‌شده قابل ویرایش نیست
+    trade = db.query(Trade).filter(
+        Trade.id == trade_id, Trade.is_deleted == False
+    ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
@@ -680,7 +683,10 @@ async def upload_screenshot(
     db: Session = Depends(get_db),
 ):
     """آپلود اسکرین‌شات برای معامله"""
-    trade = db.query(Trade).filter(Trade.id == trade_id).first()
+    # فاز ۲۵: برای معامله‌ی حذف‌شده نمی‌توان اسکرین‌شات آپلود کرد
+    trade = db.query(Trade).filter(
+        Trade.id == trade_id, Trade.is_deleted == False
+    ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 

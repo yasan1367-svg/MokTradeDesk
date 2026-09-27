@@ -30,6 +30,8 @@ class FinanceSyncService:
         """
         q = self.db.query(Trade).filter(
             Trade.close_time.isnot(None),
+            # فاز ۲۵: معاملات حذف‌شده (Soft Delete) هرگز با حسابداری همگام نمی‌شوند
+            Trade.is_deleted == False,
             # جلوگیری از تکرار
             ~self.db.query(Transaction).filter(
                 Transaction.related_trade_id == Trade.id,

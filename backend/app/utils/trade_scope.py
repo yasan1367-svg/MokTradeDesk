@@ -30,6 +30,15 @@ def analysis_trades_filter() -> ColumnElement:
     )
 
 
+def not_deleted_filter() -> ColumnElement:
+    """شرط SQL: فقط معاملات حذف‌نشده (Soft Delete — فاز ۲۵).
+
+    نقطه‌ی مرکزی تا فیلتر در کوئری‌های مستقیم `Trade` (پراپ/مالی/تحلیل/گزارش)
+    فراموش نشود. معادل `Trade.is_deleted == False`.
+    """
+    return Trade.is_deleted == False
+
+
 def version_scope_key(version_id: int, test_type=None) -> str:
     """کلید دامنهٔ نسخه در `AnalysisResult` / `AnalysisRun`.
 

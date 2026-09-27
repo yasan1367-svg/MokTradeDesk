@@ -1150,7 +1150,11 @@ def _compute_real_pnl(db: Session) -> dict:
         db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
         .select_from(Trade)
         .join(PS, Trade.prop_stage_id == PS.id)
-        .filter(PS.stage_type == StageType.FUNDED_REAL, Trade.pnl.isnot(None))
+        .filter(
+            PS.stage_type == StageType.FUNDED_REAL,
+            Trade.pnl.isnot(None),
+            Trade.is_deleted == False,  # فاز ۲۵
+        )
         .one()
     )
     prop_pnl = round(float(prop_row[0] or 0.0), 2)
@@ -1160,7 +1164,11 @@ def _compute_real_pnl(db: Session) -> dict:
         db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
         .select_from(Trade)
         .join(Account, Trade.finance_account_id == Account.id)
-        .filter(Account.type == AccountType.BROKER, Trade.pnl.isnot(None))
+        .filter(
+            Account.type == AccountType.BROKER,
+            Trade.pnl.isnot(None),
+            Trade.is_deleted == False,  # فاز ۲۵
+        )
         .one()
     )
     broker_pnl = round(float(broker_row[0] or 0.0), 2)
@@ -1366,7 +1374,10 @@ def get_financial_calendar(db: Session = Depends(get_db)):
         lambda: {"pnl": 0.0, "trades": 0, "deposits": 0.0, "withdrawals": 0.0}
     )
 
-    for t in db.query(Trade).filter(Trade.close_time.isnot(None)).all():
+    for t in db.query(Trade).filter(
+        Trade.close_time.isnot(None),
+        Trade.is_deleted == False,  # فاز ۲۵
+    ).all():
         d = _jalali_date_str(t.close_time)
         if not d:
             continue

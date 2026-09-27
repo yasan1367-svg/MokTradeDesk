@@ -41,7 +41,10 @@ class PropRuleEngine:
                 "error": "مرحله پیدا نشد",
             }
 
-        trades = db.query(Trade).filter(Trade.prop_stage_id == stage_id).all()
+        # فاز ۲۵: معاملات حذف‌شده در ارزیابی قوانین پراپ لحاظ نمی‌شوند
+        trades = db.query(Trade).filter(
+            Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+        ).all()
 
         # ── مبالغ پایه (دلار) ──
         initial = stage.initial_balance or 10000.0
