@@ -78,6 +78,16 @@ class ManualTradeCreate(BaseModel):
     note: Optional[str] = None
 
 
+class BatchDeleteRequest(BaseModel):
+    """حذف گروهی معاملات (فاز ۲۵)
+
+    - trade_ids: لیست شناسه‌های معاملات
+    - hard: در حالت پیش‌فرض (False) حذف نرم است؛ اگر True باشد حذف کامل (فقط ادمین).
+    """
+    trade_ids: List[int]
+    hard: bool = False
+
+
 # ═════════════════════════════════════════════
 # Helpers
 # ═════════════════════════════════════════════
@@ -217,6 +227,9 @@ def get_trades(
     """لیست معاملات با فیلترهای پیشرفته و صفحه‌بندی"""
     query = db.query(Trade)
 
+    # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در لیست نمایش داده نمی‌شوند
+    query = query.filter(Trade.is_deleted == False)
+
     if version_id:
         query = query.filter(Trade.version_id == version_id)
     if strategy_id:
@@ -322,7 +335,7 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
             joinedload(Trade.version).joinedload(StrategyVersion.strategy),
             joinedload(Trade.finance_account),
         )
-        .filter(Trade.id == trade_id)
+        .filter(Trade.id == trade_id, Trade.is_deleted == False)
         .first()
     )
     if not trade:
@@ -466,27 +479,19 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
 
 
 # ═════════════════════════════════════════════
-# Delete Trade (only manual)
+# Delete Trade (soft delete — Phase 25)
 # ═════════════════════════════════════════════
-@router.delete("/{trade_id}")
-def delete_trade(trade_id: int, db: Session = Depends(get_db)):
-    """حذف معامله (فقط معاملات دستی)"""
-    trade = db.query(Trade).filter(Trade.id == trade_id).first()
-    if not trade:
-        raise HTTPException(status_code=404, detail="معامله پیدا نشد")
+def _hard_delete_trade(db: Session, trade: Trade) -> None:
+    """حذف کامل معامله + اسکرین‌شات‌ها (فقط برای ادمین).
 
-    if trade.source != TradeSource.MANUAL:
-        raise HTTPException(
-            status_code=400,
-            detail="فقط معاملات دستی قابل حذف هستند"
-        )
-
+    این تابع فایل‌های فیزیکی اسکرین‌شات را هم پاک می‌کند و بازگشت‌پذیر نیست.
+    """
     screenshots = db.query(Screenshot).filter(
         Screenshot.entity_type == "trade",
-        Screenshot.entity_id == trade_id,
+        Screenshot.entity_id == trade.id,
     ).all()
     for s in screenshots:
-        if os.path.exists(s.file_path):
+        if s.file_path and os.path.exists(s.file_path):
             try:
                 os.remove(s.file_path)
             except Exception:
@@ -494,8 +499,84 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
         db.delete(s)
 
     db.delete(trade)
+
+
+@router.delete("/{trade_id}")
+def delete_trade(
+    trade_id: int,
+    hard: bool = False,
+    db: Session = Depends(get_db),
+):
+    """حذف معامله (همه‌ی منابع) — پیش‌فرض: Soft Delete.
+
+    فاز ۲۵:
+    - محدودیت `source == manual` برداشته شد؛ همه‌ی معاملات قابل حذف‌اند.
+    - پیش‌فرض حذف نرم است (`is_deleted = True`) و داده حفظ می‌شود.
+    - با `?hard=true` حذف کامل (بازگشت‌ناپذیر) انجام می‌شود — فقط ادمین.
+    """
+    trade = db.query(Trade).filter(Trade.id == trade_id).first()
+    if not trade:
+        raise HTTPException(status_code=404, detail="معامله پیدا نشد")
+
+    if hard:
+        _hard_delete_trade(db, trade)
+        db.commit()
+        return {"message": "معامله برای همیشه حذف شد", "hard": True, "count": 1}
+
+    # ── Soft Delete ──
+    if trade.is_deleted:
+        # قبلاً حذف شده؛ پاسخ idempotent
+        return {"message": "این معامله قبلاً حذف شده بود", "hard": False, "count": 0}
+
+    trade.is_deleted = True
     db.commit()
-    return {"message": "معامله حذف شد"}
+    return {"message": "معامله حذف شد", "hard": False, "count": 1}
+
+
+# ═════════════════════════════════════════════
+# Batch Delete Trades (Phase 25)
+# ═════════════════════════════════════════════
+@router.post("/batch-delete")
+def batch_delete_trades(data: BatchDeleteRequest, db: Session = Depends(get_db)):
+    """حذف گروهی معاملات — پیش‌فرض: Soft Delete.
+
+    - همه‌ی `trade_ids` بدون توجه به `source` قابل حذف‌اند.
+    - با `hard=true` حذف کامل انجام می‌شود (بازگشت‌ناپذیر).
+    - شناسه‌های ناموجود یا قبلاً حذف‌شده در پاسخ با `skipped` گزارش می‌شوند.
+    """
+    if not data.trade_ids:
+        raise HTTPException(status_code=400, detail="لیست معاملات خالی است")
+
+    # حفظ ترتیب و حذف تکراری‌ها
+    unique_ids = list(dict.fromkeys(data.trade_ids))
+
+    trades = (
+        db.query(Trade)
+        .filter(Trade.id.in_(unique_ids))
+        .all()
+    )
+    found_ids = {t.id for t in trades}
+    skipped = [tid for tid in unique_ids if tid not in found_ids]
+
+    deleted_count = 0
+    for trade in trades:
+        if data.hard:
+            _hard_delete_trade(db, trade)
+            deleted_count += 1
+        else:
+            if trade.is_deleted:
+                skipped.append(trade.id)
+            else:
+                trade.is_deleted = True
+                deleted_count += 1
+
+    db.commit()
+    return {
+        "message": f"{deleted_count} معامله حذف شد",
+        "deleted": deleted_count,
+        "skipped": skipped,
+        "hard": data.hard,
+    }
 
 
 # ═════════════════════════════════════════════

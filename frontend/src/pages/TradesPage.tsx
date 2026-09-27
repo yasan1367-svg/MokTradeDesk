@@ -1,11 +1,13 @@
 import { useState, useEffect, useRef } from 'react';
 import GlassCard from '../components/GlassCard';
 import PersianDateInput from '../components/PersianDateInput';
+import ConfirmDialog from '../components/ui/ConfirmDialog';
 import {
   getTrades,
   getTrade,
   updateTrade,
   deleteTrade,
+  batchDeleteTrades,
   createManualTrade,
   uploadTradeScreenshot,
   getTradeScreenshots,
@@ -87,6 +89,10 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   const [currentPage, setCurrentPage] = useState(1);
   const [totalPages, setTotalPages] = useState(1);
   const pageSize = 50;
+
+  // فاز ۲۵: انتخاب گروهی + تأیید حذف
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [pendingDelete, setPendingDelete] = useState<{ ids: number[]; message: string } | null>(null);
   const handleOpenGallery = async (trade: Trade) => {
   if (trade.screenshots_count === 0) return;
   try {
@@ -102,9 +108,10 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     loadFilters();
   }, []);
 
-  // وقتی فیلترها عوض می‌شوند، به صفحه‌ی ۱ برگرد
+  // وقتی فیلترها عوض می‌شوند، به صفحه‌ی ۱ برگرد و انتخاب گروهی را پاک کن
   useEffect(() => {
     setCurrentPage(1);
+    setSelectedIds([]);
   }, [filterVersion, filterSymbol, filterTestType, filterSource, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
@@ -223,20 +230,67 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   };
 
   // ═════════════════════════════════════════════
-  // Delete Trade
+  // Delete Trade (فاز ۲۵: تأیید + حذف گروهی)
   // ═════════════════════════════════════════════
-  const handleDeleteTrade = async (trade: Trade) => {
-    if (!confirm('آیا مطمئنید که می‌خواهید این معامله را حذف کنید؟')) return;
+  // باز کردن دیالوگ تأیید برای یک معامله
+  const handleDeleteTrade = (trade: Trade) => {
+    setPendingDelete({
+      ids: [trade.id],
+      message: `آیا از حذف معامله #${trade.id} (${trade.symbol}) مطمئن هستید؟ این عمل قابل بازگشت است (حذف نرم).`,
+    });
+  };
+
+  // باز کردن دیالوگ تأیید برای حذف گروهی
+  const handleBatchDelete = () => {
+    if (selectedIds.length === 0) return;
+    setPendingDelete({
+      ids: [...selectedIds],
+      message: `آیا از حذف ${selectedIds.length} معامله‌ی انتخاب‌شده مطمئن هستید؟ این عمل قابل بازگشت است (حذف نرم).`,
+    });
+  };
+
+  // اجرای حذف پس از تأیید
+  const executeDelete = async () => {
+    if (!pendingDelete) return;
+    const ids = pendingDelete.ids;
+    setPendingDelete(null);
     try {
-      await deleteTrade(trade.id);
-      setSuccessMessage('معامله حذف شد');
-      await loadTrades();
+      if (ids.length === 1) {
+        await deleteTrade(ids[0]);
+        setSuccessMessage('معامله حذف شد');
+      } else {
+        await batchDeleteTrades(ids);
+        setSuccessMessage(`${ids.length} معامله حذف شد`);
+      }
+      setSelectedIds((prev) => prev.filter((id) => !ids.includes(id)));
       setShowEditModal(false);
+      await loadTrades();
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در حذف');
     }
   };
+
+  // انتخاب/لغو انتخاب یک معامله
+  const toggleSelect = (id: number) => {
+    setSelectedIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id]
+    );
+  };
+
+  // انتخاب/لغو انتخاب همه‌ی معاملات صفحه‌ی جاری
+  const toggleSelectAll = () => {
+    const pageIds = trades.map((t) => t.id);
+    const allSelected = pageIds.length > 0 && pageIds.every((id) => selectedIds.includes(id));
+    setSelectedIds((prev) =>
+      allSelected
+        ? prev.filter((id) => !pageIds.includes(id))
+        : Array.from(new Set([...prev, ...pageIds]))
+    );
+  };
+
+  const allPageSelected =
+    trades.length > 0 && trades.every((t) => selectedIds.includes(t.id));
 
   // ═════════════════════════════════════════════
   // Manual Trade
@@ -378,13 +432,29 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         </div>
       )}
 
-      <div className="flex gap-3 mb-6">
+      <div className="flex gap-3 mb-6 flex-wrap items-center">
         <button
           onClick={handleOpenManualModal}
           className="bg-[var(--accent)] hover:bg-accent/80 text-white px-5 py-2 rounded-xl transition-all"
         >
           ➕ معامله‌ی دستی
         </button>
+        {selectedIds.length > 0 && (
+          <button
+            onClick={handleBatchDelete}
+            className="bg-[var(--loss)] hover:bg-loss/80 text-white px-5 py-2 rounded-xl transition-all"
+          >
+            🗑️ حذف گروهی ({selectedIds.length})
+          </button>
+        )}
+        {selectedIds.length > 0 && (
+          <button
+            onClick={() => setSelectedIds([])}
+            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-3 py-2 rounded-xl text-sm transition-all"
+          >
+            لغو انتخاب
+          </button>
+        )}
       </div>
 
       <GlassCard className="mb-6">
@@ -504,6 +574,16 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             <table className="w-full text-sm">
               <thead>
                 <tr className="text-[var(--text-secondary)] border-b border-[var(--border-subtle)]">
+                  <th className="text-right py-2 w-8">
+                    <input
+                      type="checkbox"
+                      checked={allPageSelected}
+                      onChange={toggleSelectAll}
+                      className="accent-[var(--accent)] cursor-pointer"
+                      title="انتخاب همه"
+                      aria-label="انتخاب همه"
+                    />
+                  </th>
                   <th className="text-right py-2">#</th>
                   <th className="text-right py-2">نماد</th>
                   <th className="text-right py-2">جهت</th>
@@ -520,6 +600,15 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <tbody>
                 {trades.map((t) => (
                   <tr key={t.id} className="border-b border-card-border/50 hover:bg-card/50">
+                    <td className="py-2">
+                      <input
+                        type="checkbox"
+                        checked={selectedIds.includes(t.id)}
+                        onChange={() => toggleSelect(t.id)}
+                        className="accent-[var(--accent)] cursor-pointer"
+                        aria-label={`انتخاب معامله ${t.id}`}
+                      />
+                    </td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{t.id}</td>
                     <td className="py-2 text-[var(--text-primary)] font-bold">{t.symbol}</td>
                     <td className={`py-2 ${t.direction === 'buy' ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
@@ -722,14 +811,12 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               >
                 💾 ذخیره
               </button>
-              {editingTrade.source === 'manual' && (
-                <button
-                  onClick={() => handleDeleteTrade(editingTrade)}
-                  className="bg-[var(--loss)] hover:bg-loss/80 text-white px-6 py-3 rounded-xl"
-                >
-                  🗑️ حذف
-                </button>
-              )}
+              <button
+                onClick={() => handleDeleteTrade(editingTrade)}
+                className="bg-[var(--loss)] hover:bg-loss/80 text-white px-6 py-3 rounded-xl"
+              >
+                🗑️ حذف
+              </button>
               <button
                 onClick={() => setShowEditModal(false)}
                 className="bg-[var(--border-subtle)] hover:bg-card-border/80 text-[var(--text-secondary)] px-6 py-3 rounded-xl"
@@ -1037,6 +1124,18 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     </div>
   </div>
 )}
+
+      {/* فاز ۲۵: دیالوگ تأیید حذف (تکی/گروهی) */}
+      <ConfirmDialog
+        open={!!pendingDelete}
+        title={pendingDelete && pendingDelete.ids.length > 1 ? 'تأیید حذف گروهی' : 'تأیید حذف'}
+        message={pendingDelete?.message ?? ''}
+        confirmLabel="حذف"
+        cancelLabel="انصراف"
+        danger
+        onConfirm={executeDelete}
+        onCancel={() => setPendingDelete(null)}
+      />
     </div>
   );
 }

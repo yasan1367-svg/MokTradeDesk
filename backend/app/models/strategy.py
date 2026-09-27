@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey,
-    UniqueConstraint,
+    UniqueConstraint, Boolean,
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -134,6 +134,11 @@ class Trade(Base):
     screenshot_path = Column(String, nullable=True)
     raw_data = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # ── Soft Delete (فاز ۲۵) ──
+    # حذف نرم: معامله از لیست‌ها پنهان می‌شود ولی داده‌اش حفظ می‌گردد.
+    is_deleted = Column(Boolean, default=False, nullable=False, server_default="0", index=True)
+
         # ← Duplicate Detection
     trade_hash = Column(String(32), nullable=True, index=True)
 

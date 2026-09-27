@@ -318,8 +318,13 @@ export const getTrade = (tradeId: number) =>
 export const updateTrade = (tradeId: number, data: { note?: string }) =>
   api.patch(`/api/trades/${tradeId}`, data);
 
-export const deleteTrade = (tradeId: number) =>
-  api.delete(`/api/trades/${tradeId}`);
+// فاز ۲۵: حذف نرم (Soft Delete) پیش‌فرض است. برای حذف کامل (ادمین) hard=true بدهید.
+export const deleteTrade = (tradeId: number, hard = false) =>
+  api.delete(`/api/trades/${tradeId}`, { params: hard ? { hard: true } : {} });
+
+// فاز ۲۵: حذف گروهی معاملات (پیش‌فرض Soft Delete)
+export const batchDeleteTrades = (tradeIds: number[], hard = false) =>
+  api.post('/api/trades/batch-delete', { trade_ids: tradeIds, hard });
 
 export const createManualTrade = (data: {
   symbol: string;
