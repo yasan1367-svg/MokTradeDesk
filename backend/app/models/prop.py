@@ -63,13 +63,11 @@ class PropAccount(Base):
     account_number = Column(String, nullable=True)
     currency = Column(String, default="USD")
     is_active = Column(Integer, default=1)
-    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     firm = relationship("PropFirm", back_populates="accounts")
     stages = relationship("PropStage", back_populates="account", cascade="all, delete-orphan")
     costs = relationship("PropCost", back_populates="account", cascade="all, delete-orphan")
-    finance_account = relationship("Account", foreign_keys=[finance_account_id])
 
 class PropStage(Base):
     __tablename__ = "prop_stages"

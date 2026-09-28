@@ -32,7 +32,7 @@ class TradeUpdate(BaseModel):
     # Classification
     test_type: Optional[str] = None
     version_id: Optional[int] = None
-    finance_account_id: Optional[int] = None
+    personal_trading_account_id: Optional[int] = None
     prop_stage_id: Optional[int] = None
 
     # Execution
@@ -72,7 +72,7 @@ class ManualTradeCreate(BaseModel):
     # Classification
     test_type: str = "backtest"
     version_id: Optional[int] = None
-    finance_account_id: Optional[int] = None
+    personal_trading_account_id: Optional[int] = None
     prop_stage_id: Optional[int] = None
 
     note: Optional[str] = None
@@ -130,7 +130,10 @@ def _serialize_trade_summary(t: Trade, screenshots_count: int) -> dict:
         if t.version.strategy:
             strategy_name = t.version.strategy.name
 
-    finance_account_name = t.finance_account.name if t.finance_account else None
+    pta = t.personal_trading_account
+    personal_trading_account_name = None
+    if pta:
+        personal_trading_account_name = pta.account_label or pta.account_number
 
     return {
         "id": t.id,
@@ -150,8 +153,8 @@ def _serialize_trade_summary(t: Trade, screenshots_count: int) -> dict:
         "version_id": t.version_id,
         "version_name": version_name,
         "strategy_name": strategy_name,
-        "finance_account_id": t.finance_account_id,
-        "finance_account_name": finance_account_name,
+        "personal_trading_account_id": t.personal_trading_account_id,
+        "personal_trading_account_name": personal_trading_account_name,
         "prop_stage_id": t.prop_stage_id,
         "screenshots_count": screenshots_count,
         "created_at": t.created_at,
@@ -160,7 +163,10 @@ def _serialize_trade_summary(t: Trade, screenshots_count: int) -> dict:
 
 def _serialize_trade_detail(t: Trade, screenshots: List[Screenshot]) -> dict:
     """خروجی کامل یک معامله"""
-    finance_account_name = t.finance_account.name if t.finance_account else None
+    pta = t.personal_trading_account
+    personal_trading_account_name = None
+    if pta:
+        personal_trading_account_name = pta.account_label or pta.account_number
 
     return {
         "id": t.id,
@@ -181,8 +187,8 @@ def _serialize_trade_detail(t: Trade, screenshots: List[Screenshot]) -> dict:
         "test_type": t.test_type.value if t.test_type else None,
         "note": t.note,
         "version_id": t.version_id,
-        "finance_account_id": t.finance_account_id,
-        "finance_account_name": finance_account_name,
+        "personal_trading_account_id": t.personal_trading_account_id,
+        "personal_trading_account_name": personal_trading_account_name,
         "prop_stage_id": t.prop_stage_id,
         "raw_data": t.raw_data,
         "screenshots": [
@@ -204,7 +210,7 @@ def _serialize_trade_detail(t: Trade, screenshots: List[Screenshot]) -> dict:
 def get_trades(
     version_id: Optional[int] = None,
     strategy_id: Optional[int] = None,
-    finance_account_id: Optional[int] = None,
+    personal_trading_account_id: Optional[int] = None,
     prop_stage_id: Optional[int] = None,
     symbol: Optional[str] = None,
     test_type: Optional[str] = None,
@@ -236,8 +242,8 @@ def get_trades(
         query = query.join(StrategyVersion, Trade.version_id == StrategyVersion.id).filter(
             StrategyVersion.strategy_id == strategy_id
         )
-    if finance_account_id:
-        query = query.filter(Trade.finance_account_id == finance_account_id)
+    if personal_trading_account_id:
+        query = query.filter(Trade.personal_trading_account_id == personal_trading_account_id)
     if prop_stage_id:
         query = query.filter(Trade.prop_stage_id == prop_stage_id)
     if symbol:
@@ -297,7 +303,7 @@ def get_trades(
         query
         .options(
             joinedload(Trade.version).joinedload(StrategyVersion.strategy),
-            joinedload(Trade.finance_account),
+            joinedload(Trade.personal_trading_account),
         )
         .order_by(order)
         .offset(effective_offset)
@@ -333,7 +339,7 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
         db.query(Trade)
         .options(
             joinedload(Trade.version).joinedload(StrategyVersion.strategy),
-            joinedload(Trade.finance_account),
+            joinedload(Trade.personal_trading_account),
         )
         .filter(Trade.id == trade_id, Trade.is_deleted == False)
         .first()
@@ -367,8 +373,10 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         trade.test_type.value if trade.test_type else "backtest"
     )
     new_version_id = data.version_id if data.version_id is not None else trade.version_id
-    new_finance_account_id = (
-        data.finance_account_id if data.finance_account_id is not None else trade.finance_account_id
+    new_personal_trading_account_id = (
+        data.personal_trading_account_id
+        if data.personal_trading_account_id is not None
+        else trade.personal_trading_account_id
     )
     new_prop_stage_id = (
         data.prop_stage_id if data.prop_stage_id is not None else trade.prop_stage_id
@@ -378,7 +386,7 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     is_valid, error_message = TradeValidator.validate_classification(
         new_test_type,
         new_version_id,
-        new_finance_account_id,
+        new_personal_trading_account_id,
         new_prop_stage_id,
     )
     if not is_valid:
@@ -416,7 +424,8 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         test_type_map = {
             "backtest": TestType.BACKTEST,
             "forward": TestType.FORWARD,
-            "real": TestType.REAL,
+            "real_personal": TestType.REAL_PERSONAL,
+            "real_prop": TestType.REAL_PROP,
         }
         new_tt = test_type_map.get(data.test_type)
         if not new_tt:
@@ -424,8 +433,8 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         trade.test_type = new_tt
     if data.version_id is not None:
         trade.version_id = data.version_id
-    if data.finance_account_id is not None:
-        trade.finance_account_id = data.finance_account_id or None
+    if data.personal_trading_account_id is not None:
+        trade.personal_trading_account_id = data.personal_trading_account_id or None
     if data.prop_stage_id is not None:
         trade.prop_stage_id = data.prop_stage_id or None
 
@@ -473,8 +482,8 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
 
     db.refresh(trade)
 
-    # فاز ۲۱: همگام‌سازی خودکار با حسابداری
-    if trade.close_time is not None and (trade.finance_account_id or trade.prop_stage_id):
+    # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
+    if trade.close_time is not None and trade.personal_trading_account_id:
         from ..services.finance_sync_service import FinanceSyncService
         FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
 
@@ -601,7 +610,8 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     test_type_map = {
         "backtest": TestType.BACKTEST,
         "forward": TestType.FORWARD,
-        "real": TestType.REAL,
+        "real_personal": TestType.REAL_PERSONAL,
+        "real_prop": TestType.REAL_PROP,
     }
     test_type = test_type_map.get(data.test_type)
     if not test_type:
@@ -611,7 +621,7 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     is_valid, error_message = TradeValidator.validate_classification(
         test_type.value,
         data.version_id,
-        data.finance_account_id,
+        data.personal_trading_account_id,
         data.prop_stage_id,
     )
     if not is_valid:
@@ -652,7 +662,7 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         commission=data.commission or 0,
         swap=data.swap or 0,
         version_id=data.version_id,
-        finance_account_id=data.finance_account_id,
+        personal_trading_account_id=data.personal_trading_account_id,
         prop_stage_id=data.prop_stage_id,
         source=TradeSource.MANUAL,
         test_type=test_type,
@@ -664,8 +674,8 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(trade)
 
-    # فاز ۲۱: همگام‌سازی خودکار با حسابداری
-    if trade.close_time is not None and (trade.finance_account_id or trade.prop_stage_id):
+    # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
+    if trade.close_time is not None and trade.personal_trading_account_id:
         from ..services.finance_sync_service import FinanceSyncService
         FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
 

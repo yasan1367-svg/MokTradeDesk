@@ -13,6 +13,8 @@ from app.models.strategy import (
     AnalysisResult, AnalysisRun, AnalysisScope, Strategy, StrategyVersion, Trade,
     TestType, TradeSource,
 )
+from app.models.trading import Broker, PersonalTradingAccount
+from app.models.finance import Currency
 from app.services.analysis_service import AnalysisService
 from app.utils.trade_scope import analysis_trades_filter
 
@@ -20,10 +22,31 @@ from app.utils.trade_scope import analysis_trades_filter
 # ═════════════════════════════════════════════
 # Helpers
 # ═════════════════════════════════════════════
+def _get_or_create_pta(db):
+    """یک حساب معاملاتی شخصی مشترک برای تست (فاز ۲۸)"""
+    existing = db.query(PersonalTradingAccount).first()
+    if existing:
+        return existing
+    broker = Broker(name="Broker-T")
+    db.add(broker)
+    db.flush()
+    pta = PersonalTradingAccount(
+        broker_id=broker.id, account_number="T-1", account_label="T",
+        currency=Currency.USD, initial_balance=10000.0, current_balance=10000.0,
+    )
+    db.add(pta)
+    db.flush()
+    return pta
+
+
 def _add_trade(db, version_id, test_type, pnl):
-    """یک معامله‌ی بسته‌شده‌ی ساده می‌سازد"""
+    """یک معامله‌ی بسته‌شده‌ی ساده می‌سازد (برای REAL_PERSONAL حساب شخصی خودکار ساخته می‌شود)"""
+    pta_id = None
+    if test_type == TestType.REAL_PERSONAL:
+        pta_id = _get_or_create_pta(db).id
     trade = Trade(
         version_id=version_id,
+        personal_trading_account_id=pta_id,
         symbol="XAUUSD",
         direction="buy",
         open_time=datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc),
@@ -75,19 +98,14 @@ def test_analysis_filter_keeps_everything_except_real(db_session):
     _, v = _make_version(db_session)
     _add_trade(db_session, v.id, TestType.BACKTEST, 100)
     _add_trade(db_session, v.id, TestType.FORWARD, 50)
-    _add_trade(db_session, v.id, TestType.REAL, -9999)
-    legacy = _add_trade(db_session, v.id, TestType.BACKTEST, 10)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -9999)
+    legacy = _add_trade(db_session, v.id, TestType.BACKTEST, 10)  # noqa: F841
     db_session.commit()
 
-    # ردیف legacy با test_type = NULL باید حفظ شود (حذف نشود)
-    db_session.query(Trade).filter(Trade.id == legacy.id).update({"test_type": None})
-    db_session.commit()
-    db_session.expire_all()
-
+    # فاز ۲۸: test_type دیگر NULL نمی‌شود (NOT NULL)؛ فقط REAL_* حذف می‌شوند.
     kept = db_session.query(Trade).filter(analysis_trades_filter()).all()
     assert len(kept) == 3
-    assert not any(t.test_type == TestType.REAL for t in kept)
-    assert any(t.test_type is None for t in kept)
+    assert not any(t.test_type == TestType.REAL_PERSONAL for t in kept)
 
 
 # ═════════════════════════════════════════════
@@ -98,7 +116,7 @@ def test_analyze_version_ignores_real_trades(db_session):
     for _ in range(3):
         _add_trade(db_session, v.id, TestType.BACKTEST, 100)
     for _ in range(5):
-        _add_trade(db_session, v.id, TestType.REAL, -1000)
+        _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -1000)
     db_session.commit()
 
     metrics = AnalysisService(db_session).analyze_version(v.id)["result"]
@@ -111,7 +129,7 @@ def test_analyze_version_counts_forward_trades(db_session):
     """FORWARD هم مثل BACKTEST جزو تحلیل است"""
     _, v = _make_version(db_session)
     _add_trade(db_session, v.id, TestType.FORWARD, 25)
-    _add_trade(db_session, v.id, TestType.REAL, -500)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -500)
     db_session.commit()
 
     metrics = AnalysisService(db_session).analyze_version(v.id)["result"]
@@ -121,7 +139,7 @@ def test_analyze_version_counts_forward_trades(db_session):
 
 def test_analyze_version_real_only_raises(db_session):
     _, v = _make_version(db_session)
-    _add_trade(db_session, v.id, TestType.REAL, -50)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -50)
     db_session.commit()
 
     with pytest.raises(ValueError) as exc:
@@ -134,7 +152,7 @@ def test_analyze_version_real_only_raises(db_session):
 # ═════════════════════════════════════════════
 def test_analyze_endpoint_real_only_returns_404(client, db_session):
     _, v = _make_version(db_session)
-    _add_trade(db_session, v.id, TestType.REAL, -50)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -50)
     db_session.commit()
 
     r = client.post(f"/api/analytics/analyze/{v.id}")
@@ -145,7 +163,7 @@ def test_analyze_endpoint_real_only_returns_404(client, db_session):
 def test_analyze_endpoint_metrics_are_clean(client, db_session):
     _, v = _make_version(db_session)
     _add_trade(db_session, v.id, TestType.BACKTEST, 100)
-    _add_trade(db_session, v.id, TestType.REAL, -700)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -700)
     db_session.commit()
 
     assert client.post(f"/api/analytics/analyze/{v.id}").status_code == 200
@@ -162,7 +180,7 @@ def test_strategy_stats_ignores_real_trades(client, db_session):
     for _ in range(2):
         _add_trade(db_session, v.id, TestType.BACKTEST, 100)
     for _ in range(3):
-        _add_trade(db_session, v.id, TestType.REAL, -500)
+        _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -500)
     db_session.commit()
 
     r = client.get(f"/api/strategies/{strategy.id}/stats")
@@ -179,7 +197,7 @@ def test_strategy_stats_ignores_real_trades(client, db_session):
 def test_get_analysis_real_only_version_returns_404(client, db_session):
     """نسخه‌ی فقط-REAL با تحلیل کهنه → نباید تحلیل آلوده سرو شود"""
     _, v = _make_version(db_session)
-    _add_trade(db_session, v.id, TestType.REAL, -50)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -50)
     _add_stale_result(db_session, v.id, total_trades=21)
     db_session.commit()
 
@@ -219,7 +237,7 @@ def test_get_analysis_outdated_after_new_backtest_trade(client, db_session):
 def test_reanalyze_cleans_stale_result_when_no_analyzable_trades(client, db_session):
     """تحلیل مجدد روی نسخه‌ی بدون معامله‌ی Backtest/Forward، رکورد کهنه را پاک می‌کند"""
     _, v = _make_version(db_session)
-    _add_trade(db_session, v.id, TestType.REAL, -50)
+    _add_trade(db_session, v.id, TestType.REAL_PERSONAL, -50)
     _add_stale_result(db_session, v.id, total_trades=21)
     db_session.commit()
 
@@ -261,7 +279,7 @@ def test_analyze_persists_scope_and_scope_key(client, db_session):
     assert row is not None
     assert row.version_id == v.id
     assert row.prop_stage_id is None
-    assert row.finance_account_id is None
+    assert row.personal_trading_account_id is None
     assert row.total_trades == 1
 
     run = (

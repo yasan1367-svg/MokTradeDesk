@@ -48,9 +48,6 @@ class AccountCreate(BaseModel):
     currency: Currency = Currency.USD
     balance: float = 0.0
     card_number: Optional[str] = None
-    broker_name: Optional[str] = None
-    prop_firm_name: Optional[str] = None
-    prop_firm_id: Optional[int] = None
 
 
 class AccountUpdate(BaseModel):
@@ -59,9 +56,6 @@ class AccountUpdate(BaseModel):
     currency: Optional[Currency] = None
     balance: Optional[float] = None
     card_number: Optional[str] = None
-    broker_name: Optional[str] = None
-    prop_firm_name: Optional[str] = None
-    prop_firm_id: Optional[int] = None
 
 
 class CategoryCreate(BaseModel):
@@ -149,9 +143,6 @@ def get_accounts(
             "currency": a.currency.value if a.currency else None,
             "balance": a.balance,
             "card_number": _mask_card_number(a.card_number),
-            "broker_name": a.broker_name,
-            "prop_firm_name": a.prop_firm_name,
-            "prop_firm_id": a.prop_firm_id,
             "created_at": a.created_at.isoformat() if a.created_at else None,
         })
     return result
@@ -458,26 +449,24 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
     """آمار برداشت‌ها: از پراپ، از بروکر، تعداد، تاریخچه"""
     from sqlalchemy import func as sa_func
 
-    # برداشت از حساب‌های پراپ
+    # برداشت‌های مرتبط با پراپ (فاز ۲۸: بر اساس related_prop_account_id، نه نوع حساب)
     prop_withdrawals = (
         db.query(sa_func.sum(Transaction.amount))
-        .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.is_deleted == False,
             Transaction.type == TransactionType.WITHDRAWAL,
-            Account.type == AccountType.PROP,
+            Transaction.related_prop_account_id.isnot(None),
         )
         .scalar() or 0.0
     )
 
-    # برداشت از حساب‌های بروکر
+    # برداشت‌های غیرپراپ (بروکر شخصی و ...)
     broker_withdrawals = (
         db.query(sa_func.sum(Transaction.amount))
-        .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.is_deleted == False,
             Transaction.type == TransactionType.WITHDRAWAL,
-            Account.type == AccountType.BROKER,
+            Transaction.related_prop_account_id.is_(None),
         )
         .scalar() or 0.0
     )
@@ -1111,19 +1100,17 @@ def _jalali_date_str(dt) -> Optional[str]:
 
 
 def _prop_stage3_tx_net(db: Session) -> float:
-    """سود خالص تحقق‌یافتهٔ مرحلهٔ ۳ پراپ از Transactionها (PROFIT - LOSS)"""
-    from sqlalchemy import func, case
-    from ..models.prop import PropAccount as PropAcct, PropStage as PS, StageType
+    """سود خالص تحقق‌یافتهٔ مرحلهٔ ۳ پراپ از معاملات REAL_PROP (فاز ۲۸: بدون پل مالی)"""
+    from sqlalchemy import func
+    from ..models.strategy import Trade, TestType
     return float(
-        db.query(
-            func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0.0)
-            - func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0.0)
+        db.query(func.coalesce(func.sum(_trade_net_expr()), 0.0))
+        .select_from(Trade)
+        .filter(
+            Trade.prop_stage_id.isnot(None),
+            Trade.test_type == TestType.REAL_PROP,
+            Trade.is_deleted == False,
         )
-        .select_from(Transaction)
-        .join(Account, Transaction.account_id == Account.id)
-        .join(PropAcct, Account.id == PropAcct.finance_account_id)
-        .join(PS, PropAcct.id == PS.prop_account_id)
-        .filter(PS.stage_type == StageType.FUNDED_REAL, Transaction.is_deleted == False)
         .scalar() or 0.0
     )
 
@@ -1160,12 +1147,12 @@ def _compute_real_pnl(db: Session) -> dict:
     prop_pnl = round(float(prop_row[0] or 0.0), 2)
     prop_trades = int(prop_row[1] or 0)
 
+    from ..models.trading import PersonalTradingAccount
     broker_row = (
         db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
         .select_from(Trade)
-        .join(Account, Trade.finance_account_id == Account.id)
+        .join(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
         .filter(
-            Account.type == AccountType.BROKER,
             Trade.pnl.isnot(None),
             Trade.is_deleted == False,  # فاز ۲۵
         )
@@ -1201,7 +1188,12 @@ def _expenses_total(db: Session) -> float:
 def get_spendable_assets(db: Session = Depends(get_db)):
     """دارایی قابل برداشت: تفکیک مرحلهٔ ۳ پراپ، بروکر، صرافی، Trust Wallet، بانک + مجموع"""
     prop_stage_3 = round(_prop_stage3_tx_net(db), 2)
-    broker = round(_balance_sum(db, AccountType.BROKER), 2)
+    # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه Account مالی)
+    from ..models.trading import PersonalTradingAccount as _PTA
+    from sqlalchemy import func as _f
+    broker = round(float(
+        db.query(_f.coalesce(_f.sum(_PTA.current_balance), 0.0)).scalar() or 0.0
+    ), 2)
     exchange = round(_balance_sum(db, AccountType.EXCHANGE), 2)
     trust_wallet = round(_balance_sum(db, AccountType.CRYPTO_WALLET), 2)
     bank = round(_balance_sum(db, AccountType.BANK), 2)
@@ -1307,9 +1299,9 @@ def get_expenses(db: Session = Depends(get_db)):
         text = f"{cat_name} {t.description or ''}"
         acc_type = t.account.type if t.account else None
 
-        if t.type == TransactionType.PURCHASE and (acc_type == AccountType.PROP or "پراپ" in text):
+        if t.type == TransactionType.PURCHASE and "پراپ" in text:
             buckets["prop_purchase"] += amount
-        elif "اشتراک" in text or (acc_type == AccountType.PROP and t.type == TransactionType.FEE):
+        elif "اشتراک" in text:
             buckets["prop_subscription"] += amount
         elif acc_type == AccountType.EXCHANGE or "تبدیل" in text or "صرافی" in text:
             buckets["exchange_fee"] += amount

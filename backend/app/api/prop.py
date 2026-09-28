@@ -12,7 +12,7 @@ from ..models.prop import (
     PropAlert, StageType, StageStatus, FailureReason
 )
 from ..models.finance import (
-    Account, AccountType, Category, CategoryType, Currency, Transaction, TransactionType
+    Account, Category, CategoryType, Currency, Transaction, TransactionType
 )
 from ..utils.enums import enum_value
 
@@ -48,32 +48,7 @@ def _get_or_create_category(
     return cat
 
 
-def _ensure_finance_account(db: Session, prop_acc: PropAccount) -> Optional[Account]:
-    """اگر اکانت پراپ حساب مالی ندارد، آن را می‌سازد و وصل می‌کند"""
-    if prop_acc.finance_account_id:
-        existing = db.query(Account).filter(Account.id == prop_acc.finance_account_id).first()
-        if existing:
-            return existing
-
-    firm = db.query(PropFirm).filter(PropFirm.id == prop_acc.prop_firm_id).first()
-    stage1 = (
-        db.query(PropStage)
-        .filter(PropStage.prop_account_id == prop_acc.id)
-        .order_by(PropStage.id.asc())
-        .first()
-    )
-    fin = Account(
-        name=prop_acc.account_label,
-        type=AccountType.PROP,
-        currency=_to_currency(prop_acc.currency),
-        balance=stage1.initial_balance if stage1 and stage1.initial_balance else 0.0,
-        prop_firm_name=firm.name if firm else None,
-        prop_firm_id=prop_acc.prop_firm_id,
-    )
-    db.add(fin)
-    db.flush()
-    prop_acc.finance_account_id = fin.id
-    return fin
+# فاز ۲۸: `_ensure_finance_account` حذف شد — PropAccount حساب معاملاتی است، نه مالی.
 
 
 # ═════════════════════════════════════════════
@@ -96,7 +71,6 @@ class PropAccountCreate(BaseModel):
     max_daily_dd: Optional[float] = 500.0
     max_total_dd: Optional[float] = 1000.0
     min_trading_days: Optional[int] = 5
-    create_finance_account: bool = True  # 🆕 فاز ۵ — ساخت خودکار حساب مالی
 
 
 class StageRules(BaseModel):
@@ -259,22 +233,7 @@ def create_account(account: PropAccountCreate, db: Session = Depends(get_db)):
     db.add(db_account)
     db.flush()  # ← گرفتن id بدون commit (تا کل عملیات اتمیک بماند)
 
-    # 🆕 فاز ۵ — ساخت خودکار حساب مالی متناظر
-    finance_account_id = None
-    if account.create_finance_account:
-        fin = Account(
-            name=account.account_label,
-            type=AccountType.PROP,
-            currency=_to_currency(account.currency),
-            balance=account.initial_balance or 0.0,
-            prop_firm_name=firm.name,
-            prop_firm_id=account.prop_firm_id,
-        )
-        db.add(fin)
-        db.flush()
-        db_account.finance_account_id = fin.id
-        finance_account_id = fin.id
-
+    # فاز ۲۸: پل «حساب مالی متناظر پراپ» حذف شد.
     # ایجاد خودکار Stage 1
     stage1 = PropStage(
         prop_account_id=db_account.id,
@@ -293,7 +252,6 @@ def create_account(account: PropAccountCreate, db: Session = Depends(get_db)):
 
     return {
         "id": db_account.id,
-        "finance_account_id": finance_account_id,
         "message": "اکانت و مرحله ۱ ایجاد شد",
     }
 
@@ -605,18 +563,15 @@ def _create_payout_record(
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
 
-    dest = db.query(Account).filter(
-        Account.id == destination_account_id,
-        Account.type != AccountType.PROP,
-    ).first()
+    dest = db.query(Account).filter(Account.id == destination_account_id).first()
     if not dest:
         raise HTTPException(
             status_code=400,
-            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول/بروکر باشد)",
+            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول باشد)",
         )
 
+    # فاز ۲۸: مبدأ برداشت مرحلهٔ پراپ است (نه حساب مالی). پول مستقیم به حساب مقصد می‌رود.
     prop_acc = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
-    src_acct = _ensure_finance_account(db, prop_acc) if prop_acc else None
 
     withdrawal_dt = datetime.now(timezone.utc)
     if withdrawal_date:
@@ -655,14 +610,13 @@ def _create_payout_record(
         date=withdrawal_dt,
         description=description,
         type=TransactionType.WITHDRAWAL,
-        from_account_id=src_acct.id if src_acct else None,
+        from_account_id=None,
         to_account_id=destination_account_id,
         related_prop_account_id=stage.prop_account_id,
     )
     db.add(tx)
 
-    if src_acct:
-        src_acct.balance = (src_acct.balance or 0.0) - amount
+    # فقط موجودی حساب مقصد افزایش می‌یابد (مبدأ = مرحله پراپ، نه حساب مالی)
     dest.balance = (dest.balance or 0.0) + amount
 
     db.commit()
@@ -672,7 +626,7 @@ def _create_payout_record(
         "message": f"{amount} دلار برداشت ثبت شد و به حساب مقصد واریز شد",
         "id": withdrawal.id,
         "transaction_id": tx.id,
-        "source_account_id": src_acct.id if src_acct else None,
+        "source_account_id": None,
         "destination_account_id": destination_account_id,
     }
 
@@ -847,7 +801,6 @@ def update_payout(payout_id: int, data: PayoutUpdate, db: Session = Depends(get_
     if "destination_account_id" in payload and payload["destination_account_id"] is not None:
         dest = db.query(Account).filter(
             Account.id == payload["destination_account_id"],
-            Account.type != AccountType.PROP,
         ).first()
         if not dest:
             raise HTTPException(status_code=400, detail="حساب مقصد معتبر نیست")
@@ -1027,12 +980,10 @@ def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
             payer = db.query(Account).filter(Account.id == cost.pay_from_account_id).first()
             if not payer:
                 raise HTTPException(status_code=400, detail="حساب پرداخت‌کننده معتبر نیست")
-        elif prop_acc:
-            payer = _ensure_finance_account(db, prop_acc)
         if not payer:
             raise HTTPException(
                 status_code=400,
-                detail="حساب پرداخت‌کننده الزامی است (pay_from_account_id) وگرنه اکانت پراپ باید حساب مالی داشته باشد",
+                detail="حساب پرداخت‌کننده الزامی است (pay_from_account_id)",
             )
 
     db_cost = PropCost(
@@ -1080,57 +1031,9 @@ def get_costs(account_id: int, db: Session = Depends(get_db)):
     return costs
 
 
-@router.get("/accounts/{account_id}/finance-account")
-def get_prop_finance_account(account_id: int, db: Session = Depends(get_db)):
-    """دریافت حساب مالی متناظر با یک اکانت پراپ (فاز ۵)"""
-    prop_acc = db.query(PropAccount).filter(PropAccount.id == account_id).first()
-    if not prop_acc:
-        raise HTTPException(status_code=404, detail="اکانت پراپ پیدا نشد")
+# فاز ۲۸: endpointهای «حساب مالی متناظر پراپ» (/accounts/{id}/finance-account) حذف شدند.
+# PropAccount حساب معاملاتی است؛ پول فقط هنگام برداشت (PropWithdrawal) وارد FINANCE می‌شود.
 
-    if not prop_acc.finance_account_id:
-        return {"linked": False, "account": None}
-
-    fin = db.query(Account).filter(Account.id == prop_acc.finance_account_id).first()
-    if not fin:
-        return {"linked": False, "account": None}
-
-    return {
-        "linked": True,
-        "account": {
-            "id": fin.id,
-            "name": fin.name,
-            "type": fin.type.value if fin.type else None,
-            "currency": fin.currency.value if fin.currency else None,
-            "balance": fin.balance,
-            "prop_firm_name": fin.prop_firm_name,
-        },
-    }
-
-
-@router.post("/accounts/{account_id}/finance-account")
-def create_prop_finance_account(account_id: int, db: Session = Depends(get_db)):
-    """ساخت (یا اتصال) حساب مالی برای یک اکانت پراپ — 🆕 فاز ۵.۱"""
-    prop_acc = db.query(PropAccount).filter(PropAccount.id == account_id).first()
-    if not prop_acc:
-        raise HTTPException(status_code=404, detail="اکانت پراپ پیدا نشد")
-
-    fin = _ensure_finance_account(db, prop_acc)
-    db.commit()
-
-    if not fin:
-        raise HTTPException(status_code=500, detail="ساخت حساب مالی ناموفق بود")
-
-    return {
-        "linked": True,
-        "account": {
-            "id": fin.id,
-            "name": fin.name,
-            "type": fin.type.value if fin.type else None,
-            "currency": fin.currency.value if fin.currency else None,
-            "balance": fin.balance,
-            "prop_firm_name": fin.prop_firm_name,
-        },
-    }
 
 @router.get("/analytics")
 def get_prop_analytics(db: Session = Depends(get_db)):

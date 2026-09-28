@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey,
-    UniqueConstraint, Boolean,
+    UniqueConstraint, Boolean, CheckConstraint,
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -32,24 +32,31 @@ class TradeSource(str, enum.Enum):
 
 
 class TestType(str, enum.Enum):
+    """قرارداد معامله (فاز ۲۷) — ۴ نوع.
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
+    ('BACKTEST' / 'FORWARD' / 'REAL_PERSONAL' / 'REAL_PROP') نه value.
+    """
     BACKTEST = "backtest"
     FORWARD = "forward"
-    REAL = "real"
+    REAL_PERSONAL = "real_personal"
+    REAL_PROP = "real_prop"
 
 
 class AnalysisScope(str, enum.Enum):
-    """دامنه‌ی تحلیل (فاز ۲۰) — هر scope مجموعه‌ی معاملات مستقل خودش را دارد.
+    """دامنه‌ی تحلیل (فاز ۲۰/۲۷) — هر scope مجموعه‌ی معاملات مستقل خودش را دارد.
 
-    - VERSION    : تحلیل نسخه‌ی استراتژی (Backtest / Forward)
-    - PROP_STAGE : تحلیل مرحله‌ی پراپ (stage_1 / stage_2 / funded_real)
-    - BROKER     : تحلیل حساب بروکر (Account.type = BROKER)
+    - VERSION          : تحلیل نسخه‌ی استراتژی (Backtest / Forward)
+    - PROP_STAGE       : تحلیل مرحله‌ی پراپ (stage_1 / stage_2 / funded_real)
+    - PERSONAL_ACCOUNT : تحلیل حساب معاملاتی شخصی (PersonalTradingAccount)
 
     توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
-    ('VERSION' / 'PROP_STAGE' / 'BROKER') نه value.
+    ('VERSION' / 'PROP_STAGE' / 'PERSONAL_ACCOUNT') نه value.
+    مقدار قدیمی 'BROKER' در migration به 'PERSONAL_ACCOUNT' نگاشت می‌شود.
     """
     VERSION = "version"
     PROP_STAGE = "prop_stage"
-    BROKER = "broker"
+    PERSONAL_ACCOUNT = "personal_account"
 
 
 # ═════════════════════════════════════════════
@@ -109,9 +116,15 @@ class Trade(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
+    # ── قرارداد Classification (فاز ۲۷) ──
+    # version_id برای همه‌ی انواع اجباری است.
+    version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=False, index=True)
+    # فقط REAL_PERSONAL
+    personal_trading_account_id = Column(
+        Integer, ForeignKey("personal_trading_accounts.id"), nullable=True, index=True
+    )
+    # فقط REAL_PROP
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
-    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
 
     symbol = Column(String, nullable=False)
     direction = Column(String, nullable=False)
@@ -129,7 +142,7 @@ class Trade(Base):
     entry_sequence = Column(Integer, default=1)
 
     source = Column(Enum(TradeSource), nullable=False)
-    test_type = Column(Enum(TestType), default=TestType.BACKTEST)
+    test_type = Column(Enum(TestType), nullable=False, default=TestType.BACKTEST, index=True)
     note = Column(Text, nullable=True)
     screenshot_path = Column(String, nullable=True)
     raw_data = Column(JSON, nullable=True)
@@ -142,9 +155,25 @@ class Trade(Base):
         # ← Duplicate Detection
     trade_hash = Column(String(32), nullable=True, index=True)
 
+    # ── قرارداد Classification در سطح DB (فاز ۲۷) ──
+    # BACKTEST/FORWARD → هیچ‌کدام | REAL_PERSONAL → فقط personal | REAL_PROP → فقط prop
+    __table_args__ = (
+        CheckConstraint(
+            "(test_type IN ('BACKTEST','FORWARD') "
+            "   AND personal_trading_account_id IS NULL AND prop_stage_id IS NULL) "
+            "OR (test_type = 'REAL_PERSONAL' "
+            "   AND personal_trading_account_id IS NOT NULL AND prop_stage_id IS NULL) "
+            "OR (test_type = 'REAL_PROP' "
+            "   AND prop_stage_id IS NOT NULL AND personal_trading_account_id IS NULL)",
+            name="ck_trades_classification",
+        ),
+    )
+
     version = relationship("StrategyVersion", back_populates="trades")
     prop_stage = relationship("PropStage", back_populates="trades")
-    finance_account = relationship("Account")
+    personal_trading_account = relationship(
+        "PersonalTradingAccount", back_populates="trades"
+    )
     reviews = relationship(
         "JournalReview",
         back_populates="trade",
@@ -186,8 +215,8 @@ class AnalysisResult(Base):
 
     id = Column(Integer, primary_key=True, index=True)
 
-    # ── فاز ۲۰: دامنه‌ی تحلیل ──
-    # scope مشخص می‌کند این تحلیل مربوط به «نسخه»، «مرحله‌ی پراپ» یا «حساب بروکر» است.
+    # ── فاز ۲۰/۲۷: دامنه‌ی تحلیل ──
+    # scope مشخص می‌کند این تحلیل مربوط به «نسخه»، «مرحله‌ی پراپ» یا «حساب معاملاتی شخصی» است.
     scope = Column(
         Enum(AnalysisScope), nullable=False,
         default=AnalysisScope.VERSION, index=True,
@@ -199,7 +228,9 @@ class AnalysisResult(Base):
     # فقط یکی از این سه پر می‌شود (بسته به scope)
     version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
-    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    personal_trading_account_id = Column(
+        Integer, ForeignKey("personal_trading_accounts.id"), nullable=True
+    )
 
     total_trades = Column(Integer, default=0)
     win_rate = Column(Float, default=0.0)
@@ -249,7 +280,9 @@ class AnalysisRun(Base):
 
     version_id = Column(Integer, ForeignKey("strategy_versions.id"), nullable=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
-    finance_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    personal_trading_account_id = Column(
+        Integer, ForeignKey("personal_trading_accounts.id"), nullable=True
+    )
 
     # متریک‌های اصلی (همان‌هایی که در Dashboard و مقایسه استفاده می‌شوند)
     total_trades = Column(Integer, default=0)

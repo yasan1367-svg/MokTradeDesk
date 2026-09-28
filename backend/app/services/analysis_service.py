@@ -42,16 +42,22 @@ class AnalysisService:
         result["prop_rules"] = PropRuleEngine.evaluate_stage(self.db, prop_stage_id)
         return result
 
-    def analyze_broker(self, finance_account_id: int) -> Dict[str, Any]:
-        """تحلیل کامل یک حساب بروکر (معاملات REAL)."""
+    def analyze_personal_account(self, personal_trading_account_id: int) -> Dict[str, Any]:
+        """تحلیل کامل یک حساب معاملاتی شخصی (معاملات REAL_PERSONAL)."""
         # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
         trades = self.db.query(Trade).filter(
-            Trade.finance_account_id == finance_account_id,
+            Trade.personal_trading_account_id == personal_trading_account_id,
             Trade.is_deleted == False,
         ).all()
-        return self._analyze(trades, scope=AnalysisScope.BROKER, scope_key=str(finance_account_id), finance_account_id=finance_account_id)
+        return self._analyze(
+            trades,
+            scope=AnalysisScope.PERSONAL_ACCOUNT,
+            scope_key=str(personal_trading_account_id),
+            personal_trading_account_id=personal_trading_account_id,
+        )
 
-    def _analyze(self, trades, scope, scope_key, version_id=None, prop_stage_id=None, finance_account_id=None, test_type=None) -> Dict[str, Any]:
+    def _analyze(self, trades, scope, scope_key, version_id=None, prop_stage_id=None,
+                 personal_trading_account_id=None, test_type=None) -> Dict[str, Any]:
         """موتور مشترک — محاسبه متریک و ذخیره AnalysisResult + AnalysisRun"""
         if not trades:
             stale = self.db.query(AnalysisResult).filter(AnalysisResult.scope == scope, AnalysisResult.scope_key == scope_key).first()
@@ -63,7 +69,8 @@ class AnalysisService:
                     label = {
                         TestType.BACKTEST: "بک‌تست",
                         TestType.FORWARD: "فوروارد",
-                        TestType.REAL: "رییل",
+                        TestType.REAL_PERSONAL: "رییل شخصی",
+                        TestType.REAL_PROP: "رییل پراپ",
                     }.get(test_type, test_type.name)
                     raise ValueError(f"این استراتژی معاملات {label} ندارد")
                 raise ValueError("هیچ معامله‌ای برای تحلیل این نسخه یافت نشد (معاملات REAL در تحلیل Backtest/Forward شمرده نمی‌شوند)")
@@ -83,7 +90,8 @@ class AnalysisService:
 
         result = AnalysisResult(
             scope=scope, scope_key=scope_key, version_id=version_id,
-            prop_stage_id=prop_stage_id, finance_account_id=finance_account_id,
+            prop_stage_id=prop_stage_id,
+            personal_trading_account_id=personal_trading_account_id,
             total_trades=basic["total_trades"], win_rate=basic["win_rate"],
             profit_factor=basic["profit_factor"], net_pnl=basic["net_pnl"],
             net_r=basic["net_r"], max_dd=basic["max_dd"],
@@ -101,7 +109,8 @@ class AnalysisService:
                 "weekday": weekday_a, "hour": hour_a, "custom_time": custom_a}
         run = AnalysisRun(
             scope=scope, scope_key=scope_key, version_id=version_id,
-            prop_stage_id=prop_stage_id, finance_account_id=finance_account_id,
+            prop_stage_id=prop_stage_id,
+            personal_trading_account_id=personal_trading_account_id,
             total_trades=basic["total_trades"], win_rate=basic["win_rate"],
             profit_factor=basic["profit_factor"], net_pnl=basic["net_pnl"],
             net_r=basic["net_r"], max_dd=basic["max_dd"],

@@ -6,11 +6,22 @@ import pytest
 from app.models.prop import (
     PropFirm, PropAccount, PropStage, StageType, StageStatus,
 )
-from app.models.strategy import Trade, TradeSource, TestType
+from app.models.strategy import Trade, TradeSource, TestType, Strategy, StrategyVersion
 from app.services.prop_rule_engine import PropRuleEngine
 
 
-def _trade(pnl, close_day, stage_id=None):
+def _version(db, name="v1"):
+    """نسخه‌ی استراتژی (version_id اکنون اجباری است — فاز ۲۸)"""
+    s = Strategy(name=f"S-{name}")
+    db.add(s)
+    db.flush()
+    v = StrategyVersion(strategy_id=s.id, version_name=name)
+    db.add(v)
+    db.flush()
+    return v
+
+
+def _trade(pnl, close_day, stage_id=None, version_id=None):
     return Trade(
         symbol="XAUUSD",
         direction="buy",
@@ -21,8 +32,9 @@ def _trade(pnl, close_day, stage_id=None):
         size=1.0,
         pnl=pnl,
         source=TradeSource.MANUAL,
-        test_type=TestType.REAL,
+        test_type=TestType.REAL_PROP,
         prop_stage_id=stage_id,
+        version_id=version_id,
     )
 
 
@@ -90,8 +102,9 @@ def test_evaluate_stage_no_trades(db_session):
 
 def test_evaluate_stage_ready_to_pass(db_session):
     stage = _make_stage(db_session, profit_target=1000.0, min_days=2)
+    v = _version(db_session)
     for d, p in [(1, 600), (2, 500), (3, 400)]:
-        db_session.add(_trade(p, d, stage.id))
+        db_session.add(_trade(p, d, stage.id, v.id))
     db_session.commit()
 
     res = PropRuleEngine.evaluate_stage(db_session, stage.id)
@@ -102,7 +115,8 @@ def test_evaluate_stage_ready_to_pass(db_session):
 
 def test_evaluate_stage_daily_dd_violation(db_session):
     stage = _make_stage(db_session, max_daily_dd=500.0)
-    db_session.add(_trade(-700, 1, stage.id))
+    v = _version(db_session)
+    db_session.add(_trade(-700, 1, stage.id, v.id))
     db_session.commit()
 
     res = PropRuleEngine.evaluate_stage(db_session, stage.id)
@@ -136,8 +150,9 @@ def test_funded_withdrawable_profit(db_session):
         db_session, stage_type=StageType.FUNDED_REAL,
         profit_share=80.0, total_withdrawn=100.0,
     )
+    v = _version(db_session)
     for d, p in [(1, 1000), (2, 500)]:
-        db_session.add(_trade(p, d, stage.id))
+        db_session.add(_trade(p, d, stage.id, v.id))
     db_session.commit()
 
     res = PropRuleEngine.evaluate_stage(db_session, stage.id)

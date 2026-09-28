@@ -1,9 +1,10 @@
 """
 Endpointهای برداشت بروکر (فاز ۱۶ — Payout History)
 
-بروکر در این پروژه مدل جداگانه ندارد؛ حساب بروکر همان `Account` با
-`AccountType.BROKER` است و برداشت‌های آن `Transaction(type=WITHDRAWAL)` هستند.
-(ثبت/ویرایش/حذف از همان `/api/finance/withdrawals` انجام می‌شود.)
+فاز ۲۸: بروکر دیگر `Account.type=BROKER` نیست (به `PersonalTradingAccount` منتقل شد).
+برداشت‌های «غیرپراپ» به‌عنوان Payout بروکر در نظر گرفته می‌شوند
+(یعنی `Transaction(type=WITHDRAWAL)` که `related_prop_account_id` ندارند).
+UI صفحهٔ مستقل `Broker` در فاز بعدی اضافه می‌شود.
 """
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
@@ -11,7 +12,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from ..core.database import get_db
-from ..models.finance import Account, AccountType, Transaction, TransactionType
+from ..models.finance import Account, Transaction, TransactionType
 
 router = APIRouter()
 
@@ -23,14 +24,14 @@ def _broker_payout_query(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
 ):
-    """کوئری پایهٔ برداشت‌های بروکر با فیلترهای اختیاری"""
+    """کوئری پایهٔ برداشت‌های بروکر (غیرپراپ) با فیلترهای اختیاری"""
     q = (
         db.query(Transaction)
         .join(Account, Transaction.account_id == Account.id)
         .filter(
             Transaction.is_deleted == False,
             Transaction.type == TransactionType.WITHDRAWAL,
-            Account.type == AccountType.BROKER,
+            Transaction.related_prop_account_id.is_(None),
         )
     )
     if account_id:
@@ -63,7 +64,6 @@ def list_broker_payouts(
             "id": t.id,
             "account_id": t.account_id,
             "account_name": t.account.name if t.account else None,
-            "broker_name": t.account.broker_name if t.account else None,
             "amount": t.amount,
             "currency": t.currency.value if t.currency else None,
             "date": t.date.isoformat() if t.date else None,

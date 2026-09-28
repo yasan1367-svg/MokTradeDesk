@@ -25,7 +25,10 @@ def analysis_trades_filter() -> ColumnElement:
     فاز ۲۵: معاملات حذف‌شده (Soft Delete) از تحلیل کنار گذاشته می‌شوند.
     """
     return and_(
-        or_(Trade.test_type.is_(None), Trade.test_type != TestType.REAL),
+        or_(
+            Trade.test_type.is_(None),
+            Trade.test_type.notin_([TestType.REAL_PERSONAL, TestType.REAL_PROP]),
+        ),
         Trade.is_deleted == False,
     )
 

@@ -7,7 +7,8 @@
 """
 from datetime import datetime, timezone
 
-from app.models.finance import Account, AccountType, Currency
+from app.models.trading import Broker, PersonalTradingAccount
+from app.models.finance import Currency
 from app.models.prop import PropFirm, PropAccount, PropStage, StageType, StageStatus
 from app.models.strategy import (
     AnalysisResult, AnalysisScope, Strategy, StrategyVersion, Trade, TestType, TradeSource,
@@ -29,11 +30,11 @@ def _make_version(db, name="v1"):
 
 
 def _add_trade(db, *, version_id=None, test_type=None, pnl=100.0,
-               prop_stage_id=None, finance_account_id=None):
+               prop_stage_id=None, personal_trading_account_id=None):
     trade = Trade(
         version_id=version_id,
         prop_stage_id=prop_stage_id,
-        finance_account_id=finance_account_id,
+        personal_trading_account_id=personal_trading_account_id,
         symbol="XAUUSD",
         direction="buy",
         open_time=datetime(2025, 1, 1, 10, 0, tzinfo=timezone.utc),
@@ -52,13 +53,11 @@ def _add_trade(db, *, version_id=None, test_type=None, pnl=100.0,
     return trade
 
 
-def _seed_stage(db, label="A", stage_type=StageType.STAGE_1, finance_account_id=None):
+def _seed_stage(db, label="A", stage_type=StageType.STAGE_1):
     firm = PropFirm(name=f"Firm-{label}")
     db.add(firm)
     db.flush()
-    account = PropAccount(
-        prop_firm_id=firm.id, account_label=label, finance_account_id=finance_account_id
-    )
+    account = PropAccount(prop_firm_id=firm.id, account_label=label)
     db.add(account)
     db.flush()
     stage = PropStage(
@@ -67,6 +66,20 @@ def _seed_stage(db, label="A", stage_type=StageType.STAGE_1, finance_account_id=
     db.add(stage)
     db.flush()
     return stage
+
+
+def _seed_pta(db, label="PTA"):
+    """ساخت حساب معاملاتی شخصی (فاز ۲۸)"""
+    broker = Broker(name=f"Broker-{label}")
+    db.add(broker)
+    db.flush()
+    pta = PersonalTradingAccount(
+        broker_id=broker.id, account_number=f"ACC-{label}", account_label=label,
+        currency=Currency.USD, initial_balance=10000.0, current_balance=10000.0,
+    )
+    db.add(pta)
+    db.flush()
+    return pta
 
 
 # ═════════════════════════════════════════════
@@ -78,7 +91,9 @@ def test_backtest_and_forward_are_independent(client, db_session):
         _add_trade(db_session, version_id=v.id, test_type=TestType.BACKTEST, pnl=100)
     for _ in range(5):
         _add_trade(db_session, version_id=v.id, test_type=TestType.FORWARD, pnl=50)
-    _add_trade(db_session, version_id=v.id, test_type=TestType.REAL, pnl=-9999)
+    pta = _seed_pta(db_session)
+    _add_trade(db_session, version_id=v.id, test_type=TestType.REAL_PERSONAL,
+               personal_trading_account_id=pta.id, pnl=-9999)
     db_session.commit()
 
     # Backtest → فقط ۳ معامله
@@ -163,12 +178,13 @@ def test_version_trades_endpoint_filters_by_test_type(client, db_session):
 # ۲. مراحل پراپ — مستقل
 # ═════════════════════════════════════════════
 def test_prop_stages_are_independent(client, db_session):
+    _, v = _make_version(db_session, name="prop")
     s1 = _seed_stage(db_session, label="A", stage_type=StageType.STAGE_1)
     s2 = _seed_stage(db_session, label="B", stage_type=StageType.STAGE_2)
     for _ in range(4):
-        _add_trade(db_session, prop_stage_id=s1.id, test_type=TestType.REAL, pnl=100)
+        _add_trade(db_session, version_id=v.id, prop_stage_id=s1.id, test_type=TestType.REAL_PROP, pnl=100)
     for _ in range(2):
-        _add_trade(db_session, prop_stage_id=s2.id, test_type=TestType.REAL, pnl=50)
+        _add_trade(db_session, version_id=v.id, prop_stage_id=s2.id, test_type=TestType.REAL_PROP, pnl=50)
     db_session.commit()
 
     assert client.post(f"/api/analytics/analyze/prop/{s1.id}").status_code == 200
@@ -184,10 +200,11 @@ def test_prop_stages_are_independent(client, db_session):
 
 def test_prop_stage_trades_endpoint(client, db_session):
     """جدول معاملات مرحله با prop_stage_id فیلتر می‌شود."""
+    _, v = _make_version(db_session, name="prop2")
     s1 = _seed_stage(db_session, label="A", stage_type=StageType.STAGE_1)
     s2 = _seed_stage(db_session, label="B", stage_type=StageType.STAGE_2)
-    _add_trade(db_session, prop_stage_id=s1.id, test_type=TestType.REAL, pnl=100)
-    _add_trade(db_session, prop_stage_id=s2.id, test_type=TestType.REAL, pnl=50)
+    _add_trade(db_session, version_id=v.id, prop_stage_id=s1.id, test_type=TestType.REAL_PROP, pnl=100)
+    _add_trade(db_session, version_id=v.id, prop_stage_id=s2.id, test_type=TestType.REAL_PROP, pnl=50)
     db_session.commit()
     r = client.get("/api/trades/", params={"prop_stage_id": s1.id}).json()
     assert r["total"] == 1
@@ -196,32 +213,32 @@ def test_prop_stage_trades_endpoint(client, db_session):
 # ═════════════════════════════════════════════
 # ۳. بروکر — فقط معاملات همان حساب
 # ═════════════════════════════════════════════
-def test_broker_analysis_uses_only_its_trades(client, db_session):
-    b1 = Account(name="B1", type=AccountType.BROKER, currency=Currency.USD)
-    b2 = Account(name="B2", type=AccountType.BROKER, currency=Currency.USD)
-    db_session.add_all([b1, b2])
+def test_personal_account_analysis_uses_only_its_trades(client, db_session):
+    _, v = _make_version(db_session, name="pa")
+    p1 = _seed_pta(db_session, label="P1")
+    p2 = _seed_pta(db_session, label="P2")
     db_session.commit()
-    db_session.refresh(b1)
-    db_session.refresh(b2)
 
     for _ in range(3):
-        _add_trade(db_session, finance_account_id=b1.id, test_type=TestType.REAL, pnl=100)
-    _add_trade(db_session, finance_account_id=b2.id, test_type=TestType.REAL, pnl=999)
+        _add_trade(db_session, version_id=v.id, personal_trading_account_id=p1.id,
+                   test_type=TestType.REAL_PERSONAL, pnl=100)
+    _add_trade(db_session, version_id=v.id, personal_trading_account_id=p2.id,
+               test_type=TestType.REAL_PERSONAL, pnl=999)
     db_session.commit()
 
-    assert client.post(f"/api/analytics/analyze/broker/{b1.id}").status_code == 200
-    r = client.get(f"/api/analytics/analysis/broker/{b1.id}").json()
+    assert client.post(f"/api/analytics/analyze/personal-account/{p1.id}").status_code == 200
+    r = client.get(f"/api/analytics/analysis/personal-account/{p1.id}").json()
     assert r["total_trades"] == 3
     assert r["net_pnl"] == 300.0
 
 
-def test_broker_trades_endpoint(client, db_session):
-    """جدول معاملات بروکر با finance_account_id فیلتر می‌شود."""
-    b1 = Account(name="B1", type=AccountType.BROKER, currency=Currency.USD)
-    db_session.add(b1)
+def test_personal_account_trades_endpoint(client, db_session):
+    """جدول معاملات حساب شخصی با personal_trading_account_id فیلتر می‌شود."""
+    _, v = _make_version(db_session, name="pa2")
+    p1 = _seed_pta(db_session, label="P1")
     db_session.commit()
-    db_session.refresh(b1)
-    _add_trade(db_session, finance_account_id=b1.id, test_type=TestType.REAL, pnl=100)
+    _add_trade(db_session, version_id=v.id, personal_trading_account_id=p1.id,
+               test_type=TestType.REAL_PERSONAL, pnl=100)
     db_session.commit()
-    r = client.get("/api/trades/", params={"finance_account_id": b1.id}).json()
+    r = client.get("/api/trades/", params={"personal_trading_account_id": p1.id}).json()
     assert r["total"] == 1

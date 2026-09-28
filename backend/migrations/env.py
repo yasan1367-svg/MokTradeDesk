@@ -46,6 +46,12 @@ from app.models.finance import (
     Transaction,
 )
 
+# Trading Models (فاز ۲۸)
+from app.models.trading import (
+    Broker,
+    PersonalTradingAccount,
+)
+
 # ═════════════════════════════════════════════
 # Alembic Config
 # ═════════════════════════════════════════════

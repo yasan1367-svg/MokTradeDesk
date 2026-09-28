@@ -8,8 +8,22 @@ from app.utils.trade_metrics import calculate_r_multiple
 from app.utils.trade_validator import TradeValidator
 
 
-def _mk_trade(db, *, source=TradeSource.MANUAL, symbol="XAUUSD", pnl=10.0):
+def _mk_version(db, name="v1"):
+    """نسخه‌ی استراتژی — چون version_id اکنون اجباری است (فاز ۲۸)"""
+    s = Strategy(name=f"S-{name}")
+    db.add(s)
+    db.flush()
+    v = StrategyVersion(strategy_id=s.id, version_name=name)
+    db.add(v)
+    db.commit()
+    db.refresh(v)
+    return v
+
+
+def _mk_trade(db, *, source=TradeSource.MANUAL, symbol="XAUUSD", pnl=10.0, version_id=None):
     """ساخت سریع یک معامله در دیتابیس تست"""
+    if version_id is None:
+        version_id = _mk_version(db, name=f"v-{symbol}").id
     t = Trade(
         symbol=symbol,
         direction="buy",
@@ -21,6 +35,7 @@ def _mk_trade(db, *, source=TradeSource.MANUAL, symbol="XAUUSD", pnl=10.0):
         pnl=pnl,
         source=source,
         test_type=TestType.BACKTEST,
+        version_id=version_id,
     )
     db.add(t)
     db.commit()
@@ -42,10 +57,18 @@ def test_validate_classification_backtest():
     assert ok is False
 
 
-def test_validate_classification_real_xor():
-    assert TradeValidator.validate_classification("real", 1, 5, None)[0] is True
-    assert TradeValidator.validate_classification("real", 1, None, None)[0] is False
-    assert TradeValidator.validate_classification("real", 1, 5, 7)[0] is False
+def test_validate_classification_real_personal():
+    # REAL_PERSONAL: version_id + personal_trading_account_id اجباری، prop ممنوع
+    assert TradeValidator.validate_classification("real_personal", 1, 5, None)[0] is True
+    assert TradeValidator.validate_classification("real_personal", 1, None, None)[0] is False
+    assert TradeValidator.validate_classification("real_personal", 1, 5, 7)[0] is False
+
+
+def test_validate_classification_real_prop():
+    # REAL_PROP: version_id + prop_stage_id اجباری، حساب شخصی ممنوع (XOR)
+    assert TradeValidator.validate_classification("real_prop", 1, None, 7)[0] is True
+    assert TradeValidator.validate_classification("real_prop", 1, None, None)[0] is False
+    assert TradeValidator.validate_classification("real_prop", 1, 5, 7)[0] is False
 
 
 def test_validate_classification_invalid_type():

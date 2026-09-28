@@ -12,11 +12,15 @@ from ..core.database import Base
 # Enums
 # ═════════════════════════════════════════════
 class AccountType(str, enum.Enum):
+    """نوع حساب مالی (فاز ۲۷) — فقط پول.
+
+    حساب‌های معاملاتی (بروکر/پراپ) دیگر اینجا نیستند:
+    - بروکر  → models/trading.py :: PersonalTradingAccount
+    - پراپ   → models/prop.py    :: PropAccount / PropStage
+    """
     BANK = "bank"
     EXCHANGE = "exchange"
     CRYPTO_WALLET = "crypto_wallet"
-    BROKER = "broker"
-    PROP = "prop"
 
 
 class Currency(str, enum.Enum):
@@ -54,13 +58,9 @@ class Account(Base):
     currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
     balance = Column(Float, default=0.0)
     card_number = Column(String, nullable=True)
-    broker_name = Column(String, nullable=True)
-    prop_firm_name = Column(String, nullable=True)
-    prop_firm_id = Column(Integer, ForeignKey("prop_firms.id"), nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # relationships
-    prop_firm = relationship("PropFirm")
     transactions_out = relationship(
         "Transaction",
         foreign_keys="Transaction.from_account_id",

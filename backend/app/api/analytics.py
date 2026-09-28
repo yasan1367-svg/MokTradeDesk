@@ -90,9 +90,9 @@ def analyze_version_scoped(version_id: int, test_type: Optional[str] = None, db:
     try:
         tt = TT(test_type.lower()) if test_type else None
     except ValueError:
-        raise HTTPException(400, detail="نوع تست نامعتبر است (BACKTEST/FORWARD/REAL)")
-    if tt == TT.REAL:
-        raise HTTPException(400, detail="تحلیل نسخه فقط برای BACKTEST یا FORWARD است؛ REAL از مسیر پراپ/بروکر تحلیل می‌شود")
+        raise HTTPException(400, detail="نوع تست نامعتبر است (BACKTEST/FORWARD)")
+    if tt in (TT.REAL_PERSONAL, TT.REAL_PROP):
+        raise HTTPException(400, detail="تحلیل نسخه فقط برای BACKTEST یا FORWARD است؛ REAL از مسیر پراپ/حساب شخصی تحلیل می‌شود")
     try:
         r = AnalysisService(db).analyze_version(version_id, test_type=tt)
         return {"message": r["message"], "analysis_id": r["result"].id,
@@ -113,13 +113,13 @@ def analyze_prop_stage(prop_stage_id: int, db: Session = Depends(get_db)):
         raise HTTPException(404, detail=str(e))
 
 
-@router.post("/analyze/broker/{finance_account_id}")
-def analyze_broker(finance_account_id: int, db: Session = Depends(get_db)):
-    """تحلیل کامل یک حساب بروکر — scope=BROKER"""
+@router.post("/analyze/personal-account/{personal_trading_account_id}")
+def analyze_personal_account_endpoint(personal_trading_account_id: int, db: Session = Depends(get_db)):
+    """تحلیل کامل یک حساب معاملاتی شخصی — scope=PERSONAL_ACCOUNT"""
     try:
-        r = AnalysisService(db).analyze_broker(finance_account_id)
+        r = AnalysisService(db).analyze_personal_account(personal_trading_account_id)
         return {"message": r["message"], "analysis_id": r["result"].id,
-                "run_id": r["run_id"], "finance_account_id": finance_account_id}
+                "run_id": r["run_id"], "personal_trading_account_id": personal_trading_account_id}
     except ValueError as e:
         raise HTTPException(404, detail=str(e))
 
@@ -270,56 +270,29 @@ def get_dashboard_data(
     from ..models.finance import Account as FinAccount, AccountType, Transaction, TransactionType
     from ..models.prop import PropStage as PS, StageType
 
-    def _spendable_tx(type_name: AccountType):
-        """سود خالص یک نوع حساب از Transactionهای PROFIT/LOSS"""
-        return float(
-            db.query(
-                func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0) -
-                func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0)
-            )
-            .select_from(Transaction)
-            .join(FinAccount, Transaction.account_id == FinAccount.id)
-            .filter(FinAccount.type == type_name, Transaction.is_deleted == False)
-            .scalar() or 0.0
-        )
+    # ── فاز ۲۸: محاسبه بر پایهٔ حساب‌های معاملاتی شخصی (پل مالی حذف شد) ──
+    from ..models.trading import PersonalTradingAccount
 
-    broker_pnl = _spendable_tx(AccountType.BROKER)
+    personal_accts = db.query(PersonalTradingAccount).all()
+    broker_pnl = float(sum(
+        (a.current_balance or 0.0) - (a.initial_balance or 0.0) for a in personal_accts
+    ))
+    broker_balance = float(sum(a.current_balance or 0.0 for a in personal_accts))
+    init_capital = float(sum(a.initial_balance or 0.0 for a in personal_accts))
 
-    # سود خالص مرحله ۳ پراپ: Transaction → Account(id) → PropAccount(finance_account_id) → PropStage(prop_account_id)
-    from ..models.prop import PropAccount as PropAcct
+    # سود مرحله ۳ پراپ از معاملات REAL_PROP (بدون پل مالی)
+    from ..models.strategy import TestType as _TestType
     funded_pnl = float(
-        db.query(
-            func.coalesce(func.sum(case((Transaction.type == TransactionType.PROFIT, Transaction.amount), else_=0.0)), 0) -
-            func.coalesce(func.sum(case((Transaction.type == TransactionType.LOSS, Transaction.amount), else_=0.0)), 0)
-        )
-        .select_from(Transaction)
-        .join(FinAccount, Transaction.account_id == FinAccount.id)
-        .join(PropAcct, FinAccount.id == PropAcct.finance_account_id)
-        .join(PS, PropAcct.id == PS.prop_account_id)
-        .filter(PS.stage_type == StageType.FUNDED_REAL, Transaction.is_deleted == False)
-        .scalar() or 0.0
-    )
-
-    spendable_net = round(broker_pnl + funded_pnl, 2)
-    spendable_net = round(broker_pnl + funded_pnl, 2)
-
-    broker_balance = float(
-        db.query(func.coalesce(func.sum(FinAccount.balance), 0))
-        .filter(FinAccount.type == AccountType.BROKER)
-        .scalar() or 0.0
-    )
-
-    init_capital = float(
-        db.query(func.coalesce(func.sum(Transaction.amount), 0))
-        .select_from(Transaction)
-        .join(FinAccount, Transaction.account_id == FinAccount.id)
+        db.query(func.coalesce(func.sum(Trade.pnl), 0.0))
         .filter(
-            FinAccount.type == AccountType.BROKER,
-            Transaction.type == TransactionType.DEPOSIT,
-            Transaction.is_deleted == False,
+            Trade.prop_stage_id.isnot(None),
+            Trade.test_type == _TestType.REAL_PROP,
+            Trade.is_deleted == False,
         )
         .scalar() or 0.0
     )
+
+    spendable_net = round(broker_pnl + funded_pnl, 2)
 
     # ── Prop Progress ──
     active_stages = db.query(PropStage).filter(
@@ -417,20 +390,11 @@ def get_yesterday_data(db: Session = Depends(get_db)):
             t.close_time = ct
             yt.append(t)
 
-    # انواع حساب مالی برای تفکیک منبع
-    acct_ids = {t.finance_account_id for t in yt if t.finance_account_id}
-    acct_types = {}
-    if acct_ids:
-        for a in db.query(FinanceAccount).filter(FinanceAccount.id.in_(acct_ids)).all():
-            acct_types[a.id] = a.type
-
+    # تفکیک منبع بر اساس دامنهٔ معامله (فاز ۲۸)
     def classify(t):
         if t.prop_stage_id:
             return "prop"
-        at = acct_types.get(t.finance_account_id) if t.finance_account_id else None
-        if at == AccountType.PROP:
-            return "prop"
-        if at == AccountType.BROKER:
+        if t.personal_trading_account_id:
             return "broker"
         return "personal"
 
@@ -498,8 +462,9 @@ def get_risk_metrics(db: Session = Depends(get_db)):
             _ct = _ct.replace(tzinfo=timezone.utc)
         closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r, "sl": _sl, "open_price": _op})
     returns = [c["net"] for c in closed_trades]
-    accts = db.query(FinanceAccount).filter(FinanceAccount.type == AccountType.BROKER).all()
-    avg_b = sum(a.balance or 0 for a in accts) / len(accts) if accts else 10000
+    from ..models.trading import PersonalTradingAccount as _PTA
+    _accts = db.query(_PTA).all()
+    avg_b = sum(a.current_balance or 0 for a in _accts) / len(_accts) if _accts else 10000
     ps = []
     for rp in [1, 2, 3]:
         ra = avg_b * rp / 100
@@ -697,8 +662,9 @@ def get_risk_advanced(
     kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
 
     # ── Risk of Ruin ──
-    accts = db.query(FinanceAccount).filter(FinanceAccount.type == AccountType.BROKER).all()
-    avg_b = (sum(a.balance or 0 for a in accts) / len(accts)) if accts else 10000.0
+    from ..models.trading import PersonalTradingAccount as _PTA
+    _accts = db.query(_PTA).all()
+    avg_b = (sum(a.current_balance or 0 for a in _accts) / len(_accts)) if _accts else 10000.0
     if wr > 0 and rr > 0:
         p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1.0
         units = (avg_b / avg_loss) if avg_loss > 0 else 100.0
@@ -881,20 +847,20 @@ def get_analysis_prop(prop_stage_id: int, db: Session = Depends(get_db)):
     return _analysis_response(result)
 
 
-@router.get("/analysis/broker/{finance_account_id}")
-def get_analysis_broker(finance_account_id: int, db: Session = Depends(get_db)):
-    """دریافت تحلیل یک حساب بروکر — scope=BROKER"""
+@router.get("/analysis/personal-account/{personal_trading_account_id}")
+def get_analysis_personal_account(personal_trading_account_id: int, db: Session = Depends(get_db)):
+    """دریافت تحلیل یک حساب معاملاتی شخصی — scope=PERSONAL_ACCOUNT"""
     result = db.query(AnalysisResult).filter(
-        AnalysisResult.scope == AnalysisScope.BROKER,
-        AnalysisResult.scope_key == str(finance_account_id),
+        AnalysisResult.scope == AnalysisScope.PERSONAL_ACCOUNT,
+        AnalysisResult.scope_key == str(personal_trading_account_id),
     ).first()
     if not result:
-        raise HTTPException(404, detail="تحلیلی برای این حساب بروکر یافت نشد.")
-    _guard_analyzable(db, finance_account_id=finance_account_id, result=result)
+        raise HTTPException(404, detail="تحلیلی برای این حساب معاملاتی یافت نشد.")
+    _guard_analyzable(db, personal_trading_account_id=personal_trading_account_id, result=result)
     return _analysis_response(result)
 
 
-def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_account_id=None, test_type=None):
+def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, personal_trading_account_id=None, test_type=None):
     """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type)"""
     from ..models.strategy import Trade
     q = db.query(Trade)
@@ -912,9 +878,9 @@ def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, finance_a
     elif prop_stage_id is not None:
         q = q.filter(Trade.prop_stage_id == prop_stage_id)
         scope_label = "این مرحله پراپ"
-    elif finance_account_id is not None:
-        q = q.filter(Trade.finance_account_id == finance_account_id)
-        scope_label = "این حساب بروکر"
+    elif personal_trading_account_id is not None:
+        q = q.filter(Trade.personal_trading_account_id == personal_trading_account_id)
+        scope_label = "این حساب معاملاتی شخصی"
     count = q.count()
     if count == 0:
         raise HTTPException(404, detail=f"هیچ معامله‌ای برای {scope_label} یافت نشد.")
@@ -927,7 +893,7 @@ def _analysis_response(result):
     return {
         "version_id": result.version_id,
         "prop_stage_id": result.prop_stage_id,
-        "finance_account_id": result.finance_account_id,
+        "personal_trading_account_id": result.personal_trading_account_id,
         "total_trades": result.total_trades,
         "win_rate": result.win_rate,
         "profit_factor": result.profit_factor,

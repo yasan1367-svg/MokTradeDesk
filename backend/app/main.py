@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from .core.database import engine, Base
 from .core.rate_limit import limiter
-from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance, broker
+from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance, broker, trading
 from .api import settings as settings_api
 from .api import backup as backup_api
 
@@ -159,6 +159,7 @@ app.include_router(symbol_mappings.router, prefix="/api/symbol-mappings", tags=[
 app.include_router(settings_api.router, prefix="/api/settings", tags=["settings"])
 app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(broker.router, prefix="/api/broker", tags=["broker"])
+app.include_router(trading.router, prefix="/api/trading", tags=["trading"])
 app.include_router(backup_api.router, prefix="/api/backup", tags=["backup"])
 
 @app.get("/")

@@ -9,23 +9,66 @@ from app.models.strategy import (
     Trade, TradeSource, TestType, Strategy, StrategyVersion,
 )
 from app.models.prop import PropFirm, PropAccount, PropStage, StageType, StageStatus
-from app.models.finance import Account, AccountType, Currency, Transaction
+from app.models.finance import Currency
+from app.models.trading import Broker, PersonalTradingAccount
 from app.services.analysis_service import AnalysisService
 from app.services.prop_rule_engine import PropRuleEngine
 from app.services.finance_sync_service import FinanceSyncService
 
 
+def _version(db, name="v1"):
+    """نسخه‌ی استراتژی مشترک (version_id اکنون اجباری است — فاز ۲۸)"""
+    v = db.query(StrategyVersion).first()
+    if v:
+        return v
+    s = Strategy(name=f"S-{name}")
+    db.add(s)
+    db.flush()
+    v = StrategyVersion(strategy_id=s.id, version_name=name)
+    db.add(v)
+    db.flush()
+    return v
+
+
+def _pta(db, label="PTA"):
+    """حساب معاملاتی شخصی مشترک (فاز ۲۸)"""
+    existing = db.query(PersonalTradingAccount).first()
+    if existing:
+        return existing
+    broker = Broker(name=f"Broker-{label}")
+    db.add(broker)
+    db.flush()
+    pta = PersonalTradingAccount(
+        broker_id=broker.id, account_number=f"ACC-{label}", account_label=label,
+        currency=Currency.USD, initial_balance=10000.0, current_balance=10000.0,
+    )
+    db.add(pta)
+    db.flush()
+    return pta
+
+
 def _trade(
+    db,
     pnl=100.0,
     *,
     day=1,
     deleted=False,
     prop_stage_id=None,
-    finance_account_id=None,
+    personal_trading_account_id=None,
     version_id=None,
     source=TradeSource.MANUAL,
-    test_type=TestType.BACKTEST,
+    test_type=None,
 ):
+    """معامله‌ی تست با test_type استنتاج‌شده از دامنه (فاز ۲۸)"""
+    if version_id is None:
+        version_id = _version(db).id
+    if test_type is None:
+        if prop_stage_id is not None:
+            test_type = TestType.REAL_PROP
+        elif personal_trading_account_id is not None:
+            test_type = TestType.REAL_PERSONAL
+        else:
+            test_type = TestType.BACKTEST
     return Trade(
         symbol="XAUUSD",
         direction="buy",
@@ -40,7 +83,7 @@ def _trade(
         source=source,
         test_type=test_type,
         prop_stage_id=prop_stage_id,
-        finance_account_id=finance_account_id,
+        personal_trading_account_id=personal_trading_account_id,
         version_id=version_id,
         is_deleted=deleted,
     )
@@ -70,8 +113,8 @@ def _seed_stage(db, stage_type=StageType.STAGE_1):
 def test_prop_stage_trades_excludes_deleted(client, db_session):
     stage = _seed_stage(db_session)
     db_session.add_all([
-        _trade(100.0, prop_stage_id=stage.id),
-        _trade(999.0, prop_stage_id=stage.id, deleted=True),
+        _trade(db_session, 100.0, prop_stage_id=stage.id),
+        _trade(db_session, 999.0, prop_stage_id=stage.id, deleted=True),
     ])
     db_session.commit()
 
@@ -83,8 +126,8 @@ def test_prop_stage_trades_excludes_deleted(client, db_session):
 def test_prop_rule_engine_excludes_deleted(client, db_session):
     stage = _seed_stage(db_session)
     db_session.add_all([
-        _trade(500.0, prop_stage_id=stage.id),
-        _trade(-400.0, prop_stage_id=stage.id, deleted=True),
+        _trade(db_session, 500.0, prop_stage_id=stage.id),
+        _trade(db_session, -400.0, prop_stage_id=stage.id, deleted=True),
     ])
     db_session.commit()
 
@@ -100,8 +143,8 @@ def test_prop_rule_engine_excludes_deleted(client, db_session):
 def test_analyze_prop_stage_excludes_deleted(client, db_session):
     stage = _seed_stage(db_session)
     db_session.add_all([
-        _trade(100.0, prop_stage_id=stage.id),
-        _trade(50.0, prop_stage_id=stage.id, deleted=True),
+        _trade(db_session, 100.0, prop_stage_id=stage.id),
+        _trade(db_session, 50.0, prop_stage_id=stage.id, deleted=True),
     ])
     db_session.commit()
 
@@ -110,17 +153,16 @@ def test_analyze_prop_stage_excludes_deleted(client, db_session):
     assert res["result"].net_pnl == 100.0
 
 
-def test_analyze_broker_excludes_deleted(client, db_session):
-    acct = Account(name="B", type=AccountType.BROKER, currency=Currency.USD)
-    db_session.add(acct)
+def test_analyze_personal_account_excludes_deleted(client, db_session):
+    pta = _pta(db_session)
     db_session.flush()
     db_session.add_all([
-        _trade(200.0, finance_account_id=acct.id),
-        _trade(20.0, finance_account_id=acct.id, deleted=True),
+        _trade(db_session, 200.0, personal_trading_account_id=pta.id),
+        _trade(db_session, 20.0, personal_trading_account_id=pta.id, deleted=True),
     ])
     db_session.commit()
 
-    res = AnalysisService(db_session).analyze_broker(acct.id)
+    res = AnalysisService(db_session).analyze_personal_account(pta.id)
     assert res["result"].total_trades == 1
     assert res["result"].net_pnl == 200.0
 
@@ -129,16 +171,15 @@ def test_analyze_broker_excludes_deleted(client, db_session):
 # مالی (finance.py)
 # ═════════════════════════════════════════════
 def test_finance_real_pnl_excludes_deleted(client, db_session):
-    broker_id = client.post("/api/finance/accounts", json={
-        "name": "B", "type": "broker", "currency": "USD",
-    }).json()["id"]
+    pta = _pta(db_session)
     stage = _seed_stage(db_session, StageType.FUNDED_REAL)
+    db_session.flush()
 
     db_session.add_all([
-        _trade(100.0, prop_stage_id=stage.id),
-        _trade(700.0, prop_stage_id=stage.id, deleted=True),
-        _trade(300.0, finance_account_id=broker_id),
-        _trade(900.0, finance_account_id=broker_id, deleted=True),
+        _trade(db_session, 100.0, prop_stage_id=stage.id),
+        _trade(db_session, 700.0, prop_stage_id=stage.id, deleted=True),
+        _trade(db_session, 300.0, personal_trading_account_id=pta.id),
+        _trade(db_session, 900.0, personal_trading_account_id=pta.id, deleted=True),
     ])
     db_session.commit()
 
@@ -150,8 +191,8 @@ def test_finance_real_pnl_excludes_deleted(client, db_session):
 
 def test_finance_calendar_excludes_deleted(client, db_session):
     db_session.add_all([
-        _trade(100.0),
-        _trade(500.0, deleted=True),
+        _trade(db_session, 100.0),
+        _trade(db_session, 500.0, deleted=True),
     ])
     db_session.commit()
 
@@ -165,8 +206,8 @@ def test_finance_calendar_excludes_deleted(client, db_session):
 # ═════════════════════════════════════════════
 def test_analytics_dashboard_excludes_deleted(client, db_session):
     db_session.add_all([
-        _trade(100.0),
-        _trade(500.0, deleted=True),
+        _trade(db_session, 100.0),
+        _trade(db_session, 500.0, deleted=True),
     ])
     db_session.commit()
 
@@ -177,8 +218,8 @@ def test_analytics_dashboard_excludes_deleted(client, db_session):
 
 def test_analytics_calendar_excludes_deleted(client, db_session):
     db_session.add_all([
-        _trade(100.0),
-        _trade(500.0, deleted=True),
+        _trade(db_session, 100.0),
+        _trade(db_session, 500.0, deleted=True),
     ])
     db_session.commit()
 
@@ -190,24 +231,18 @@ def test_analytics_calendar_excludes_deleted(client, db_session):
 # ═════════════════════════════════════════════
 # همگام‌سازی مالی (finance_sync_service.py)
 # ═════════════════════════════════════════════
-def test_finance_sync_skips_deleted(client, db_session):
-    broker_id = client.post("/api/finance/accounts", json={
-        "name": "B", "type": "broker", "currency": "USD",
-    }).json()["id"]
-
+def test_finance_sync_is_noop_after_bridge_removal(client, db_session):
+    """فاز ۲۸: پل Trade→Finance حذف شد؛ sync_closed_trades هیچ Transaction نمی‌سازد."""
+    pta = _pta(db_session)
+    db_session.flush()
     db_session.add_all([
-        _trade(100.0, finance_account_id=broker_id),
-        _trade(200.0, finance_account_id=broker_id, deleted=True),
+        _trade(db_session, 100.0, personal_trading_account_id=pta.id),
+        _trade(db_session, 200.0, personal_trading_account_id=pta.id, deleted=True),
     ])
     db_session.commit()
 
     created = FinanceSyncService(db_session).sync_closed_trades()
-    assert created == 1
-    txs = db_session.query(Transaction).filter(
-        Transaction.related_trade_id.isnot(None)
-    ).all()
-    assert len(txs) == 1
-    assert txs[0].amount == 100.0
+    assert created == 0
 
 
 # ═════════════════════════════════════════════
@@ -223,8 +258,8 @@ def test_strategies_trades_count_excludes_deleted(client, db_session):
     db_session.refresh(v)
 
     db_session.add_all([
-        _trade(100.0, version_id=v.id),
-        _trade(50.0, version_id=v.id, deleted=True),
+        _trade(db_session, 100.0, version_id=v.id),
+        _trade(db_session, 50.0, version_id=v.id, deleted=True),
     ])
     db_session.commit()
 
@@ -243,8 +278,8 @@ def test_version_trades_excludes_deleted(client, db_session):
     db_session.refresh(v)
 
     db_session.add_all([
-        _trade(100.0, version_id=v.id),
-        _trade(50.0, version_id=v.id, deleted=True),
+        _trade(db_session, 100.0, version_id=v.id),
+        _trade(db_session, 50.0, version_id=v.id, deleted=True),
     ])
     db_session.commit()
 

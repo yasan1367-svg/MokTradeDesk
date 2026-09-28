@@ -9,53 +9,56 @@ class TradeValidator:
     def validate_classification(
         test_type: str,
         version_id: Optional[int],
-        finance_account_id: Optional[int],
+        personal_trading_account_id: Optional[int],
         prop_stage_id: Optional[int],
     ) -> Tuple[bool, Optional[str]]:
         """
-        اعتبارسنجی طبقه‌بندی معامله.
+        اعتبارسنجی طبقه‌بندی معامله طبق قرارداد فاز ۲۷.
+
+        | نوع            | version_id | personal_trading_account_id | prop_stage_id |
+        | BACKTEST       | اجباری     | ممنوع                       | ممنوع         |
+        | FORWARD        | اجباری     | ممنوع                       | ممنوع         |
+        | REAL_PERSONAL  | اجباری     | اجباری                      | ممنوع         |
+        | REAL_PROP      | اجباری     | ممنوع                       | اجباری        |
+
         Returns: (is_valid, error_message)
         """
         # تبدیل test_type به Enum
         try:
-            test_type_enum = TestType(test_type)
+            tt = TestType(test_type)
         except ValueError:
             return False, f"نوع تست نامعتبر: {test_type}"
 
+        # version_id برای همهٔ انواع اجباری است
+        if not version_id:
+            return False, f"{tt.name} نیاز به version_id دارد"
+
         # ═════════════════════════════════════════════
-        # BACKTEST
+        # BACKTEST / FORWARD — نه حساب شخصی، نه پراپ
         # ═════════════════════════════════════════════
-        if test_type_enum == TestType.BACKTEST:
-            if not version_id:
-                return False, "BACKTEST نیاز به version_id دارد"
-            if finance_account_id:
-                return False, "BACKTEST نباید finance_account_id داشته باشد"
+        if tt in (TestType.BACKTEST, TestType.FORWARD):
+            if personal_trading_account_id:
+                return False, f"{tt.name} نباید personal_trading_account_id داشته باشد"
             if prop_stage_id:
-                return False, "BACKTEST نباید prop_stage_id داشته باشد"
+                return False, f"{tt.name} نباید prop_stage_id داشته باشد"
 
         # ═════════════════════════════════════════════
-        # FORWARD
+        # REAL_PERSONAL — فقط حساب معاملاتی شخصی
         # ═════════════════════════════════════════════
-        elif test_type_enum == TestType.FORWARD:
-            if not version_id:
-                return False, "FORWARD نیاز به version_id دارد"
-            if finance_account_id:
-                return False, "FORWARD نباید finance_account_id داشته باشد"
+        elif tt == TestType.REAL_PERSONAL:
             if prop_stage_id:
-                return False, "FORWARD نباید prop_stage_id داشته باشد"
+                return False, "REAL_PERSONAL نباید prop_stage_id داشته باشد"
+            if not personal_trading_account_id:
+                return False, "REAL_PERSONAL نیاز به personal_trading_account_id دارد"
 
         # ═════════════════════════════════════════════
-        # REAL (Personal یا Prop)
+        # REAL_PROP — فقط مرحله پراپ (XOR)
         # ═════════════════════════════════════════════
-        elif test_type_enum == TestType.REAL:
-            if not version_id:
-                return False, "REAL نیاز به version_id دارد"
-
-            # XOR: دقیقاً یکی از دو
-            if finance_account_id and prop_stage_id:
-                return False, "REAL نمی‌تواند همزمان finance_account_id و prop_stage_id داشته باشد"
-            if not finance_account_id and not prop_stage_id:
-                return False, "REAL باید یکی از finance_account_id یا prop_stage_id را داشته باشد"
+        elif tt == TestType.REAL_PROP:
+            if personal_trading_account_id:
+                return False, "REAL_PROP نباید personal_trading_account_id داشته باشد"
+            if not prop_stage_id:
+                return False, "REAL_PROP نیاز به prop_stage_id دارد"
 
         return True, None
 

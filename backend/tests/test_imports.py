@@ -46,7 +46,7 @@ def test_import_mt4_backtest_with_prop_stage_id(client):
 
 def test_import_mt4_real_prop_passes_classification(client):
     """REAL + version_id + prop_stage_id از Classification رد می‌شود"""
-    res = _post_mt4(client, test_type="real", version_id=1, prop_stage_id=3)
+    res = _post_mt4(client, test_type="real_prop", version_id=1, prop_stage_id=3)
     # خطا مربوط به مرحله‌ی پارس فایل است، یعنی Classification پاس شده
     assert res.status_code == 400
     assert res.json()["detail"] == "هیچ معامله‌ای در فایل یافت نشد"
@@ -64,7 +64,7 @@ def test_import_soft4x_backtest_without_version_id(client):
 
 def test_import_soft4x_real_prop_passes_classification(client):
     """REAL + version_id + prop_stage_id در Soft4X هم از Classification رد می‌شود"""
-    res = _post_soft4x(client, test_type="real", version_id=1, prop_stage_id=3)
+    res = _post_soft4x(client, test_type="real_prop", version_id=1, prop_stage_id=3)
     # Classification پاس شده → خطا از پارس فایل xlsx نامعتبر می‌آید
     assert res.status_code == 500
     assert "خطا در پردازش فایل" in res.json()["detail"]

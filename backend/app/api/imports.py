@@ -22,6 +22,7 @@ async def import_soft4x(
     version_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
     symbol: Optional[str] = Form("XAUUSD"),
+    personal_trading_account_id: Optional[int] = Form(None),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
 ):
@@ -29,12 +30,12 @@ async def import_soft4x(
         raise HTTPException(status_code=400, detail="فایل باید با فرمت xlsx باشد")
 
     # امضای validate_classification چهار آرگومان دارد:
-    # (test_type, version_id, finance_account_id, prop_stage_id)
-    # endpoint ایمپورت finance_account_id نمی‌گیرد → None
+    # (test_type, version_id, personal_trading_account_id, prop_stage_id)
+    # حساب معاملاتی شخصی فقط برای REAL_PERSONAL لازم است
     valid, error = TradeValidator.validate_classification(
         test_type=test_type or "backtest",
         version_id=version_id,
-        finance_account_id=None,
+        personal_trading_account_id=personal_trading_account_id,
         prop_stage_id=prop_stage_id,
     )
     if not valid:
@@ -59,6 +60,7 @@ async def import_soft4x(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_trading_account_id=personal_trading_account_id,
             )
             target_label = "استراتژی"
         elif prop_stage_id:
@@ -66,6 +68,7 @@ async def import_soft4x(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_trading_account_id=personal_trading_account_id,
             )
             target_label = "پراپ"
 
@@ -105,6 +108,7 @@ async def import_mt4(
     request: Request,
     file: UploadFile = File(...),
     version_id: Optional[int] = Form(None),
+    personal_trading_account_id: Optional[int] = Form(None),
     prop_stage_id: Optional[int] = Form(None),
     test_type: Optional[str] = Form("backtest"),
     db: Session = Depends(get_db)
@@ -113,12 +117,12 @@ async def import_mt4(
         raise HTTPException(status_code=400, detail="فایل باید با فرمت html باشد")
 
     # امضای validate_classification چهار آرگومان دارد:
-    # (test_type, version_id, finance_account_id, prop_stage_id)
-    # endpoint ایمپورت finance_account_id نمی‌گیرد → None
+    # (test_type, version_id, personal_trading_account_id, prop_stage_id)
+    # حساب معاملاتی شخصی فقط برای REAL_PERSONAL لازم است
     valid, error = TradeValidator.validate_classification(
         test_type=test_type or "backtest",
         version_id=version_id,
-        finance_account_id=None,
+        personal_trading_account_id=personal_trading_account_id,
         prop_stage_id=prop_stage_id,
     )
     if not valid:
@@ -155,6 +159,7 @@ async def import_mt4(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_trading_account_id=personal_trading_account_id,
             )
             target_label = "استراتژی"
         elif prop_stage_id:
@@ -162,6 +167,7 @@ async def import_mt4(
                 trades,
                 version_id=version_id,
                 prop_stage_id=prop_stage_id,
+                personal_trading_account_id=personal_trading_account_id,
             )
             target_label = "پراپ"
 
