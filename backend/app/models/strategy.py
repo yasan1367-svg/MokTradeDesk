@@ -179,6 +179,14 @@ class Trade(Base):
         back_populates="trade",
         cascade="all, delete-orphan"
     )
+    # فاز ۳۱: هویت‌های ایمپورت این معامله (Duplicate Detection).
+    # Cascade لازم است تا Hard Delete معامله، هویت را هم پاک کند و
+    # re-import بعدی اشتباهاً «تکراری» تشخیص داده نشود.
+    import_identities = relationship(
+        "ImportIdentity",
+        back_populates="trade",
+        cascade="all, delete-orphan"
+    )
 
 
 class CustomTimeInterval(Base):

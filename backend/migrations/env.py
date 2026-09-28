@@ -52,6 +52,14 @@ from app.models.trading import (
     PersonalTradingAccount,
 )
 
+# Import Models (فاز ۳۰/۳۱)
+from app.models.imports import (
+    ImportProfile,
+    ImportBatch,
+    ImportBatchRow,
+    ImportIdentity,
+)
+
 # ═════════════════════════════════════════════
 # Alembic Config
 # ═════════════════════════════════════════════

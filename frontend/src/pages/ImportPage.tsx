@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   getAllVersions,
-  importSoft4X,
-  importMT4,
+  previewImport,
+  commitImport,
+  cancelImportBatch,
   getAllPropStages,
   getSymbolMappings,
   createSymbolMapping,
@@ -33,6 +34,9 @@ export default function ImportPage() {
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [result, setResult] = useState<any>(null);
+  // فاز ۳۰: خروجی Preview (تا تأیید کاربر هیچ معامله‌ای ساخته نمی‌شود)
+  const [preview, setPreview] = useState<any>(null);
+  const [allowPossible, setAllowPossible] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -72,6 +76,7 @@ export default function ImportPage() {
     if (droppedFile) {
       setFile(droppedFile);
       setResult(null);
+      setPreview(null);
       setError(null);
     }
   };
@@ -81,9 +86,16 @@ export default function ImportPage() {
     if (selected) {
       setFile(selected);
       setResult(null);
+      setPreview(null);
       setError(null);
     }
   };
+
+  // تغییر تنظیمات ⇒ Preview قبلی بی‌اعتبار می‌شود
+  useEffect(() => {
+    setPreview(null);
+    setAllowPossible(false);
+  }, [fileType, importTarget, selectedVersion, selectedPropStage, symbol, testType]);
 
   const handleSubmit = async () => {
     if (!file) {
@@ -94,30 +106,63 @@ export default function ImportPage() {
     setLoading(true);
     setError(null);
     setResult(null);
+    setPreview(null);
+    setAllowPossible(false);
 
     try {
-            let response;
-      if (fileType === 'soft4x') {
-        if (importTarget === 'prop') {
-          // ✅ Real Prop: هم version_id هم prop_stage_id
-          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType, selectedPropStage || undefined);
-        } else {
-          response = await importSoft4X(file, selectedVersion || undefined, symbol, testType);
-        }
-      } else {
-        if (importTarget === 'prop') {
-          // ✅ Real Prop
-          response = await importMT4(file, selectedVersion || undefined, testType, selectedPropStage || undefined);
-        } else {
-          response = await importMT4(file, selectedVersion || undefined, testType);
-        }
-      }
-      setResult(response.data);
+      const response = await previewImport(
+        file,
+        fileType === 'soft4x' ? 'soft4x_xlsx' : 'mt4_html',
+        {
+          versionId: selectedVersion || undefined,
+          propStageId: importTarget === 'prop' ? selectedPropStage || undefined : undefined,
+          symbol: fileType === 'soft4x' ? symbol : undefined,
+          testType,
+        },
+      );
+      setPreview(response.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || err.message || 'خطا در آپلود فایل');
+      setError(err.response?.data?.detail || err.message || 'خطا در پیش‌نمایش فایل');
     } finally {
       setLoading(false);
     }
+  };
+
+  // تأیید کاربر ⇒ Commit اتمیک روی همان batch (بدون آپلود دوباره)
+  const handleConfirm = async () => {
+    if (!preview?.batch_id) return;
+
+    setLoading(true);
+    setError(null);
+
+    try {
+      const response = await commitImport(preview.batch_id, allowPossible);
+      const data = response.data;
+      setResult({
+        total_trades: data.total,
+        saved_trades: data.imported,
+        duplicates_count: data.duplicate,
+        message: data.message,
+      });
+      setPreview(null);
+      setAllowPossible(false);
+    } catch (err: any) {
+      setError(err.response?.data?.detail || err.message || 'خطا در ذخیره‌ی ایمپورت');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  const handleCancelPreview = async () => {
+    if (preview?.batch_id) {
+      try {
+        await cancelImportBatch(preview.batch_id);
+      } catch (err) {
+        console.error('لغو ایمپورت:', err);
+      }
+    }
+    setPreview(null);
+    setAllowPossible(false);
   };
 
   // ═════════════════════════════════════════════
@@ -442,7 +487,7 @@ export default function ImportPage() {
             )}
           </div>
 
-          {/* دکمه‌ی ذخیره */}
+          {/* دکمه‌ی پیش‌نمایش (فاز ۳۰: Preview قبل از Commit) */}
           <button
             onClick={handleSubmit}
             disabled={loading || !file}
@@ -453,8 +498,130 @@ export default function ImportPage() {
             }`}
             style={!loading && file ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
           >
-            {loading ? '⏳ در حال پردازش...' : '🚀 وارد کن'}
+            {loading ? '⏳ در حال پردازش...' : '🔍 پیش‌نمایش ایمپورت'}
           </button>
+
+          {/* پنل پیش‌نمایش + تأیید کاربر */}
+          {preview && (
+            <div className="mt-5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[18px] p-5 space-y-4">
+              <div className="flex items-center justify-between">
+                <h4 className="text-[14px] font-extrabold text-[var(--text-primary)]">
+                  👁️ پیش‌نمایش (بدون تغییر در معاملات)
+                </h4>
+                <span className="text-[11px] font-bold text-[var(--text-muted)]" dir="ltr">
+                  Import #{preview.batch_id}
+                </span>
+              </div>
+
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+                <div className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                  <div className="text-[11px] font-bold text-[var(--text-secondary)]">کل ردیف‌ها</div>
+                  <div className="text-[20px] font-extrabold text-[var(--accent)]">{preview.total}</div>
+                </div>
+                <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] rounded-[12px] p-3">
+                  <div className="text-[11px] font-bold text-[var(--text-secondary)]">جدید</div>
+                  <div className="text-[20px] font-extrabold text-[var(--profit)]">
+                    {preview.counts?.new ?? 0}
+                  </div>
+                </div>
+                <div className="bg-[var(--warning-soft)] border border-[var(--warning-border)] rounded-[12px] p-3">
+                  <div className="text-[11px] font-bold text-[var(--text-secondary)]">تکراری</div>
+                  <div className="text-[20px] font-extrabold text-[var(--warning)]">{preview.duplicate}</div>
+                </div>
+                <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] rounded-[12px] p-3">
+                  <div className="text-[11px] font-bold text-[var(--text-secondary)]">نامعتبر</div>
+                  <div className="text-[20px] font-extrabold text-[var(--loss)]">{preview.failed}</div>
+                </div>
+              </div>
+
+              {(preview.counts?.possible_duplicate ?? 0) > 0 && (
+                <label className="flex items-center gap-3 bg-[var(--warning-soft)] border border-[var(--warning-border)] rounded-[12px] p-3 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={allowPossible}
+                    onChange={(e) => setAllowPossible(e.target.checked)}
+                    className="w-4 h-4 accent-[var(--warning)]"
+                  />
+                  <span className="text-[12px] font-bold text-[var(--text-primary)]">
+                    {preview.counts.possible_duplicate} ردیف مشکوک به تکرار هم وارد شود
+                  </span>
+                </label>
+              )}
+
+              {preview.failed > 0 && (
+                <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] rounded-[12px] p-3 text-[12px] font-bold text-[var(--loss)]">
+                  ⛔ {preview.failed} ردیف نامعتبر است؛ Import اتمیک است و تا اصلاح فایل ذخیره
+                  انجام نمی‌شود.
+                </div>
+              )}
+
+              <div className="max-h-56 overflow-auto rounded-[12px] border border-[var(--border-subtle)]">
+                <table className="w-full text-[11px]">
+                  <thead className="bg-[var(--bg-elevated)] sticky top-0">
+                    <tr className="text-[var(--text-secondary)]">
+                      <th className="p-2 text-right">#</th>
+                      <th className="p-2 text-right">نماد</th>
+                      <th className="p-2 text-right">جهت</th>
+                      <th className="p-2 text-right">زمان ورود</th>
+                      <th className="p-2 text-right">وضعیت</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {(preview.rows || []).map((row: any) => (
+                      <tr key={row.row_number} className="border-t border-[var(--border-subtle)]">
+                        <td className="p-2 text-[var(--text-muted)]">{row.row_number}</td>
+                        <td className="p-2 font-bold text-[var(--text-primary)]" dir="ltr">
+                          {row.symbol}
+                        </td>
+                        <td className="p-2 text-[var(--text-secondary)]" dir="ltr">
+                          {row.direction}
+                        </td>
+                        <td className="p-2 text-[var(--text-secondary)]" dir="ltr">
+                          {row.open_time ? String(row.open_time).slice(0, 16).replace('T', ' ') : '-'}
+                        </td>
+                        <td className="p-2 font-bold">
+                          {row.status === 'new' && <span className="text-[var(--profit)]">جدید</span>}
+                          {row.status === 'duplicate' && (
+                            <span className="text-[var(--warning)]">تکراری</span>
+                          )}
+                          {row.status === 'possible_duplicate' && (
+                            <span className="text-[var(--warning)]">مشکوک</span>
+                          )}
+                          {row.status === 'invalid' && <span className="text-[var(--loss)]">نامعتبر</span>}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              <div className="flex gap-3">
+                <button
+                  onClick={handleConfirm}
+                  disabled={loading || preview.failed > 0}
+                  className={`flex-1 py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
+                    loading || preview.failed > 0
+                      ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)] cursor-not-allowed'
+                      : 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.35)]'
+                  }`}
+                  style={
+                    !loading && preview.failed === 0
+                      ? { background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }
+                      : {}
+                  }
+                >
+                  {loading ? '⏳ در حال ذخیره...' : '✅ تأیید و ذخیره'}
+                </button>
+                <button
+                  onClick={handleCancelPreview}
+                  disabled={loading}
+                  className="px-5 py-3 rounded-[12px] text-[13px] font-extrabold bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--loss-border)] hover:text-[var(--loss)] transition-all"
+                >
+                  ✕ لغو
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* راهنما */}
           <div className="mt-5 bg-[var(--accent-soft)] border border-[var(--border-accent)] rounded-[14px] p-4">

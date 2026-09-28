@@ -11,6 +11,7 @@ from datetime import datetime, timezone
 from .core.database import engine, Base
 from .core.rate_limit import limiter
 from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance, broker, trading
+from .api import import_engine as import_engine_api
 from .api import settings as settings_api
 from .api import backup as backup_api
 
@@ -152,6 +153,8 @@ app.include_router(strategies.router, prefix="/api/strategies", tags=["strategie
 app.include_router(prop.router, prefix="/api/prop", tags=["prop"])
 app.include_router(personal.router, prefix="/api/personal", tags=["personal"])
 app.include_router(imports.router, prefix="/api/imports", tags=["imports"])
+# فاز ۳۰/۳۱: موتور ایمپورت (preview / commit / batches / profiles)
+app.include_router(import_engine_api.router, prefix="/api/imports", tags=["imports"])
 app.include_router(analytics.router, prefix="/api/analytics", tags=["analytics"])
 app.include_router(export.router, prefix="/api/export", tags=["export"])
 app.include_router(trades.router, prefix="/api/trades", tags=["trades"])

@@ -127,6 +127,84 @@ export const importMT4 = (
 };
 
 // ─────────────────────────────────────────────
+// Import Engine (فاز ۳۰/۳۱) — Preview / Commit / Batches / Profiles
+// ─────────────────────────────────────────────
+export type ImportSourceFormat = 'soft4x_xlsx' | 'mt4_html';
+
+export interface ImportOptions {
+  versionId?: number;
+  propStageId?: number;
+  personalTradingAccountId?: number;
+  symbol?: string;
+  testType?: string;
+  profileId?: number;
+  columnMapping?: Record<string, any>;
+  symbolMapping?: Record<string, string>;
+}
+
+const buildImportFormData = (
+  file: File,
+  sourceFormat: ImportSourceFormat,
+  options: ImportOptions = {},
+) => {
+  const formData = new FormData();
+  formData.append('file', file);
+  formData.append('source_format', sourceFormat);
+  if (options.versionId) formData.append('version_id', options.versionId.toString());
+  if (options.propStageId) formData.append('prop_stage_id', options.propStageId.toString());
+  if (options.personalTradingAccountId)
+    formData.append('personal_trading_account_id', options.personalTradingAccountId.toString());
+  if (options.profileId) formData.append('profile_id', options.profileId.toString());
+  if (options.symbol) formData.append('symbol', options.symbol);
+  if (options.testType) formData.append('test_type', options.testType);
+  if (options.columnMapping)
+    formData.append('column_mapping', JSON.stringify(options.columnMapping));
+  if (options.symbolMapping)
+    formData.append('symbol_mapping', JSON.stringify(options.symbolMapping));
+  return formData;
+};
+
+/** مرحله‌ی Preview — هیچ معامله‌ای ساخته نمی‌شود؛ فقط staging + تشخیص تکرار */
+export const previewImport = (
+  file: File,
+  sourceFormat: ImportSourceFormat,
+  options: ImportOptions = {},
+) =>
+  api.post('/api/imports/preview', buildImportFormData(file, sourceFormat, options), {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+
+/** مرحله‌ی تأیید کاربر — Commit اتمیک روی همان batch */
+export const commitImport = (batchId: number, allowPossibleDuplicates = false) =>
+  api.post(`/api/imports/commit/${batchId}`, {
+    allow_possible_duplicates: allowPossibleDuplicates,
+  });
+
+export const cancelImportBatch = (batchId: number) =>
+  api.post(`/api/imports/batches/${batchId}/cancel`);
+
+export const getImportBatches = (params?: { limit?: number; status?: string }) =>
+  api.get('/api/imports/batches', { params });
+
+export const getImportBatch = (
+  batchId: number,
+  params?: { include_rows?: boolean; rows_limit?: number },
+) => api.get(`/api/imports/batches/${batchId}`, { params });
+
+export const getImportProfiles = (includeInactive = true) =>
+  api.get('/api/imports/profiles', { params: { include_inactive: includeInactive } });
+
+export const createImportProfile = (payload: Record<string, any>) =>
+  api.post('/api/imports/profiles', payload);
+
+export const updateImportProfile = (profileId: number, payload: Record<string, any>) =>
+  api.patch(`/api/imports/profiles/${profileId}`, payload);
+
+export const deleteImportProfile = (profileId: number) =>
+  api.delete(`/api/imports/profiles/${profileId}`);
+
+
+// ─────────────────────────────────────────────
 // Analytics Detail
 // ─────────────────────────────────────────────
 export const getVersionTrades = (versionId: number) =>

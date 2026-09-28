@@ -1,30 +1,19 @@
 from datetime import datetime
 from sqlalchemy.orm import Session
-from typing import List, Dict, Any, Optional
-import hashlib
+from typing import Any, Dict, List, Optional
 from bs4 import BeautifulSoup
 
-from ..models.strategy import Trade, TradeSource, TestType
+from ..models.strategy import TradeSource, TestType
+from ..utils.import_identity import compute_trade_hash
 from ..utils.trade_metrics import calculate_r_multiple
 
 
 # ═════════════════════════════════════════════
 # Helpers
 # ═════════════════════════════════════════════
-def _calculate_trade_hash(trade_data: Dict[str, Any]) -> str:
-    """محاسبه hash برای Duplicate Detection"""
-    key_parts = [
-        str(trade_data.get("source", "")),
-        str(trade_data.get("symbol", "")),
-        str(trade_data.get("direction", "")),
-        str(trade_data.get("open_time", "")),
-        str(trade_data.get("close_time", "")),
-        str(trade_data.get("open_price", "")),
-        str(trade_data.get("close_price", "")),
-        str(trade_data.get("size", "")),
-    ]
-    key = "|".join(key_parts)
-    return hashlib.md5(key.encode()).hexdigest()
+# فاز ۳۰: منطق hash در `utils/import_identity.py` متمرکز شد (همان فرمول قبلی).
+# نام قدیمی برای سازگاری حفظ شده است.
+_calculate_trade_hash = compute_trade_hash
 
 
 # ═════════════════════════════════════════════
@@ -38,7 +27,16 @@ class Soft4XImporter:
         self.symbol = symbol
         self.test_type = TestType(test_type)
 
-    def parse_file(self, file_path: str) -> List[Dict[str, Any]]:
+    def parse_file(
+        self,
+        file_path: str,
+        column_mapping: Optional[Dict[str, Any]] = None,
+    ) -> List[Dict[str, Any]]:
+        """Parse XLSX (فاز ۳۰: پشتیبانی از Column Mapping پروفایل ایمپورت).
+
+        `column_mapping` نگاشتِ «فیلد کانونیکال → نام هدر یا ایندکس صفر-مبنا» است
+        و هدرهای پیش‌فرض را بازنویسی می‌کند؛ مثلاً `{"open_time": "Time Open", "pnl": 8}`.
+        """
         from openpyxl import load_workbook
 
         wb = load_workbook(file_path, data_only=True)
@@ -53,27 +51,46 @@ class Soft4XImporter:
             if header:
                 col_index[str(header).strip()] = idx
 
+        def column(field: str, default_header: str) -> Optional[int]:
+            """ایندکس ستون: اول نگاشت کاربر، بعد هدر پیش‌فرض."""
+            target = (column_mapping or {}).get(field)
+            if isinstance(target, int):
+                return target
+            if target is not None:
+                mapped = col_index.get(str(target).strip())
+                if mapped is not None:
+                    return mapped
+            return col_index.get(default_header)
+
+        open_time_col = column("open_time", "Open Time")
+
         trades = []
         for row in ws.iter_rows(min_row=2, values_only=True):
             if not row or row[0] is None:
                 continue
 
-            if col_index.get("Open Time") is None:
+            if open_time_col is None:
                 continue
 
-            open_time = self._to_datetime(self._get_value(row, col_index.get("Open Time")))
-            close_time = self._to_datetime(self._get_value(row, col_index.get("Close Time")))
+            open_time = self._to_datetime(self._get_value(row, open_time_col))
+            close_time = self._to_datetime(
+                self._get_value(row, column("close_time", "Close Time"))
+            )
 
             if open_time is None:
                 continue
 
-            direction = self._get_direction(self._get_value(row, col_index.get("Type")))
+            direction = self._get_direction(self._get_value(row, column("type", "Type")))
             if direction is None:
                 continue
 
-            open_price = float(self._get_value(row, col_index.get("Open Price"), 0) or 0)
-            close_price = float(self._get_value(row, col_index.get("Close Price"), 0) or 0)
-            sl = self._to_float(self._get_value(row, col_index.get("SL")))
+            open_price = float(
+                self._get_value(row, column("open_price", "Open Price"), 0) or 0
+            )
+            close_price = float(
+                self._get_value(row, column("close_price", "Close Price"), 0) or 0
+            )
+            sl = self._to_float(self._get_value(row, column("sl", "SL")))
 
             trade = {
                 "symbol": self.symbol,
@@ -83,12 +100,14 @@ class Soft4XImporter:
                 "close_time": close_time,
                 "open_price": open_price,
                 "close_price": close_price,
-                "size": float(self._get_value(row, col_index.get("Size"), 0) or 0),
+                "size": float(self._get_value(row, column("size", "Size"), 0) or 0),
                 "sl": sl,
-                "tp": self._to_float(self._get_value(row, col_index.get("TP"))),
-                "pnl": float(self._get_value(row, col_index.get("P/L"), 0) or 0),
+                "tp": self._to_float(self._get_value(row, column("tp", "TP"))),
+                "pnl": float(self._get_value(row, column("pnl", "P/L"), 0) or 0),
                 "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl),
-                "commission": self._to_float(self._get_value(row, col_index.get("Commission"))) or 0,
+                "commission": self._to_float(
+                    self._get_value(row, column("commission", "Commission"))
+                ) or 0,
                 "swap": 0.0,
                 "entry_sequence": 1,
                 "source": TradeSource.SOFT4X_IMPORT,
@@ -99,67 +118,6 @@ class Soft4XImporter:
             trades.append(trade)
 
         return trades
-
-    def save_trades(
-        self,
-        trades: List[Dict[str, Any]],
-        version_id: Optional[int] = None,
-        prop_stage_id: Optional[int] = None,
-        personal_trading_account_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """ذخیره‌ی معاملات با Duplicate Detection"""
-        saved_trades = []
-        duplicate_trades = []
-
-        for trade_data in trades:
-            hash_key = _calculate_trade_hash(trade_data)
-
-            existing = self.db.query(Trade).filter(Trade.trade_hash == hash_key).first()
-            if existing:
-                duplicate_trades.append(trade_data)
-                continue
-
-            db_trade = Trade(
-                version_id=version_id,
-                prop_stage_id=prop_stage_id,
-                personal_trading_account_id=personal_trading_account_id,
-                trade_hash=hash_key,
-                **trade_data
-            )
-            self.db.add(db_trade)
-            saved_trades.append(db_trade)
-
-        self.db.commit()
-
-        if prop_stage_id:
-            self._update_prop_stage_profit(prop_stage_id)
-
-        return {
-            "saved": saved_trades,
-            "duplicates": duplicate_trades,
-            "total": len(trades),
-        }
-
-    def _update_prop_stage_profit(self, prop_stage_id: int):
-        from ..models.prop import PropStage, StageType
-
-        stage = self.db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
-        if not stage:
-            return
-
-        # فاز ۲۵: معاملات حذف‌شده در محاسبه‌ی سود مرحله لحاظ نمی‌شوند
-        all_trades = self.db.query(Trade).filter(
-            Trade.prop_stage_id == prop_stage_id, Trade.is_deleted == False
-        ).all()
-        total_pnl = sum(t.pnl or 0 for t in all_trades)
-
-        if stage.stage_type == StageType.FUNDED_REAL:
-            share = (stage.profit_share_percentage or 80.0) / 100.0
-            stage.current_profit = total_pnl * share
-        else:
-            stage.current_profit = total_pnl
-
-        self.db.commit()
 
     def _apply_symbol_mapping(self, symbol: str) -> str:
         from ..models.strategy import SymbolMapping
@@ -334,67 +292,6 @@ class MT4Importer:
         except Exception as e:
             print(f"  ❌ خطای _parse_row: {e}")
             return None
-
-    def save_trades(
-        self,
-        trades: List[Dict[str, Any]],
-        version_id: Optional[int] = None,
-        prop_stage_id: Optional[int] = None,
-        personal_trading_account_id: Optional[int] = None,
-    ) -> Dict[str, Any]:
-        """ذخیره‌ی معاملات با Duplicate Detection"""
-        saved_trades = []
-        duplicate_trades = []
-
-        for trade_data in trades:
-            hash_key = _calculate_trade_hash(trade_data)
-
-            existing = self.db.query(Trade).filter(Trade.trade_hash == hash_key).first()
-            if existing:
-                duplicate_trades.append(trade_data)
-                continue
-
-            db_trade = Trade(
-                version_id=version_id,
-                prop_stage_id=prop_stage_id,
-                personal_trading_account_id=personal_trading_account_id,
-                trade_hash=hash_key,
-                **trade_data
-            )
-            self.db.add(db_trade)
-            saved_trades.append(db_trade)
-
-        self.db.commit()
-
-        if prop_stage_id:
-            self._update_prop_stage_profit(prop_stage_id)
-
-        return {
-            "saved": saved_trades,
-            "duplicates": duplicate_trades,
-            "total": len(trades),
-        }
-
-    def _update_prop_stage_profit(self, prop_stage_id: int):
-        from ..models.prop import PropStage, StageType
-
-        stage = self.db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
-        if not stage:
-            return
-
-        # فاز ۲۵: معاملات حذف‌شده در محاسبه‌ی سود مرحله لحاظ نمی‌شوند
-        all_trades = self.db.query(Trade).filter(
-            Trade.prop_stage_id == prop_stage_id, Trade.is_deleted == False
-        ).all()
-        total_pnl = sum(t.pnl or 0 for t in all_trades)
-
-        if stage.stage_type == StageType.FUNDED_REAL:
-            share = (stage.profit_share_percentage or 80.0) / 100.0
-            stage.current_profit = total_pnl * share
-        else:
-            stage.current_profit = total_pnl
-
-        self.db.commit()
 
     def _apply_symbol_mapping(self, symbol: str) -> str:
         from ..models.strategy import SymbolMapping
