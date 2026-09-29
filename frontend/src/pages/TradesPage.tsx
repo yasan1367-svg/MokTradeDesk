@@ -14,7 +14,7 @@ import {
   deleteScreenshot,
   getAllVersions,
   getAllPropStages,
-  getFinanceAccounts,
+  getPersonalTradingAccounts,
   exportTradesCsv,
   exportTradesPdf,
 } from '../api/client';
@@ -43,7 +43,7 @@ export default function TradesPage() {
   const [total, setTotal] = useState(0);
   const [versions, setVersions] = useState<any[]>([]);
   const [propStages, setPropStages] = useState<any[]>([]);
-  const [financeAccounts, setFinanceAccounts] = useState<any[]>([]);
+  const [personalAccounts, setPersonalAccounts] = useState<any[]>([]);
 
   const [filterVersion, setFilterVersion] = useState<number | null>(null);
   const [filterSymbol, setFilterSymbol] = useState('');
@@ -79,8 +79,12 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     note: '',
     version_id: '',
     prop_stage_id: '',
-    finance_account_id: '',
+    personal_trading_account_id: '',
   });
+
+  // فاز ۳۸.۵ — نمایش و اعتبارسنجی شرطی دامنه، طبق قرارداد فاز ۲۷
+  const isRealPersonal = manualTrade.test_type === 'real_personal';
+  const isRealProp = manualTrade.test_type === 'real_prop';
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -120,17 +124,15 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
 
   const loadFilters = async () => {
     try {
-      const [versionsRes, stagesRes, financeRes] = await Promise.all([
+      const [versionsRes, stagesRes, ptaRes] = await Promise.all([
         getAllVersions(),
         getAllPropStages(),
-        getFinanceAccounts(),
+        getPersonalTradingAccounts(),
       ]);
       setVersions(versionsRes.data);
       setPropStages(stagesRes.data);
-      // فقط حساب‌های غیرپراپ به‌عنوان حساب مالی معامله
-      setFinanceAccounts(
-        (financeRes.data || []).filter((a: any) => a.type !== 'prop')
-      );
+      // فاز ۳۸.۵: دامنهٔ REAL_PERSONAL از «حساب معاملاتی شخصی» پر می‌شود (نه حساب مالی)
+      setPersonalAccounts(ptaRes.data || []);
     } catch (err) {
       console.error('خطا:', err);
     }
@@ -311,7 +313,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       note: '',
       version_id: '',
       prop_stage_id: '',
-      finance_account_id: '',
+      personal_trading_account_id: '',
     });
     setShowManualModal(true);
   };
@@ -327,24 +329,31 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       return;
     }
 
-    if (manualTrade.test_type === 'real') {
-      const hasFinance = !!manualTrade.finance_account_id;
-      const hasProp = !!manualTrade.prop_stage_id;
-      if (!hasFinance && !hasProp) {
-        setError('برای معامله‌ی REAL انتخاب «حساب مالی» یا «مرحله‌ی پراپ» الزامی است');
-        return;
-      }
-      if (hasFinance && hasProp) {
-        setError('برای معامله‌ی REAL فقط یکی از «حساب مالی» یا «مرحله‌ی پراپ» را انتخاب کنید');
-        return;
-      }
-    } else {
+    // فاز ۳۸.۵ — اعتبارسنجی هم‌سو با `TradeValidator` بک‌اند (قرارداد فاز ۲۷)
+    // (`isRealPersonal` / `isRealProp` در بالای کامپوننت تعریف شده‌اند)
+    if (isRealPersonal && !manualTrade.personal_trading_account_id) {
+      setError('برای معامله‌ی رییل شخصی، انتخاب «حساب معاملاتی شخصی» الزامی است');
+      return;
+    }
+    if (isRealPersonal && manualTrade.prop_stage_id) {
+      setError('برای معامله‌ی رییل شخصی، نباید «مرحله‌ی پراپ» انتخاب شود');
+      return;
+    }
+    if (isRealProp && !manualTrade.prop_stage_id) {
+      setError('برای معامله‌ی رییل پراپ، انتخاب «مرحله‌ی پراپ» الزامی است');
+      return;
+    }
+    if (isRealProp && manualTrade.personal_trading_account_id) {
+      setError('برای معامله‌ی رییل پراپ، نباید «حساب معاملاتی شخصی» انتخاب شود');
+      return;
+    }
+    if (!isRealPersonal && !isRealProp) {
       if (manualTrade.prop_stage_id) {
         setError('برای Backtest و Forward، نباید مرحله‌ی پراپ انتخاب شود');
         return;
       }
-      if (manualTrade.finance_account_id) {
-        setError('برای Backtest و Forward، نباید حساب مالی انتخاب شود');
+      if (manualTrade.personal_trading_account_id) {
+        setError('برای Backtest و Forward، نباید حساب معاملاتی شخصی انتخاب شود');
         return;
       }
     }
@@ -364,7 +373,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         test_type: manualTrade.test_type,
         note: manualTrade.note || undefined,
         version_id: parseInt(manualTrade.version_id),
-        finance_account_id: manualTrade.finance_account_id ? parseInt(manualTrade.finance_account_id) : undefined,
+        personal_trading_account_id: manualTrade.personal_trading_account_id
+          ? parseInt(manualTrade.personal_trading_account_id) : undefined,
         prop_stage_id: manualTrade.prop_stage_id ? parseInt(manualTrade.prop_stage_id) : undefined,
       });
       setSuccessMessage('معامله‌ی دستی ثبت شد');
@@ -409,11 +419,14 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     }
   };
 
+  // فاز ۳۸.۵: مقادیر قرارداد فاز ۲۷ (REAL_PERSONAL/REAL_PROP) + سازگاری با دادهٔ قدیمی ('real')
   const getTestTypeLabel = (testType: string) => {
     const labels: Record<string, string> = {
       backtest: '🧪 بک‌تست',
       forward: '🔭 فوروارد',
-      real: '💰 رییل',
+      real_personal: '💰 رییل شخصی',
+      real_prop: '🏢 رییل پراپ',
+      real: '💰 رییل (قدیمی)',
     };
     return labels[testType] || testType;
   };
@@ -499,7 +512,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <option value="">همه</option>
               <option value="backtest">🧪 بک‌تست</option>
               <option value="forward">🔭 فوروارد</option>
-              <option value="real">💰 رییل</option>
+              <option value="real_personal">💰 رییل شخصی</option>
+              <option value="real_prop">🏢 رییل پراپ</option>
             </select>
           </div>
 
@@ -937,7 +951,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 >
                   <option value="backtest">🧪 بک‌تست</option>
                   <option value="forward">🔭 فوروارد</option>
-                  <option value="real">💰 رییل</option>
+                  <option value="real_personal">💰 رییل شخصی</option>
+                  <option value="real_prop">🏢 رییل پراپ</option>
                 </select>
               </div>
             </div>
@@ -981,24 +996,27 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 </select>
               </div>
 
-              <div>
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب مالی</label>
-                <select
-                  value={manualTrade.finance_account_id}
-                  onChange={(e) => setManualTrade({ ...manualTrade, finance_account_id: e.target.value })}
-                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
-                >
-                  <option value="">— بدون حساب مالی —</option>
-                  {financeAccounts.map((a) => (
-                    <option key={a.id} value={a.id}>
-                      {a.name} ({a.type}{a.broker_name ? ` / ${a.broker_name}` : ''})
-                    </option>
-                  ))}
-                </select>
-              </div>
+              {isRealPersonal && (
+                <div>
+                  <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب معاملاتی شخصی *</label>
+                  <select
+                    value={manualTrade.personal_trading_account_id}
+                    onChange={(e) => setManualTrade({ ...manualTrade, personal_trading_account_id: e.target.value })}
+                    className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
+                  >
+                    <option value="">انتخاب حساب معاملاتی</option>
+                    {personalAccounts.map((a) => (
+                      <option key={a.id} value={a.id}>
+                        {a.account_label || a.account_number || `#${a.id}`}
+                        {a.broker_name ? ` — ${a.broker_name}` : ''}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </div>
 
-            {manualTrade.test_type === 'real' && (
+            {isRealProp && (
               <div className="mb-3">
                 <label className="text-[var(--text-secondary)] text-xs block mb-1">مرحله‌ی پراپ *</label>
                 <select
@@ -1007,22 +1025,6 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="">انتخاب مرحله‌ی پراپ</option>
-                  {propStages.map((s) => (
-                    <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
-                  ))}
-                </select>
-              </div>
-            )}
-
-            {manualTrade.test_type !== 'real' && (
-              <div className="mb-3">
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">مرحله‌ی پراپ</label>
-                <select
-                  value={manualTrade.prop_stage_id}
-                  onChange={(e) => setManualTrade({ ...manualTrade, prop_stage_id: e.target.value })}
-                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
-                >
-                  <option value="">— بدون پراپ —</option>
                   {propStages.map((s) => (
                     <option key={s.id} value={s.id}>{s.display_name || s.stage_type || `Stage ${s.id}`}</option>
                   ))}

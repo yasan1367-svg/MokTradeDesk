@@ -391,18 +391,21 @@ def get_yesterday_data(db: Session = Depends(get_db)):
             t.close_time = ct
             yt.append(t)
 
-    # تفکیک منبع بر اساس دامنهٔ معامله (فاز ۲۸)
+    # تفکیک منبع بر اساس دامنهٔ معامله (فاز ۲۸) — فاز ۳۸.۵: کلیدها با قرارداد فاز ۲۷ هم‌نام شدند
+    #   prop       → REAL_PROP
+    #   personal   → REAL_PERSONAL   (قبلاً به‌اشتباه «broker» بود؛ حساب معاملاتی شخصی روی بروکر)
+    #   simulation → BACKTEST / FORWARD  (بدون دامنهٔ واقعی؛ قبلاً «personal»)
     def classify(t):
         if t.prop_stage_id:
             return "prop"
         if t.personal_trading_account_id:
-            return "broker"
-        return "personal"
+            return "personal"
+        return "simulation"
 
     by_source = {
         "prop": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
-        "broker": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
         "personal": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
+        "simulation": {"trades": 0, "winning": 0, "losing": 0, "pnl": 0.0},
     }
     winning = losing = 0
     net_total = 0.0

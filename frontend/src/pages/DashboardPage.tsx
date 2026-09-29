@@ -503,12 +503,12 @@ const [payouts, setPayouts] = useState<any>(null);
                 </span>
               </div>
               <div className="flex flex-wrap gap-2 pt-1">
-                {(['prop', 'broker', 'personal'] as const).map((k) => (
+                {(['prop', 'personal', 'simulation'] as const).map((k) => (
                   <span
                     key={k}
                     className="text-[11px] px-2.5 py-1 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
                   >
-                    {k === 'prop' ? '🏢 پراپ' : k === 'broker' ? '📊 بروکر' : '👤 شخصی'}: {yesterday.by_source?.[k]?.trades ?? 0}
+                    {k === 'prop' ? '🏢 پراپ' : k === 'personal' ? '👤 شخصی' : '🧪 شبیه‌سازی'}: {yesterday.by_source?.[k]?.trades ?? 0}
                   </span>
                 ))}
               </div>
@@ -517,8 +517,8 @@ const [payouts, setPayouts] = useState<any>(null);
               <MiniBars
                 data={[
                   { label: 'پراپ', value: Math.abs(yesterday.by_source?.prop?.pnl ?? 0) },
-                  { label: 'بروکر', value: Math.abs(yesterday.by_source?.broker?.pnl ?? 0) },
                   { label: 'شخصی', value: Math.abs(yesterday.by_source?.personal?.pnl ?? 0) },
+                  { label: 'شبیه‌سازی', value: Math.abs(yesterday.by_source?.simulation?.pnl ?? 0) },
                 ]}
                 colors={['#3F7CFF', '#7959D6', '#13AE81']}
                 height={120}

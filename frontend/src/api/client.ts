@@ -251,7 +251,6 @@ export const createPropAccount = (data: {
   max_daily_dd?: number;
   max_total_dd?: number;
   min_trading_days?: number;
-  create_finance_account?: boolean;  // 🆕 فاز ۵.۱ — ساخت خودکار حساب مالی
 }) => api.post('/api/prop/accounts', data);
 
 export const getPropAccountDetail = (accountId: number) =>
@@ -280,18 +279,23 @@ export const withdrawFromStage = (
 export const getStageWithdrawals = (stageId: number) =>
   api.get(`/api/prop/stages/${stageId}/withdrawals`);
 
-// 🆕 فاز ۵.۱ — حساب مالی متناظر با یک اکانت پراپ
-export const getPropAccountFinanceAccount = (propAccountId: number) =>
-  api.get(`/api/prop/accounts/${propAccountId}/finance-account`);
-
-// 🆕 فاز ۵.۱ — ساخت (یا اتصال) حساب مالی برای اکانت پراپ
-export const createPropFinanceAccount = (propAccountId: number) =>
-  api.post(`/api/prop/accounts/${propAccountId}/finance-account`);
+// فاز ۳۸.۵: `getPropAccountFinanceAccount` / `createPropFinanceAccount` حذف شدند
+// (endpointهای `/api/prop/accounts/{id}/finance-account` در فاز ۲۸ حذف شده‌اند).
 
 // 🆕 فاز ۵.۱ — حساب‌های مالی مجاز به‌عنوان مقصد برداشت
 // (فیلتر type !== 'prop' در سمت کلاینت انجام می‌شود)
 export const getFinanceAccountsForDestination = () =>
   api.get('/api/finance/accounts');
+
+// ─────────────────────────────────────────────
+// Trading (فاز ۲۸ / ۳۸.۵) — بروکرها + حساب‌های معاملاتی شخصی
+// دامنهٔ TRADING جدا از FINANCE است: منبع درست برای کلاسیفیکیشن REAL_PERSONAL.
+// ─────────────────────────────────────────────
+export const getBrokers = () => api.get('/api/trading/brokers');
+
+/** حساب‌های معاملاتی شخصی (هر کدام روی یک بروکر) — برای انتخاب دامنهٔ معاملهٔ REAL_PERSONAL */
+export const getPersonalTradingAccounts = (params?: { broker_id?: number }) =>
+  api.get('/api/trading/accounts', { params });
 
 export const getStageTrades = (stageId: number) =>
   api.get(`/api/prop/stages/${stageId}/trades`);
@@ -417,9 +421,9 @@ export const createManualTrade = (data: {
   commission?: number;
   swap?: number;
   version_id?: number;
-  // ⚠️ فاز ۳۸.۴ — این فیلد در بک‌اند وجود ندارد (نام درست: `personal_trading_account_id`).
-  // عمداً دست‌نخورده ماند تا `TradesPage` نشکند؛ مهاجرت کامل آن به یک فاز جدا نیاز دارد.
-  finance_account_id?: number;
+  // فاز ۳۸.۵: جایگزین منسوخ `finance_account_id` (که در بک‌اند وجود نداشت).
+  // قرارداد Trade (فاز ۲۷): REAL_PERSONAL ⇒ personal_trading_account_id، REAL_PROP ⇒ prop_stage_id
+  personal_trading_account_id?: number;
   prop_stage_id?: number;
   test_type?: string;
   note?: string;

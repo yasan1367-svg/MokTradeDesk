@@ -54,8 +54,8 @@ type Tab = 'accounts' | 'transactions' | 'categories' | 'reports' | 'advanced'
 
 type Account = {
   id: number; name: string; type: string; currency: string;
-  balance: number; card_number?: string; broker_name?: string;
-  prop_firm_name?: string; prop_firm_id?: number | null; created_at?: string;
+  balance: number; card_number?: string; created_at?: string;
+  // فاز ۳۸.۵: `broker_name`/`prop_firm_name`/`prop_firm_id` حذف شدند (فیلد منسوخهٔ فاز ۲۸)
 };
 
 type Category = {
@@ -73,14 +73,15 @@ type Transaction = {
 };
 
 const ACCOUNT_TYPE_LABELS: Record<string, string> = {
-  bank: '🏦', exchange: '🔄', crypto_wallet: '₿', broker: '📊', prop: '🏢',
+  bank: '🏦', exchange: '🔄', crypto_wallet: '₿',
   card: '💳', cash: '💵', trust_wallet: '🤝',   // فاز ۳۸.۲
+  // فاز ۳۸.۵: `broker`/`prop` حذف شدند (از فاز ۲۸ در AccountType وجود ندارند)
 };
 
 const ACCOUNT_TYPE_NAMES: Record<string, string> = {
   bank: 'بانک', exchange: 'صرافی', crypto_wallet: 'کیف‌پول دیجیتال',
-  broker: 'بروکر', prop: 'پراپ',
   card: 'کارت بانکی', cash: 'پول نقد', trust_wallet: 'کیف پول Trust',  // فاز ۳۸.۲
+  // فاز ۳۸.۵: `broker`/`prop` حذف شدند (از فاز ۲۸ در AccountType وجود ندارند)
 };
 
 const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {

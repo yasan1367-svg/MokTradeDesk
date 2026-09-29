@@ -171,6 +171,87 @@ def test_get_trade_not_found(client):
 
 
 # ═════════════════════════════════════════════
+# فاز ۳۸.۵ — ثبت معاملهٔ دستی با دامنهٔ REAL (قرارداد فاز ۲۷)
+# ═════════════════════════════════════════════
+def _mk_pta(db, label="IC-1"):
+    """بروکر + حساب معاملاتی شخصی (دامنهٔ REAL_PERSONAL)"""
+    from app.models.finance import Currency
+    from app.models.trading import Broker, PersonalTradingAccount
+
+    b = Broker(name=f"B-{label}")
+    db.add(b)
+    db.flush()
+    a = PersonalTradingAccount(
+        broker_id=b.id, account_number=label, account_label=label,
+        currency=Currency.USD, initial_balance=1000.0,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return a
+
+
+def _manual_payload(version_id, **extra):
+    base = {
+        "symbol": "XAUUSD",
+        "direction": "buy",
+        "open_time": "2025-01-01T10:00:00Z",
+        "open_price": 2000,
+        "size": 1,
+        "version_id": version_id,
+    }
+    base.update(extra)
+    return base
+
+
+def test_manual_trade_real_personal_accepts_personal_trading_account(client, db_session):
+    """فاز ۳۸.۵: `personal_trading_account_id` معتبر است (جایگزین منسوخ `finance_account_id`)."""
+    v = _mk_version(db_session, name="rp")
+    pta = _mk_pta(db_session)
+
+    r = client.post("/api/trades/manual", json=_manual_payload(
+        v.id, test_type="real_personal", personal_trading_account_id=pta.id,
+    ))
+    assert r.status_code == 200, r.text
+
+    detail = client.get(f"/api/trades/{r.json()['id']}").json()
+    assert detail["test_type"] == "real_personal"
+    assert detail["personal_trading_account_id"] == pta.id
+    assert detail["personal_trading_account_name"] == "IC-1"
+    assert detail["prop_stage_id"] is None
+
+
+def test_manual_trade_legacy_real_test_type_rejected(client, db_session):
+    """فاز ۳۸.۵: مقدار قدیمی `test_type='real'` (که فرانت می‌فرستاد) نامعتبر است."""
+    v = _mk_version(db_session, name="legacy")
+
+    r = client.post("/api/trades/manual", json=_manual_payload(v.id, test_type="real"))
+    assert r.status_code == 400
+    assert "نوع تست نامعتبر" in r.json()["detail"]
+
+
+def test_manual_trade_real_prop_requires_prop_stage(client, db_session):
+    """REAL_PROP بدون prop_stage_id ⇒ ۴۰۰ (TradeValidator)"""
+    v = _mk_version(db_session, name="rprop")
+
+    r = client.post("/api/trades/manual", json=_manual_payload(v.id, test_type="real_prop"))
+    assert r.status_code == 400
+    assert "prop_stage_id" in r.json()["detail"]
+
+
+def test_manual_trade_backtest_rejects_personal_account(client, db_session):
+    """BACKTEST نباید personal_trading_account_id داشته باشد"""
+    v = _mk_version(db_session, name="bt")
+    pta = _mk_pta(db_session, label="IC-2")
+
+    r = client.post("/api/trades/manual", json=_manual_payload(
+        v.id, test_type="backtest", personal_trading_account_id=pta.id,
+    ))
+    assert r.status_code == 400
+    assert "personal_trading_account_id" in r.json()["detail"]
+
+
+# ═════════════════════════════════════════════
 # Phase 25 — Soft Delete + Batch Delete
 # ═════════════════════════════════════════════
 def test_soft_delete_mt4_trade(client, db_session):

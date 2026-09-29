@@ -16,14 +16,11 @@ import {
   getPropAlerts,
   markAlertRead,
   generatePropAlerts,
-  getPropAccountFinanceAccount,
   getFinanceAccountsForDestination,
-  createPropFinanceAccount,
 } from '../api/client';
 import PropAnalytics from '../components/charts/PropAnalytics';
 import PersianDateInput from '../components/PersianDateInput';
 import Toast from '../components/Toast';
-import Skeleton from '../components/Skeleton';
 
 interface Firm {
   id: number;
@@ -149,10 +146,8 @@ const [alerts, setAlerts] = useState<any[]>([]);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [modalError, setModalError] = useState<string | null>(null);
 
-  // 🆕 فاز ۵.۱ — یکپارچگی با مالی
-  const [createFinanceAccount, setCreateFinanceAccount] = useState(true);
-  const [financeInfo, setFinanceInfo] = useState<{ linked: boolean; account: any } | null>(null);
-  const [loadingDetail, setLoadingDetail] = useState(false);
+  // فاز ۳۸.۵: stateهای «یکپارچگی با مالی» (createFinanceAccount / financeInfo / loadingDetail)
+  // حذف شدند — بک‌اند این پل را در فاز ۲۸ حذف کرده بود و همهٔ آن مسیرها ۴۰۴/بی‌اثر بودند.
 
   // 🆕 فاز ۵.۱ — Modal برداشت
   const [showWithdrawModal, setShowWithdrawModal] = useState(false);
@@ -203,25 +198,11 @@ const [alerts, setAlerts] = useState<any[]>([]);
   };
 
   const loadAccountDetail = async (accountId: number) => {
-    setLoadingDetail(true);
     try {
       const res = await getPropAccountDetail(accountId);
       setAccountDetail(res.data);
-      await loadFinanceInfo(accountId);
     } catch (err) {
       console.error('خطا:', err);
-    } finally {
-      setLoadingDetail(false);
-    }
-  };
-
-  // 🆕 فاز ۵.۱ — اطلاعات حساب مالی متناظر با اکانت پراپ
-  const loadFinanceInfo = async (propAccountId: number) => {
-    try {
-      const res = await getPropAccountFinanceAccount(propAccountId);
-      setFinanceInfo(res.data);
-    } catch {
-      setFinanceInfo({ linked: false, account: null });
     }
   };
 
@@ -280,7 +261,7 @@ const loadAlerts = async (stageId?: number) => {
       const maxDailyDdAmount = (parseFloat(maxDailyDdPercent) || 0) / 100 * initialBalanceNum;
       const maxTotalDdAmount = (parseFloat(maxTotalDdPercent) || 0) / 100 * initialBalanceNum;
 
-      const res = await createPropAccount({
+      await createPropAccount({
         prop_firm_id: selectedFirmId,
         account_label: accountLabel,
         account_number: accountNumber,
@@ -289,25 +270,20 @@ const loadAlerts = async (stageId?: number) => {
         max_daily_dd: maxDailyDdAmount,
         max_total_dd: maxTotalDdAmount,
         min_trading_days: parseInt(minTradingDays) || 5,
-        create_finance_account: createFinanceAccount,  // 🆕 فاز ۵.۱
       });
       setAccountLabel('');
       setAccountNumber('');
       setShowAccountForm(false);
       await loadData();
       await loadDestinationAccounts();
-      setSuccessMessage(
-        createFinanceAccount && res.data?.finance_account_id
-          ? 'اکانت پراپ + حساب مالی ساخته شد'
-          : 'اکانت پراپ ساخته شد'
-      );
+      // فاز ۳۸.۵: پیام ساده — «ساخت خودکار حساب مالی» در فاز ۲۸ حذف شد
+      setSuccessMessage('اکانت پراپ ساخته شد');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در ساخت اکانت');
     }
   };
 
-   
     const handleOpenPassModal = async (stage: Stage) => {
     setModalError(null);
     try {
@@ -481,19 +457,6 @@ await passStageWithRules(
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
       setModalError(err.response?.data?.detail || 'خطا در برداشت');
-    }
-  };
-
-  // 🆕 فاز ۵.۱ — ساخت حساب مالی برای اکانت پراپ
-  const handleCreateFinanceAccount = async (propAccountId: number) => {
-    try {
-      const res = await createPropFinanceAccount(propAccountId);
-      setFinanceInfo(res.data);
-      setSuccessMessage('حساب مالی ساخته و متصل شد');
-      await loadDestinationAccounts();
-      setTimeout(() => setSuccessMessage(null), 3000);
-    } catch (err: any) {
-      setError(err.response?.data?.detail || 'خطا در ساخت حساب مالی');
     }
   };
 
@@ -714,19 +677,8 @@ await passStageWithRules(
             </div>
           </div>
 
-          {/* 🆕 فاز ۵.۱ — ساخت خودکار حساب مالی */}
-          <label className="flex flex-wrap items-center gap-3 bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-4 py-3 mb-3 cursor-pointer hover:border-[var(--profit)] transition-all">
-            <input
-              type="checkbox"
-              checked={createFinanceAccount}
-              onChange={(e) => setCreateFinanceAccount(e.target.checked)}
-              className="w-4 h-4 accent-[#13AE81] cursor-pointer"
-            />
-            <span className="text-[13px] font-bold text-[var(--text-primary)]">💰 ساخت خودکار حساب مالی</span>
-            <span className="text-[11px] text-[var(--text-secondary)]">
-              (یک حساب مالی از نوع «پراپ» برای این اکانت ساخته می‌شود)
-            </span>
-          </label>
+          {/* فاز ۳۸.۵: checkbox «ساخت خودکار حساب مالی» حذف شد
+              (بک‌اند از فاز ۲۸ این فیلد را نمی‌پذیرد و پل پراپ↔مالی حذف شده است) */}
 
           <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
             <button onClick={handleCreateAccount}
@@ -831,40 +783,8 @@ await passStageWithRules(
                 </div>
               </div>
 
-              {/* 🆕 فاز ۵.۱ — حساب مالی متناظر */}
-              {loadingDetail ? (
-                <Skeleton variant="rect" className="h-16 mb-5 rounded-[14px]" />
-              ) : (
-                <div className="mb-5 p-4 rounded-[14px] bg-[var(--bg-input)] border border-[var(--border-subtle)] flex items-center justify-between gap-3 flex-wrap">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">💰</span>
-                    <div>
-                      <div className="text-[13px] font-extrabold text-[var(--text-primary)]">حساب مالی متناظر</div>
-                      {financeInfo?.linked && financeInfo.account ? (
-                        <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">
-                          {financeInfo.account.name} — {financeInfo.account.currency} — موجودی:{' '}
-                          {financeInfo.account.balance?.toLocaleString()}
-                        </div>
-                      ) : (
-                        <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">حساب مالی متصل نیست</div>
-                      )}
-                    </div>
-                  </div>
-                  {financeInfo?.linked ? (
-                    <span className="text-[11px] font-bold text-[var(--profit)] bg-[var(--profit-soft)] border border-[var(--profit-border)] px-3 py-1.5 rounded-full">
-                      ✅ متصل است
-                    </span>
-                  ) : (
-                    <button
-                      onClick={() => handleCreateFinanceAccount(accountDetail.id)}
-                      className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold shadow-[0_4px_12px_rgba(19,174,129,0.3)]"
-                      style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
-                    >
-                      💰 ساخت حساب مالی
-                    </button>
-                  )}
-                </div>
-              )}
+              {/* فاز ۳۸.۵: پنل «حساب مالی متناظر» حذف شد — endpoint آن در فاز ۲۸ حذف شده بود
+                  و همیشه «حساب مالی متصل نیست» نشان می‌داد (کد مرده). */}
 
               <div className="space-y-5">
                 {accountDetail.stages.map((stage: Stage) => {
