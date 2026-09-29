@@ -6,9 +6,9 @@ from pydantic import BaseModel
 
 from ..core.database import get_db
 from ..models.finance import (
-    Account,
+    FinancialAccount,
     Category,
-    Transaction,
+    FinancialTransaction,
     AccountType,
     Currency,
     CategoryType,
@@ -128,11 +128,11 @@ def get_accounts(
     db: Session = Depends(get_db),
 ):
     """لیست همه حساب‌های مالی"""
-    q = db.query(Account).order_by(Account.created_at.desc())
+    q = db.query(FinancialAccount).order_by(FinancialAccount.created_at.desc())
     if type:
-        q = q.filter(Account.type == type)
+        q = q.filter(FinancialAccount.type == type)
     if currency:
-        q = q.filter(Account.currency == currency)
+        q = q.filter(FinancialAccount.currency == currency)
     accounts = q.all()
     result = []
     for a in accounts:
@@ -151,7 +151,7 @@ def get_accounts(
 @router.post("/accounts")
 def create_account(account: AccountCreate, db: Session = Depends(get_db)):
     """ایجاد حساب مالی جدید"""
-    db_account = Account(**account.model_dump())
+    db_account = FinancialAccount(**account.model_dump())
     db.add(db_account)
     db.commit()
     db.refresh(db_account)
@@ -165,7 +165,7 @@ def create_account(account: AccountCreate, db: Session = Depends(get_db)):
 @router.patch("/accounts/{account_id}")
 def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
     """ویرایش حساب مالی"""
-    account = db.query(Account).filter(Account.id == account_id).first()
+    account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -181,7 +181,7 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)):
     """حذف حساب مالی"""
-    account = db.query(Account).filter(Account.id == account_id).first()
+    account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
     db.delete(account)
@@ -259,20 +259,35 @@ def get_transactions(
     account_id: Optional[int] = None,
     type: Optional[TransactionType] = None,
     category_id: Optional[int] = None,
+    limit: Optional[int] = Query(None, ge=1, le=2000, description="فاز ۳۶ — حداکثر تعداد ردیف"),
+    offset: int = Query(0, ge=0, description="فاز ۳۶ — جابه‌جایی (Pagination)"),
     db: Session = Depends(get_db),
 ):
-    """لیست تراکنش‌ها با فیلتر"""
-    q = db.query(Transaction).filter(Transaction.is_deleted == False).order_by(Transaction.date.desc())
+    """لیست تراکنش‌ها با فیلتر + Pagination اختیاری (فاز ۳۶)"""
+    from sqlalchemy.orm import joinedload
+
+    q = (
+        db.query(FinancialTransaction)
+        # فاز ۳۶: رفع N+1 — account/category با یک JOIN بارگذاری می‌شوند
+        .options(joinedload(FinancialTransaction.account), joinedload(FinancialTransaction.category))
+        .filter(FinancialTransaction.is_deleted == False)
+        .order_by(FinancialTransaction.date.desc(), FinancialTransaction.id.desc())
+    )
     if date_from:
-        q = q.filter(Transaction.date >= date_from)
+        q = q.filter(FinancialTransaction.date >= date_from)
     if date_to:
-        q = q.filter(Transaction.date <= date_to)
+        q = q.filter(FinancialTransaction.date <= date_to)
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     if type:
-        q = q.filter(Transaction.type == type)
+        q = q.filter(FinancialTransaction.type == type)
     if category_id:
-        q = q.filter(Transaction.category_id == category_id)
+        q = q.filter(FinancialTransaction.category_id == category_id)
+
+    if offset:
+        q = q.offset(offset)
+    if limit:
+        q = q.limit(limit)
 
     transactions = q.all()
     result = []
@@ -303,7 +318,7 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
     data = tx.model_dump()
     if data.get("date") is None:
         data["date"] = datetime.now(timezone.utc)
-    db_tx = Transaction(**data)
+    db_tx = FinancialTransaction(**data)
     db.add(db_tx)
     db.commit()
     db.refresh(db_tx)
@@ -313,7 +328,7 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
 @router.patch("/transactions/{transaction_id}")
 def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session = Depends(get_db)):
     """ویرایش تراکنش"""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
     for field, value in data.model_dump(exclude_unset=True).items():
@@ -326,7 +341,7 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
 @router.delete("/transactions/{transaction_id}")
 def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
     """حذف نرم تراکنش (soft delete)"""
-    tx = db.query(Transaction).filter(Transaction.id == transaction_id).first()
+    tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
     tx.is_deleted = True
@@ -343,7 +358,7 @@ def get_finance_summary(db: Session = Depends(get_db)):
     from sqlalchemy import func
 
     # مجموع دارایی‌ها به تفکیک ارز
-    accounts = db.query(Account).all()
+    accounts = db.query(FinancialAccount).all()
     assets_by_currency: dict[str, float] = {}
     for a in accounts:
         cur = a.currency.value if a.currency else "USD"
@@ -354,27 +369,27 @@ def get_finance_summary(db: Session = Depends(get_db)):
     expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
 
     total_income = (
-        db.query(func.sum(Transaction.amount))
-        .filter(Transaction.is_deleted == False, Transaction.type.in_(income_types))
+        db.query(func.sum(FinancialTransaction.amount))
+        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(income_types))
         .scalar() or 0.0
     )
 
     total_expense = (
-        db.query(func.sum(Transaction.amount))
-        .filter(Transaction.is_deleted == False, Transaction.type.in_(expense_types))
+        db.query(func.sum(FinancialTransaction.amount))
+        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(expense_types))
         .scalar() or 0.0
     )
 
     total_transfers = (
-        db.query(func.sum(Transaction.amount))
+        db.query(func.sum(FinancialTransaction.amount))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.EXCHANGE,
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.EXCHANGE,
         )
         .scalar() or 0.0
     )
 
-    tx_count = db.query(Transaction).filter(Transaction.is_deleted == False).count()
+    tx_count = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False).count()
 
     return {
         "assets_by_currency": assets_by_currency,
@@ -389,33 +404,33 @@ def get_finance_summary(db: Session = Depends(get_db)):
 def get_account_stats(account_id: int, db: Session = Depends(get_db)):
     """آمار یک حساب مالی: موجودی، درآمد، هزینه، آخرین تراکنش"""
     from sqlalchemy import func
-    account = db.query(Account).filter(Account.id == account_id).first()
+    account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب پیدا نشد")
 
     income_types = [TransactionType.DEPOSIT, TransactionType.PROFIT]
     expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
 
-    base_q = db.query(Transaction).filter(
-        Transaction.is_deleted == False,
-        Transaction.account_id == account_id,
+    base_q = db.query(FinancialTransaction).filter(
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.account_id == account_id,
     )
 
     total_income = (
-        base_q.filter(Transaction.type.in_(income_types))
-        .with_entities(func.sum(Transaction.amount))
+        base_q.filter(FinancialTransaction.type.in_(income_types))
+        .with_entities(func.sum(FinancialTransaction.amount))
         .scalar() or 0.0
     )
 
     total_expense = (
-        base_q.filter(Transaction.type.in_(expense_types))
-        .with_entities(func.sum(Transaction.amount))
+        base_q.filter(FinancialTransaction.type.in_(expense_types))
+        .with_entities(func.sum(FinancialTransaction.amount))
         .scalar() or 0.0
     )
 
     tx_count = base_q.count()
 
-    last_tx = base_q.order_by(Transaction.date.desc()).first()
+    last_tx = base_q.order_by(FinancialTransaction.date.desc()).first()
 
     return {
         "id": account.id,
@@ -451,51 +466,51 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
 
     # برداشت‌های مرتبط با پراپ (فاز ۲۸: بر اساس related_prop_account_id، نه نوع حساب)
     prop_withdrawals = (
-        db.query(sa_func.sum(Transaction.amount))
+        db.query(sa_func.sum(FinancialTransaction.amount))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
-            Transaction.related_prop_account_id.isnot(None),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.related_prop_account_id.isnot(None),
         )
         .scalar() or 0.0
     )
 
     # برداشت‌های غیرپراپ (بروکر شخصی و ...)
     broker_withdrawals = (
-        db.query(sa_func.sum(Transaction.amount))
+        db.query(sa_func.sum(FinancialTransaction.amount))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
-            Transaction.related_prop_account_id.is_(None),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.related_prop_account_id.is_(None),
         )
         .scalar() or 0.0
     )
 
     total_withdrawals = (
-        db.query(sa_func.sum(Transaction.amount))
+        db.query(sa_func.sum(FinancialTransaction.amount))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
         )
         .scalar() or 0.0
     )
 
     withdrawal_count = (
-        db.query(Transaction)
+        db.query(FinancialTransaction)
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
         )
         .count()
     )
 
     history = (
-        db.query(Transaction)
+        db.query(FinancialTransaction)
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
         )
-        .order_by(Transaction.date.desc())
+        .order_by(FinancialTransaction.date.desc())
         .limit(20)
         .all()
     )
@@ -522,9 +537,9 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
 
 # ═════════════════════════════════════════════
 # Withdrawals — CRUD (فاز ۱۵.۱۲)
-# برداشت‌ها در همان مدل Transaction با type=withdrawal ذخیره می‌شوند.
+# برداشت‌ها در همان مدل FinancialTransaction با type=withdrawal ذخیره می‌شوند.
 # ═════════════════════════════════════════════
-def _serialize_withdrawal(w: Transaction) -> dict:
+def _serialize_withdrawal(w: FinancialTransaction) -> dict:
     return {
         "id": w.id,
         "account_id": w.account_id,
@@ -542,9 +557,9 @@ def _serialize_withdrawal(w: Transaction) -> dict:
 
 def _withdrawal_query(db: Session):
     """کوئری پایهٔ برداشت‌ها (فقط type=withdrawal و حذف‌نشده)"""
-    return db.query(Transaction).filter(
-        Transaction.is_deleted == False,
-        Transaction.type == TransactionType.WITHDRAWAL,
+    return db.query(FinancialTransaction).filter(
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.type == TransactionType.WITHDRAWAL,
     )
 
 
@@ -556,24 +571,24 @@ def list_withdrawals(
     db: Session = Depends(get_db),
 ):
     """لیست برداشت‌ها با فیلتر حساب و بازهٔ تاریخ (فاز ۱۵.۱۲)"""
-    q = _withdrawal_query(db).order_by(Transaction.date.desc())
+    q = _withdrawal_query(db).order_by(FinancialTransaction.date.desc())
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     if date_from:
-        q = q.filter(Transaction.date >= date_from)
+        q = q.filter(FinancialTransaction.date >= date_from)
     if date_to:
-        q = q.filter(Transaction.date <= date_to)
+        q = q.filter(FinancialTransaction.date <= date_to)
     return [_serialize_withdrawal(w) for w in q.all()]
 
 
 @router.post("/withdrawals")
 def create_withdrawal(data: WithdrawalCreate, db: Session = Depends(get_db)):
-    """ایجاد برداشت جدید (Transaction با type=withdrawal) — فاز ۱۵.۱۲"""
-    account = db.query(Account).filter(Account.id == data.account_id).first()
+    """ایجاد برداشت جدید (FinancialTransaction با type=withdrawal) — فاز ۱۵.۱۲"""
+    account = db.query(FinancialAccount).filter(FinancialAccount.id == data.account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
 
-    w = Transaction(
+    w = FinancialTransaction(
         account_id=data.account_id,
         category_id=data.category_id,
         amount=data.amount,
@@ -593,13 +608,13 @@ def create_withdrawal(data: WithdrawalCreate, db: Session = Depends(get_db)):
 @router.patch("/withdrawals/{withdrawal_id}")
 def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = Depends(get_db)):
     """ویرایش برداشت (فاز ۱۵.۱۲)"""
-    w = _withdrawal_query(db).filter(Transaction.id == withdrawal_id).first()
+    w = _withdrawal_query(db).filter(FinancialTransaction.id == withdrawal_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
 
     payload = data.model_dump(exclude_unset=True)
     if "account_id" in payload:
-        account = db.query(Account).filter(Account.id == payload["account_id"]).first()
+        account = db.query(FinancialAccount).filter(FinancialAccount.id == payload["account_id"]).first()
         if not account:
             raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
 
@@ -613,7 +628,7 @@ def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = 
 @router.delete("/withdrawals/{withdrawal_id}")
 def delete_withdrawal(withdrawal_id: int, db: Session = Depends(get_db)):
     """حذف نرم برداشت (فاز ۱۵.۱۲)"""
-    w = _withdrawal_query(db).filter(Transaction.id == withdrawal_id).first()
+    w = _withdrawal_query(db).filter(FinancialTransaction.id == withdrawal_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
     w.is_deleted = True
@@ -632,33 +647,33 @@ def get_cashflow_chart(
     income_types = [TransactionType.DEPOSIT, TransactionType.PROFIT]
     expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
 
-    base_filter = [Transaction.is_deleted == False]
+    base_filter = [FinancialTransaction.is_deleted == False]
     if year:
-        base_filter.append(extract("year", Transaction.date) == year)
+        base_filter.append(extract("year", FinancialTransaction.date) == year)
 
     # درآمد ماهانه
     income_rows = (
         db.query(
-            extract("year", Transaction.date).label("year"),
-            extract("month", Transaction.date).label("month"),
-            sa_func.sum(Transaction.amount).label("amount"),
+            extract("year", FinancialTransaction.date).label("year"),
+            extract("month", FinancialTransaction.date).label("month"),
+            sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, Transaction.type.in_(income_types))
-        .group_by(extract("year", Transaction.date), extract("month", Transaction.date))
-        .order_by(extract("year", Transaction.date), extract("month", Transaction.date))
+        .filter(*base_filter, FinancialTransaction.type.in_(income_types))
+        .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
+        .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
     )
 
     # هزینه ماهانه
     expense_rows = (
         db.query(
-            extract("year", Transaction.date).label("year"),
-            extract("month", Transaction.date).label("month"),
-            sa_func.sum(Transaction.amount).label("amount"),
+            extract("year", FinancialTransaction.date).label("year"),
+            extract("month", FinancialTransaction.date).label("month"),
+            sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, Transaction.type.in_(expense_types))
-        .group_by(extract("year", Transaction.date), extract("month", Transaction.date))
-        .order_by(extract("year", Transaction.date), extract("month", Transaction.date))
+        .filter(*base_filter, FinancialTransaction.type.in_(expense_types))
+        .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
+        .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
     )
 
@@ -698,17 +713,17 @@ def get_distribution_chart(
     from sqlalchemy import func as sa_func
 
     q = db.query(
-        Transaction.type.label("type"),
-        sa_func.count(Transaction.id).label("count"),
-        sa_func.sum(Transaction.amount).label("total_amount"),
-    ).filter(Transaction.is_deleted == False)
+        FinancialTransaction.type.label("type"),
+        sa_func.count(FinancialTransaction.id).label("count"),
+        sa_func.sum(FinancialTransaction.amount).label("total_amount"),
+    ).filter(FinancialTransaction.is_deleted == False)
 
     if date_from:
-        q = q.filter(Transaction.date >= date_from)
+        q = q.filter(FinancialTransaction.date >= date_from)
     if date_to:
-        q = q.filter(Transaction.date <= date_to)
+        q = q.filter(FinancialTransaction.date <= date_to)
 
-    rows = q.group_by(Transaction.type).order_by(Transaction.type).all()
+    rows = q.group_by(FinancialTransaction.type).order_by(FinancialTransaction.type).all()
 
     return [
         {
@@ -823,13 +838,13 @@ def get_monthly_report(
     target_year = year or _current_jalali_year()
     start, end = _jalali_range(target_year)
 
-    q = db.query(Transaction).filter(
-        Transaction.is_deleted == False,
-        Transaction.date >= start,
-        Transaction.date < end,
+    q = db.query(FinancialTransaction).filter(
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.date >= start,
+        FinancialTransaction.date < end,
     )
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     txs = q.all()
 
     buckets: dict[int, dict] = {
@@ -874,12 +889,12 @@ def get_category_breakdown(
     db: Session = Depends(get_db),
 ):
     """تفکیک دسته‌بندی: مجموع درآمد/هزینه هر دسته + درصد از کل (نمودار دایره‌ای)"""
-    q = db.query(Transaction).filter(Transaction.is_deleted == False)
+    q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
     if year:
         start, end = _jalali_range(year, month)
-        q = q.filter(Transaction.date >= start, Transaction.date < end)
+        q = q.filter(FinancialTransaction.date >= start, FinancialTransaction.date < end)
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     txs = q.all()
 
     agg: dict = {}
@@ -940,15 +955,15 @@ def get_account_comparison(
     db: Session = Depends(get_db),
 ):
     """مقایسه حساب‌ها: موجودی، درآمد، هزینه و سود خالص هر حساب"""
-    accounts_q = db.query(Account)
+    accounts_q = db.query(FinancialAccount)
     if currency:
-        accounts_q = accounts_q.filter(Account.currency == currency)
+        accounts_q = accounts_q.filter(FinancialAccount.currency == currency)
     accounts = accounts_q.all()
 
-    txs_q = db.query(Transaction).filter(Transaction.is_deleted == False)
+    txs_q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
     if year:
         start, end = _jalali_range(year, month)
-        txs_q = txs_q.filter(Transaction.date >= start, Transaction.date < end)
+        txs_q = txs_q.filter(FinancialTransaction.date >= start, FinancialTransaction.date < end)
     txs = txs_q.all()
 
     income_map: dict = {}
@@ -987,9 +1002,9 @@ def get_profit_loss(
     db: Session = Depends(get_db),
 ):
     """سود و زیان: سود خالص (درآمد - هزینه) به تفکیک ماه/سال + روند"""
-    q = db.query(Transaction).filter(Transaction.is_deleted == False)
+    q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     txs = q.all()
 
     yearly: dict = {}
@@ -1119,8 +1134,8 @@ def _balance_sum(db: Session, acc_type: AccountType) -> float:
     """مجموع موجودی همهٔ حساب‌های یک نوع"""
     from sqlalchemy import func
     return float(
-        db.query(func.coalesce(func.sum(Account.balance), 0.0))
-        .filter(Account.type == acc_type)
+        db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0))
+        .filter(FinancialAccount.type == acc_type)
         .scalar() or 0.0
     )
 
@@ -1172,10 +1187,10 @@ def _expenses_total(db: Session) -> float:
     """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE)"""
     from sqlalchemy import func
     return float(
-        db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
+        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
         )
         .scalar() or 0.0
     )
@@ -1188,7 +1203,7 @@ def _expenses_total(db: Session) -> float:
 def get_spendable_assets(db: Session = Depends(get_db)):
     """دارایی قابل برداشت: تفکیک مرحلهٔ ۳ پراپ، بروکر، صرافی، Trust Wallet، بانک + مجموع"""
     prop_stage_3 = round(_prop_stage3_tx_net(db), 2)
-    # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه Account مالی)
+    # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه FinancialAccount مالی)
     from ..models.trading import PersonalTradingAccount as _PTA
     from sqlalchemy import func as _f
     broker = round(float(
@@ -1241,14 +1256,14 @@ def get_money_flow(db: Session = Depends(get_db)):
         TransactionType.EXCHANGE,
     ]
     txs = (
-        db.query(Transaction)
+        db.query(FinancialTransaction)
         .options(
-            joinedload(Transaction.account),
-            joinedload(Transaction.from_account),
-            joinedload(Transaction.to_account),
+            joinedload(FinancialTransaction.account),
+            joinedload(FinancialTransaction.from_account),
+            joinedload(FinancialTransaction.to_account),
         )
-        .filter(Transaction.is_deleted == False)
-        .order_by(Transaction.date.desc())
+        .filter(FinancialTransaction.is_deleted == False)
+        .order_by(FinancialTransaction.date.desc())
         .all()
     )
 
@@ -1276,11 +1291,11 @@ def get_expenses(db: Session = Depends(get_db)):
     """گزارش هزینه‌ها: تفکیک کارمزد/خرید به خرید پراپ، اشتراک پراپ، کارمزد صرافی، کارمزد برداشت و سایر"""
     from sqlalchemy.orm import joinedload
     txs = (
-        db.query(Transaction)
-        .options(joinedload(Transaction.category), joinedload(Transaction.account))
+        db.query(FinancialTransaction)
+        .options(joinedload(FinancialTransaction.category), joinedload(FinancialTransaction.account))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
         )
         .all()
     )
@@ -1323,8 +1338,8 @@ def get_money_cycle(db: Session = Depends(get_db)):
 
     def _total(types) -> float:
         return float(
-            db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
-            .filter(Transaction.is_deleted == False, Transaction.type.in_(types))
+            db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
+            .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(types))
             .scalar() or 0.0
         )
 
@@ -1332,16 +1347,16 @@ def get_money_cycle(db: Session = Depends(get_db)):
     withdrawals = _total([TransactionType.WITHDRAWAL])
     exchanges = _total([TransactionType.EXCHANGE])
     transfers = float(
-        db.query(func.coalesce(func.sum(Transaction.amount), 0.0))
+        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.from_account_id.isnot(None),
-            Transaction.to_account_id.isnot(None),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.from_account_id.isnot(None),
+            FinancialTransaction.to_account_id.isnot(None),
         )
         .scalar() or 0.0
     )
     current_balance = float(
-        db.query(func.coalesce(func.sum(Account.balance), 0.0)).scalar() or 0.0
+        db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0)).scalar() or 0.0
     )
 
     return {
@@ -1377,10 +1392,10 @@ def get_financial_calendar(db: Session = Depends(get_db)):
         days[d]["trades"] += 1
 
     txs = (
-        db.query(Transaction)
+        db.query(FinancialTransaction)
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type.in_([TransactionType.DEPOSIT, TransactionType.WITHDRAWAL]),
         )
         .all()
     )
@@ -1424,14 +1439,14 @@ def get_asset_trend(
         TransactionType.PURCHASE: -1,
     }
 
-    q = db.query(Transaction).filter(Transaction.is_deleted == False)
+    q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
     if date_from:
-        q = q.filter(Transaction.date >= date_from)
+        q = q.filter(FinancialTransaction.date >= date_from)
     if date_to:
-        q = q.filter(Transaction.date <= date_to)
+        q = q.filter(FinancialTransaction.date <= date_to)
 
     per_day: dict = defaultdict(lambda: {"USD": 0.0, "IRR": 0.0})
-    for t in q.order_by(Transaction.date).all():
+    for t in q.order_by(FinancialTransaction.date).all():
         d = _jalali_date_str(t.date)
         if not d:
             continue
@@ -1465,8 +1480,8 @@ def get_exchange_rates(db: Session = Depends(get_db)):
     from collections import defaultdict
 
     txs = (
-        db.query(Transaction)
-        .filter(Transaction.is_deleted == False, Transaction.type == TransactionType.EXCHANGE)
+        db.query(FinancialTransaction)
+        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type == TransactionType.EXCHANGE)
         .all()
     )
     per_day: dict = defaultdict(lambda: {"IRR": 0.0, "USD": 0.0})

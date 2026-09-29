@@ -192,8 +192,8 @@ class PropWithdrawal(Base):
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     stage = relationship("PropStage", back_populates="withdrawals")
-    destination_account = relationship("Account", foreign_keys=[destination_account_id])
-    financial_transaction = relationship("Transaction", foreign_keys=[transaction_id])
+    destination_account = relationship("FinancialAccount", foreign_keys=[destination_account_id])
+    financial_transaction = relationship("FinancialTransaction", foreign_keys=[transaction_id])
 
 
 class PropCost(Base):

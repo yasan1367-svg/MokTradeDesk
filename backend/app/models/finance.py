@@ -32,7 +32,8 @@ class CategoryType(str, enum.Enum):
     INCOME = "income"
     EXPENSE = "expense"
     TRANSFER = "transfer"
-    EXCHANGE = "exchange"
+    EXCHANGE = "exchange"        # نگه‌داشته شد (سازگاری با داده/کد قدیمی)
+    CONVERSION = "conversion"    # فاز ۳۷: تبدیل ارز (USD ↔ IRR) — در کنار EXCHANGE
 
 
 class TransactionType(str, enum.Enum):
@@ -43,13 +44,20 @@ class TransactionType(str, enum.Enum):
     LOSS = "loss"
     FEE = "fee"
     PURCHASE = "purchase"
+    TRANSFER = "transfer"        # فاز ۳۷: انتقال بین حساب‌ها (درآمد/هزینه نیست)
+    ADJUSTMENT = "adjustment"    # فاز ۳۷: اصلاح دستی موجودی (مثبت/منفی)
 
 
 # ═════════════════════════════════════════════
 # Models
 # ═════════════════════════════════════════════
-class Account(Base):
-    """حساب مالی (بانکی، صرافی، بروکر، پراپ، کیف‌پول)"""
+class FinancialAccount(Base):
+    """حساب مالی (بانکی، صرافی، کیف‌پول).
+
+    فاز ۳۷: کلاس از `Account` به `FinancialAccount` تغییر نام یافت تا با
+    `PropAccount` و `PersonalTradingAccount` اشتباه نشود. نام جدول **بدون تغییر** است
+    (`accounts`) و alias سازگاری `Account = FinancialAccount` در انتهای فایل باقی می‌ماند.
+    """
     __tablename__ = "accounts"
 
     id = Column(Integer, primary_key=True, index=True)
@@ -62,20 +70,20 @@ class Account(Base):
 
     # relationships
     transactions_out = relationship(
-        "Transaction",
-        foreign_keys="Transaction.from_account_id",
+        "FinancialTransaction",
+        foreign_keys="FinancialTransaction.from_account_id",
         back_populates="from_account",
         cascade="all, delete-orphan",
     )
     transactions_in = relationship(
-        "Transaction",
-        foreign_keys="Transaction.to_account_id",
+        "FinancialTransaction",
+        foreign_keys="FinancialTransaction.to_account_id",
         back_populates="to_account",
         cascade="all, delete-orphan",
     )
     entries = relationship(
-        "Transaction",
-        foreign_keys="Transaction.account_id",
+        "FinancialTransaction",
+        foreign_keys="FinancialTransaction.account_id",
         back_populates="account",
         cascade="all, delete-orphan",
     )
@@ -93,21 +101,27 @@ class Category(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # relationships
-    transactions = relationship("Transaction", back_populates="category")
+    transactions = relationship("FinancialTransaction", back_populates="category")
 
 
-class Transaction(Base):
-    """تراکنش مالی (واریز، برداشت، سود، هزینه و ...)"""
+class FinancialTransaction(Base):
+    """تراکنش مالی (واریز، برداشت، سود، هزینه، انتقال، تبدیل، اصلاح).
+
+    فاز ۳۷: کلاس از `Transaction` به `FinancialTransaction` تغییر نام یافت (افزودنی روی
+    `TransactionType.TRANSFER`/`ADJUSTMENT` و `CategoryType.CONVERSION`). نام جدول
+    **بدون تغییر** است (`transactions`) و alias سازگاری `Transaction = FinancialTransaction`
+    در انتهای فایل باقی می‌ماند.
+    """
     __tablename__ = "transactions"
 
     id = Column(Integer, primary_key=True, index=True)
-    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False)
+    account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     amount = Column(Float, nullable=False)
     currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
-    date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc))
+    date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     description = Column(Text, nullable=True)
-    type = Column(Enum(TransactionType), nullable=False)
+    type = Column(Enum(TransactionType), nullable=False, index=True)
     from_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     related_trade_id = Column(Integer, ForeignKey("trades.id"), nullable=True)
@@ -116,9 +130,18 @@ class Transaction(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # relationships
-    account = relationship("Account", foreign_keys=[account_id], back_populates="entries")
-    from_account = relationship("Account", foreign_keys=[from_account_id], back_populates="transactions_out")
-    to_account = relationship("Account", foreign_keys=[to_account_id], back_populates="transactions_in")
+    account = relationship("FinancialAccount", foreign_keys=[account_id], back_populates="entries")
+    from_account = relationship("FinancialAccount", foreign_keys=[from_account_id], back_populates="transactions_out")
+    to_account = relationship("FinancialAccount", foreign_keys=[to_account_id], back_populates="transactions_in")
     category = relationship("Category", back_populates="transactions")
     related_trade = relationship("Trade")
     related_prop_account = relationship("PropAccount")
+
+
+# ═════════════════════════════════════════════
+# فاز ۳۷ — aliasهای سازگاری (Backward Compatibility)
+# ═════════════════════════════════════════════
+# نام‌های قدیمی همچنان کار می‌کنند تا importهای موجود نشکنند.
+# حذف تدریجی: پس از به‌روزرسانی همهٔ مصرف‌کننده‌ها در فازهای بعدی.
+Account = FinancialAccount
+Transaction = FinancialTransaction

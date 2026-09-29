@@ -267,7 +267,7 @@ def get_dashboard_data(
     win_loss = {"wins": wins_n, "losses": losses_n}
 
     # ── فاز ۲۱: پول قابل خرج (از Transactionها) ──
-    from ..models.finance import Account as FinAccount, AccountType, Transaction, TransactionType
+    from ..models.finance import FinancialAccount as FinAccount, AccountType, FinancialTransaction, TransactionType
     from ..models.prop import PropStage as PS, StageType
 
     # ── فاز ۲۸: محاسبه بر پایهٔ حساب‌های معاملاتی شخصی (پل مالی حذف شد) ──
@@ -294,14 +294,15 @@ def get_dashboard_data(
 
     spendable_net = round(broker_pnl + funded_pnl, 2)
 
-    # ── Prop Progress ──
+    # ── Prop Progress (فاز ۳۶: ارزیابی گروهی ⇒ بدون N+1) ──
     active_stages = db.query(PropStage).filter(
         PropStage.status == StageStatus.ACTIVE
     ).all()
+    stage_ids = [s.id for s in active_stages]
+    bulk_eval = PropRuleEngine.evaluate_stages(db, stage_ids)
     prop_progress_data = []
-    from ..models.prop import StageType
     for stage in active_stages:
-        result = PropRuleEngine.evaluate_stage(db, stage.id)
+        result = bulk_eval.get(stage.id) or PropRuleEngine.evaluate_stage(db, stage.id)
         result["stage_name"] = stage.stage_type.value if stage.stage_type else "Unknown"
         prop_progress_data.append(result)
 
@@ -365,7 +366,7 @@ _WEEKDAYS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج�
 def get_yesterday_data(db: Session = Depends(get_db)):
     """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC)"""
     from ..models.strategy import Trade
-    from ..models.finance import Account as FinanceAccount, AccountType
+    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
     from .finance import _gregorian_to_jalali
 
     def _ensure_utc(dt):
@@ -445,7 +446,7 @@ def get_yesterday_data(db: Session = Depends(get_db)):
 def get_risk_metrics(db: Session = Depends(get_db)):
     """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی"""
     import math
-    from ..models.finance import Account as FinanceAccount, AccountType
+    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
 
     # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
@@ -551,7 +552,7 @@ def get_risk_advanced(
 ):
     """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...)"""
     import math
-    from ..models.finance import Account as FinanceAccount, AccountType
+    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
 
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)

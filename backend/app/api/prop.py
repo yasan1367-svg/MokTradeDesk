@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func
 from typing import List, Optional
@@ -13,7 +13,7 @@ from ..models.prop import (
     WithdrawalStatus, WITHDRAWAL_TRANSITIONS,
 )
 from ..models.finance import (
-    Account, Category, CategoryType, Currency, Transaction, TransactionType
+    FinancialAccount, Category, CategoryType, Currency, FinancialTransaction, TransactionType
 )
 from ..utils.enums import enum_value
 
@@ -221,7 +221,7 @@ def get_firm_default_rules(firm_id: int, db: Session = Depends(get_db)):
     ]
 
 # ═════════════════════════════════════════════
-# Prop Account
+# Prop FinancialAccount
 # ═════════════════════════════════════════════
 @router.get("/accounts")
 def get_accounts(db: Session = Depends(get_db)):
@@ -770,16 +770,21 @@ def list_payouts(
     currency: Optional[str] = None,
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    limit: Optional[int] = Query(None, ge=1, le=2000, description="فاز ۳۶ — حداکثر تعداد"),
+    offset: int = Query(0, ge=0, description="فاز ۳۶ — جابه‌جایی (Pagination)"),
     db: Session = Depends(get_db),
 ):
-    """لیست همهٔ برداشت‌های پراپ با فیلتر شرکت/ارز/بازهٔ تاریخ (فاز ۱۶)"""
-    rows = (
+    """لیست برداشت‌های پراپ با فیلتر شرکت/ارز/بازهٔ تاریخ (فاز ۱۶) + Pagination (فاز ۳۶)"""
+    q = (
         _payout_filter_query(db, firm_id, currency, date_from, date_to)
         .options(*_payout_eager())
-        .order_by(PropWithdrawal.withdrawal_date.desc())
-        .all()
+        .order_by(PropWithdrawal.withdrawal_date.desc(), PropWithdrawal.id.desc())
     )
-    return [_serialize_payout(w) for w in rows]
+    if offset:
+        q = q.offset(offset)
+    if limit:
+        q = q.limit(limit)
+    return [_serialize_payout(w) for w in q.all()]
 
 
 @router.get("/payouts/stats")
@@ -1106,7 +1111,7 @@ def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
     if is_purchase:
         prop_acc = db.query(PropAccount).filter(PropAccount.id == cost.prop_account_id).first()
         if cost.pay_from_account_id:
-            payer = db.query(Account).filter(Account.id == cost.pay_from_account_id).first()
+            payer = db.query(FinancialAccount).filter(FinancialAccount.id == cost.pay_from_account_id).first()
             if not payer:
                 raise HTTPException(status_code=400, detail="حساب پرداخت‌کننده معتبر نیست")
         if not payer:
@@ -1126,7 +1131,7 @@ def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
     if payer:
         cat = _get_or_create_category(db, "خرید پراپ", CategoryType.EXPENSE, "#E74C3C", "🛒")
 
-        tx = Transaction(
+        tx = FinancialTransaction(
             account_id=payer.id,
             category_id=cat.id,
             amount=cost.amount,

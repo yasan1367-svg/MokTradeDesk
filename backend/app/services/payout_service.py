@@ -2,9 +2,9 @@
 
 قانون طلایی این فاز:
 - **درآمد فقط در نقطه‌ی دریافت (RECEIVED)** ثبت می‌شود
-  (`Transaction.type = PROFIT` ⇒ در `finance/summary` به‌عنوان Income شمرده می‌شود).
+  (`FinancialTransaction.type = PROFIT` ⇒ در `finance/summary` به‌عنوان Income شمرده می‌شود).
 - **انتقال‌ها درآمد نیستند**: مسیر «Prop → Trust Wallet → Exchange → IRR → Bank Card»
-  با `Transaction.type = EXCHANGE` و `from_account_id`/`to_account_id` ثبت می‌شود
+  با `FinancialTransaction.type = EXCHANGE` و `from_account_id`/`to_account_id` ثبت می‌شود
   (در `finance/summary` در `total_transfers` می‌آید، نه `total_income`).
 """
 from __future__ import annotations
@@ -23,11 +23,11 @@ from ..models.prop import (
     WITHDRAWAL_TRANSITIONS,
 )
 from ..models.finance import (
-    Account,
+    FinancialAccount,
     Category,
     CategoryType,
     Currency,
-    Transaction,
+    FinancialTransaction,
     TransactionType,
 )
 
@@ -94,7 +94,7 @@ class PayoutService:
         if amount <= 0:
             raise ValueError("مبلغ برداشت باید مثبت باشد")
 
-        dest = db.query(Account).filter(Account.id == destination_account_id).first()
+        dest = db.query(FinancialAccount).filter(FinancialAccount.id == destination_account_id).first()
         if not dest:
             raise ValueError("حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول باشد)")
 
@@ -129,7 +129,7 @@ class PayoutService:
         new_status,
         *,
         commit: bool = True,
-    ) -> Tuple[PropWithdrawal, Optional[Transaction]]:
+    ) -> Tuple[PropWithdrawal, Optional[FinancialTransaction]]:
         """وضعیت برداشت را تغییر می‌دهد و در صورت RECEIVED، درآمد را ثبت می‌کند."""
         target = new_status if isinstance(new_status, WithdrawalStatus) else WithdrawalStatus(new_status)
         current = (
@@ -143,7 +143,7 @@ class PayoutService:
             raise ValueError(f"انتقال وضعیت از {current.value} به {target.value} مجاز نیست")
 
         withdrawal.status = target
-        posted: Optional[Transaction] = None
+        posted: Optional[FinancialTransaction] = None
         if target == WithdrawalStatus.RECEIVED:
             posted = PayoutService._post_income(db, withdrawal)
 
@@ -155,18 +155,18 @@ class PayoutService:
         return withdrawal, posted
 
     @staticmethod
-    def _post_income(db: Session, withdrawal: PropWithdrawal) -> Optional[Transaction]:
+    def _post_income(db: Session, withdrawal: PropWithdrawal) -> Optional[FinancialTransaction]:
         """درآمد را در نقطه‌ی دریافت ثبت می‌کند (idempotent — بدون Double Counting)."""
         if withdrawal.transaction_id:
             return (
-                db.query(Transaction)
-                .filter(Transaction.id == withdrawal.transaction_id)
+                db.query(FinancialTransaction)
+                .filter(FinancialTransaction.id == withdrawal.transaction_id)
                 .first()
             )
 
         dest = (
-            db.query(Account)
-            .filter(Account.id == withdrawal.destination_account_id)
+            db.query(FinancialAccount)
+            .filter(FinancialAccount.id == withdrawal.destination_account_id)
             .first()
         )
         if not dest:
@@ -182,7 +182,7 @@ class PayoutService:
         if withdrawal.note:
             description += f" - {withdrawal.note}"
 
-        tx = Transaction(
+        tx = FinancialTransaction(
             account_id=dest.id,
             category_id=cat.id,
             amount=withdrawal.amount,
@@ -216,7 +216,7 @@ class PayoutService:
         related_prop_account_id: Optional[int] = None,
         date=None,
         commit: bool = True,
-    ) -> Transaction:
+    ) -> FinancialTransaction:
         """یک پرش انتقال (مثلاً Trust Wallet → Exchange) را ثبت می‌کند.
 
         نوع تراکنش `EXCHANGE` است ⇒ در `finance/summary` به‌عنوان **انتقال** شمرده
@@ -227,8 +227,8 @@ class PayoutService:
         if from_account_id == to_account_id:
             raise ValueError("حساب مبدأ و مقصد باید متفاوت باشند")
 
-        src = db.query(Account).filter(Account.id == from_account_id).first()
-        dst = db.query(Account).filter(Account.id == to_account_id).first()
+        src = db.query(FinancialAccount).filter(FinancialAccount.id == from_account_id).first()
+        dst = db.query(FinancialAccount).filter(FinancialAccount.id == to_account_id).first()
         if not src or not dst:
             raise ValueError("حساب مبدأ یا مقصد معتبر نیست")
 
@@ -240,7 +240,7 @@ class PayoutService:
         cat = PayoutService._get_or_create_category(
             db, TRANSFER_CATEGORY_NAME, CategoryType.TRANSFER, "#6366f1", "🔄"
         )
-        tx = Transaction(
+        tx = FinancialTransaction(
             account_id=dst.id,
             category_id=cat.id,
             amount=amount,
@@ -285,7 +285,7 @@ class PayoutService:
                 raise ValueError("فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)")
 
         if "destination_account_id" in payload and payload["destination_account_id"] is not None:
-            dest = db.query(Account).filter(Account.id == payload["destination_account_id"]).first()
+            dest = db.query(FinancialAccount).filter(FinancialAccount.id == payload["destination_account_id"]).first()
             if not dest:
                 raise ValueError("حساب مقصد معتبر نیست")
 
@@ -305,10 +305,10 @@ class PayoutService:
             old_amount = float(withdrawal.amount or 0.0)
             delta = new_amount - old_amount
             if delta != 0 and withdrawal.transaction_id:
-                tx = db.query(Transaction).filter(Transaction.id == withdrawal.transaction_id).first()
+                tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == withdrawal.transaction_id).first()
                 if tx and not tx.is_deleted:
                     tx.amount = new_amount
-                    dest = db.query(Account).filter(Account.id == tx.account_id).first()
+                    dest = db.query(FinancialAccount).filter(FinancialAccount.id == tx.account_id).first()
                     if dest:
                         dest.balance = (dest.balance or 0.0) + delta
                     stage = db.query(PropStage).filter(PropStage.id == withdrawal.prop_stage_id).first()
@@ -331,9 +331,9 @@ class PayoutService:
     def delete_and_reverse(db: Session, withdrawal: PropWithdrawal, *, commit: bool = True) -> None:
         """حذف برداشت + برگشت اثر مالی آن (اگر دریافت شده بود)."""
         if withdrawal.transaction_id:
-            tx = db.query(Transaction).filter(Transaction.id == withdrawal.transaction_id).first()
+            tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == withdrawal.transaction_id).first()
             if tx and not tx.is_deleted:
-                dest = db.query(Account).filter(Account.id == tx.account_id).first()
+                dest = db.query(FinancialAccount).filter(FinancialAccount.id == tx.account_id).first()
                 if dest:
                     dest.balance = (dest.balance or 0.0) - (tx.amount or 0.0)
                 stage = db.query(PropStage).filter(PropStage.id == withdrawal.prop_stage_id).first()

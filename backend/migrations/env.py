@@ -43,9 +43,9 @@ from app.models.settings import UserSettings
 
 # Finance Models
 from app.models.finance import (
-    Account,
+    FinancialAccount,
     Category,
-    Transaction,
+    FinancialTransaction,
 )
 
 # Trading Models (فاز ۲۸)

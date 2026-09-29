@@ -53,6 +53,48 @@ class PropRuleEngine:
             Trade.prop_stage_id == stage_id, Trade.is_deleted == False
         ).all()
 
+        return PropRuleEngine._evaluate_stage_with_trades(stage, trades)
+
+    @staticmethod
+    def evaluate_stages(db: Session, stage_ids) -> Dict[int, Dict[str, Any]]:
+        """فاز ۳۶ — ارزیابی گروهی چند مرحله با **یک** کوئری معاملات.
+
+        جایگزین الگوی N+1 (یک `evaluate_stage` به‌ازای هر مرحله) در داشبورد.
+        """
+        ids = list(dict.fromkeys(stage_ids))
+        out: Dict[int, Dict[str, Any]] = {}
+        if not ids:
+            return out
+
+        stages = db.query(PropStage).filter(PropStage.id.in_(ids)).all()
+        by_id = {s.id: s for s in stages}
+
+        grouped: Dict[int, List[Trade]] = {sid: [] for sid in ids}
+        rows = db.query(Trade).filter(
+            Trade.prop_stage_id.in_(ids), Trade.is_deleted == False
+        ).all()
+        for t in rows:
+            grouped.setdefault(t.prop_stage_id, []).append(t)
+
+        for sid in ids:
+            stage = by_id.get(sid)
+            if stage is None:
+                out[sid] = {
+                    "stage_id": sid,
+                    "ready_to_pass": False,
+                    "error": "مرحله پیدا نشد",
+                }
+            else:
+                out[sid] = PropRuleEngine._evaluate_stage_with_trades(
+                    stage, grouped.get(sid, [])
+                )
+        return out
+
+    @staticmethod
+    def _evaluate_stage_with_trades(
+        stage: PropStage, trades: List[Trade]
+    ) -> Dict[str, Any]:
+        """محاسبهٔ کامل ارزیابی با معاملات از پیش بارگذاری‌شده (فاز ۳۶)."""
         # ── مبالغ پایه (دلار) ──
         initial = stage.initial_balance or 10000.0
         total_pnl = sum(t.pnl or 0 for t in trades)
@@ -174,7 +216,7 @@ class PropRuleEngine:
         overall_severity = PropRuleEngine._overall_severity(rule_checks)
 
         return {
-            "stage_id": stage_id,
+            "stage_id": stage.id,
             "stage_type": stage.stage_type.value if stage.stage_type else None,
             "status": stage.status.value if stage.status else None,
 

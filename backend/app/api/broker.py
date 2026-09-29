@@ -1,9 +1,9 @@
 """
 Endpointهای برداشت بروکر (فاز ۱۶ — Payout History)
 
-فاز ۲۸: بروکر دیگر `Account.type=BROKER` نیست (به `PersonalTradingAccount` منتقل شد).
+فاز ۲۸: بروکر دیگر `FinancialAccount.type=BROKER` نیست (به `PersonalTradingAccount` منتقل شد).
 برداشت‌های «غیرپراپ» به‌عنوان Payout بروکر در نظر گرفته می‌شوند
-(یعنی `Transaction(type=WITHDRAWAL)` که `related_prop_account_id` ندارند).
+(یعنی `FinancialTransaction(type=WITHDRAWAL)` که `related_prop_account_id` ندارند).
 UI صفحهٔ مستقل `Broker` در فاز بعدی اضافه می‌شود.
 """
 from fastapi import APIRouter, Depends
@@ -12,7 +12,7 @@ from sqlalchemy import func
 from typing import Optional
 
 from ..core.database import get_db
-from ..models.finance import Account, Transaction, TransactionType
+from ..models.finance import FinancialAccount, FinancialTransaction, TransactionType
 
 router = APIRouter()
 
@@ -26,22 +26,22 @@ def _broker_payout_query(
 ):
     """کوئری پایهٔ برداشت‌های بروکر (غیرپراپ) با فیلترهای اختیاری"""
     q = (
-        db.query(Transaction)
-        .join(Account, Transaction.account_id == Account.id)
+        db.query(FinancialTransaction)
+        .join(FinancialAccount, FinancialTransaction.account_id == FinancialAccount.id)
         .filter(
-            Transaction.is_deleted == False,
-            Transaction.type == TransactionType.WITHDRAWAL,
-            Transaction.related_prop_account_id.is_(None),
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            FinancialTransaction.related_prop_account_id.is_(None),
         )
     )
     if account_id:
-        q = q.filter(Transaction.account_id == account_id)
+        q = q.filter(FinancialTransaction.account_id == account_id)
     if currency:
-        q = q.filter(Account.currency == currency)
+        q = q.filter(FinancialAccount.currency == currency)
     if date_from:
-        q = q.filter(Transaction.date >= date_from)
+        q = q.filter(FinancialTransaction.date >= date_from)
     if date_to:
-        q = q.filter(Transaction.date <= date_to)
+        q = q.filter(FinancialTransaction.date <= date_to)
     return q
 
 
@@ -56,7 +56,7 @@ def list_broker_payouts(
     """لیست برداشت‌های بروکر (فاز ۱۶)"""
     rows = (
         _broker_payout_query(db, account_id, currency, date_from, date_to)
-        .order_by(Transaction.date.desc())
+        .order_by(FinancialTransaction.date.desc())
         .all()
     )
     return [
@@ -86,9 +86,9 @@ def get_broker_payout_stats(
     q = _broker_payout_query(db, account_id, currency, date_from, date_to)
 
     agg = q.with_entities(
-        func.count(Transaction.id),
-        func.coalesce(func.sum(Transaction.amount), 0.0),
-        func.max(Transaction.amount),
+        func.count(FinancialTransaction.id),
+        func.coalesce(func.sum(FinancialTransaction.amount), 0.0),
+        func.max(FinancialTransaction.amount),
     ).one()
     count = int(agg[0] or 0)
     total = float(agg[1] or 0.0)
@@ -96,8 +96,8 @@ def get_broker_payout_stats(
 
     monthly_rows = (
         q.with_entities(
-            func.strftime("%Y-%m", Transaction.date).label("ym"),
-            func.sum(Transaction.amount),
+            func.strftime("%Y-%m", FinancialTransaction.date).label("ym"),
+            func.sum(FinancialTransaction.amount),
         )
         .group_by("ym")
         .order_by("ym")
@@ -105,8 +105,8 @@ def get_broker_payout_stats(
     )
 
     by_account_rows = (
-        q.with_entities(Account.name, func.sum(Transaction.amount), func.count(Transaction.id))
-        .group_by(Account.name)
+        q.with_entities(FinancialAccount.name, func.sum(FinancialTransaction.amount), func.count(FinancialTransaction.id))
+        .group_by(FinancialAccount.name)
         .all()
     )
 

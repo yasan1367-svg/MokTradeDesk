@@ -136,12 +136,13 @@ class Trade(Base):
         Integer, ForeignKey("personal_trading_accounts.id"), nullable=True, index=True
     )
     # فقط REAL_PROP
-    prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
+    # فاز ۳۶: index برای فیلتر پراپ در داشبورد/تجمیع‌های SQL
+    prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True, index=True)
 
     symbol = Column(String, nullable=False)
     direction = Column(String, nullable=False)
     open_time = Column(DateTime(timezone=True), nullable=False)
-    close_time = Column(DateTime(timezone=True), nullable=True)
+    close_time = Column(DateTime(timezone=True), nullable=True, index=True)
     open_price = Column(Float, nullable=False)
     close_price = Column(Float, nullable=True)
     size = Column(Float, nullable=False)
