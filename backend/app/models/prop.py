@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey, func
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey, func, Boolean
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
@@ -25,6 +25,27 @@ class FailureReason(str, enum.Enum):
     RULE_VIOLATION = "rule_violation"
     MANUAL = "manual"
     OTHER = "other"
+
+
+# ── فاز ۳۸: نوع هزینهٔ پراپ ──
+class CostType(str, enum.Enum):
+    """نوع هزینهٔ پراپ (PURCHASE چلنج، RESET، ADDON، ...).
+
+    توجه (فاز ۳۸): مقدار در دیتابیس به‌صورت **value** (lowercase) ذخیره می‌شود
+    (نه NAME) تا با دادهٔ قدیمی (`cost_type="purchase"`) و قرارداد فعلی API
+    (`(cost_type or "").lower() == "purchase"`) سازگار بماند.
+    """
+    PURCHASE = "purchase"
+    RESET = "reset"
+    ADDON = "addon"
+    DATA_FEE = "data_fee"
+    REFUND = "refund"
+    OTHER = "other"
+
+
+def _enum_values(enum_cls):
+    """SQLAlchemy `values_callable`: ذخیرهٔ value (lowercase) به‌جای NAME."""
+    return [e.value for e in enum_cls]
 
 
 # ── فاز ۳۲: موتور قوانین پراپ ──
@@ -124,7 +145,8 @@ class PropAccount(Base):
     prop_firm_id = Column(Integer, ForeignKey("prop_firms.id"), nullable=False)
     account_label = Column(String, nullable=False)
     account_number = Column(String, nullable=True)
-    currency = Column(String, default="USD")
+    # فاز ۳۸: String → Enum(Currency) (NAME='USD'/'IRR' ⇒ سازگار با دادهٔ قدیمی)
+    currency = Column(Enum(Currency), default=Currency.USD)
     is_active = Column(Integer, default=1)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
@@ -201,9 +223,15 @@ class PropCost(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     prop_account_id = Column(Integer, ForeignKey("prop_accounts.id"), nullable=False)
-    cost_type = Column(String, nullable=False)
+    # فاز ۳۸: String آزاد → Enum(CostType) با ذخیرهٔ lowercase (سازگار با دادهٔ قدیمی)
+    cost_type = Column(
+        Enum(CostType, values_callable=_enum_values),
+        nullable=False,
+        default=CostType.OTHER,
+    )
     amount = Column(Float, nullable=False)
-    currency = Column(String, default="USD")
+    # فاز ۳۸: String → Enum(Currency)
+    currency = Column(Enum(Currency), default=Currency.USD)
     cost_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     description = Column(Text, nullable=True)
     is_refunded = Column(Integer, default=0)
@@ -216,7 +244,8 @@ class PropAlert(Base):
     id = Column(Integer, primary_key=True, index=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=False)
     message = Column(Text, nullable=False)
-    is_read = Column(Integer, default=0)
+    # فاز ۳۸: Integer → Boolean (0/1 در SQLite سازگار است)
+    is_read = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     stage = relationship("PropStage", back_populates="alerts")

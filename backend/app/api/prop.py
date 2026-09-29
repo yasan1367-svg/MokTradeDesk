@@ -11,6 +11,7 @@ from ..models.prop import (
     PropFirm, PropFirmDefaultRules, PropAccount, PropStage, PropWithdrawal, PropCost,
     PropAlert, StageType, StageStatus, FailureReason,
     WithdrawalStatus, WITHDRAWAL_TRANSITIONS,
+    CostType,
 )
 from ..models.finance import (
     FinancialAccount, Category, CategoryType, Currency, FinancialTransaction, TransactionType
@@ -258,7 +259,7 @@ def create_account(account: PropAccountCreate, db: Session = Depends(get_db)):
         prop_firm_id=account.prop_firm_id,
         account_label=account.account_label,
         account_number=account.account_number,
-        currency=account.currency,
+        currency=_to_currency(account.currency),  # فاز ۳۸: String → Enum(Currency)
     )
     db.add(db_account)
     db.flush()  # ← گرفتن id بدون commit (تا کل عملیات اتمیک بماند)
@@ -987,7 +988,7 @@ def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = No
             existing = db.query(PropAlert).filter(
                 PropAlert.prop_stage_id == stage_id,
                 PropAlert.message == msg,
-                PropAlert.is_read == 0,
+                PropAlert.is_read == False,
             ).first()
             if not existing:
                 new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
@@ -996,7 +997,7 @@ def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = No
             existing = db.query(PropAlert).filter(
                 PropAlert.prop_stage_id == stage_id,
                 PropAlert.message.contains("Daily DD نقض"),
-                PropAlert.is_read == 0,
+                PropAlert.is_read == False,
             ).first()
             if not existing:
                 new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
@@ -1011,7 +1012,7 @@ def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = No
             existing = db.query(PropAlert).filter(
                 PropAlert.prop_stage_id == stage_id,
                 PropAlert.message == msg,
-                PropAlert.is_read == 0,
+                PropAlert.is_read == False,
             ).first()
             if not existing:
                 new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
@@ -1020,7 +1021,7 @@ def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = No
             existing = db.query(PropAlert).filter(
                 PropAlert.prop_stage_id == stage_id,
                 PropAlert.message.contains("Total DD نقض"),
-                PropAlert.is_read == 0,
+                PropAlert.is_read == False,
             ).first()
             if not existing:
                 new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
@@ -1035,7 +1036,7 @@ def _generate_alerts_for_stage(db: Session, stage_id: int, evaluation: dict = No
             existing = db.query(PropAlert).filter(
                 PropAlert.prop_stage_id == stage_id,
                 PropAlert.message.contains("هدف سود"),
-                PropAlert.is_read == 0,
+                PropAlert.is_read == False,
             ).first()
             if not existing:
                 new_alerts.append(PropAlert(prop_stage_id=stage_id, message=msg))
@@ -1059,7 +1060,7 @@ def get_alerts(
     if stage_id:
         query = query.filter(PropAlert.prop_stage_id == stage_id)
     if unread_only:
-        query = query.filter(PropAlert.is_read == 0)
+        query = query.filter(PropAlert.is_read == False)
     alerts = query.all()
     return [
         {
@@ -1079,7 +1080,7 @@ def mark_alert_read(alert_id: int, db: Session = Depends(get_db)):
     alert = db.query(PropAlert).filter(PropAlert.id == alert_id).first()
     if not alert:
         raise HTTPException(status_code=404, detail="هشدار پیدا نشد")
-    alert.is_read = 1
+    alert.is_read = True
     db.commit()
     return {"message": "هشدار به‌عنوان خوانده‌شده علامت‌گذاری شد"}
 
@@ -1103,7 +1104,16 @@ def generate_alerts(db: Session = Depends(get_db)):
 @router.post("/costs")
 def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
     """ثبت هزینه پراپ + (برای purchase) ثبت خودکار تراکنش مالی"""
-    is_purchase = cost.create_transaction and (cost.cost_type or "").lower() == "purchase"
+    # فاز ۳۸: cost_type نوعدار (lowercase — سازگار با قرارداد قبلی)
+    try:
+        cost_type = CostType((cost.cost_type or "").strip().lower())
+    except ValueError:
+        raise HTTPException(
+            status_code=400,
+            detail="نوع هزینه نامعتبر است (مجاز: " + ", ".join(t.value for t in CostType) + ")",
+        )
+
+    is_purchase = cost.create_transaction and cost_type == CostType.PURCHASE
 
     # ── اعتبارسنجی قبل از هر درج (تا در صورت خطا هیچ رکوردی باقی نماند) ──
     prop_acc = None
@@ -1121,7 +1131,11 @@ def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
             )
 
     db_cost = PropCost(
-        **cost.model_dump(exclude={"pay_from_account_id", "create_transaction"})
+        prop_account_id=cost.prop_account_id,
+        cost_type=cost_type,
+        amount=cost.amount,
+        currency=_to_currency(cost.currency),
+        description=cost.description,
     )
     db.add(db_cost)
     db.flush()

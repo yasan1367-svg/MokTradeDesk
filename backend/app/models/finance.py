@@ -12,15 +12,21 @@ from ..core.database import Base
 # Enums
 # ═════════════════════════════════════════════
 class AccountType(str, enum.Enum):
-    """نوع حساب مالی (فاز ۲۷) — فقط پول.
+    """نوع حساب مالی (فاز ۲۷ → گسترش فاز ۳۸) — فقط پول.
 
     حساب‌های معاملاتی (بروکر/پراپ) دیگر اینجا نیستند:
     - بروکر  → models/trading.py :: PersonalTradingAccount
     - پراپ   → models/prop.py    :: PropAccount / PropStage
+
+    فاز ۳۸: `CARD` (کارت بانکی)، `CASH` (نقد) و `TRUST_WALLET` (کیف پول امانی)
+    برای پشتیبانی کامل Master Plan اضافه شدند.
     """
     BANK = "bank"
     EXCHANGE = "exchange"
     CRYPTO_WALLET = "crypto_wallet"
+    CARD = "card"                # فاز ۳۸: کارت بانکی
+    CASH = "cash"                # فاز ۳۸: وجه نقد
+    TRUST_WALLET = "trust_wallet"  # فاز ۳۸: کیف پول امانی/واسط
 
 
 class Currency(str, enum.Enum):
