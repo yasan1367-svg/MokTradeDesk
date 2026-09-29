@@ -23,8 +23,9 @@ const ACCOUNT_TYPES = [
   { value: 'bank', label: '🏦 بانک' },
   { value: 'exchange', label: '🔄 صرافی' },
   { value: 'crypto_wallet', label: '₿ کیف‌پول ارز دیجیتال' },
-  { value: 'broker', label: '📊 بروکر' },
-  { value: 'prop', label: '🏢 پراپ' },
+  { value: 'card', label: '💳 کارت بانکی' },        // فاز ۳۸.۲
+  { value: 'cash', label: '💵 پول نقد' },            // فاز ۳۸.۲
+  { value: 'trust_wallet', label: '🤝 کیف پول Trust' }, // فاز ۳۸.۲
 ];
 
 const CURRENCIES = [
