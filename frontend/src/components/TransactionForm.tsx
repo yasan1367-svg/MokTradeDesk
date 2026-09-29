@@ -32,7 +32,7 @@ const CURRENCIES = [
 const TRANSACTION_TYPES = [
   { value: 'deposit', label: '💵 واریز', color: '#22c55e' },
   { value: 'withdrawal', label: '🏧 برداشت', color: '#ef4444' },
-  { value: 'exchange', label: '🔄 تبدیل', color: '#8b5cf6' },
+  { value: 'transfer', label: '🔄 انتقال/تبدیل', color: '#8b5cf6' },  // فاز ۳۸.۴: جایگزین EXCHANGE
   { value: 'profit', label: '📈 سود', color: '#10b981' },
   { value: 'loss', label: '📉 ضرر', color: '#f97316' },
   { value: 'fee', label: '💸 کارمزد', color: '#eab308' },
@@ -67,7 +67,7 @@ export default function TransactionForm({
     }
   }, [mode, initialData]);
 
-  const needsTransferFields = type === 'exchange' || type === 'transfer';
+  const needsTransferFields = type === 'transfer';
   const isFormValid = accountId !== '' && amount !== '' && parseFloat(amount) >= 0 && date !== '';
 
   const handleSubmit = async () => {
@@ -193,7 +193,7 @@ export default function TransactionForm({
             </select>
           </div>
 
-          {/* فیلدهای انتقال - فقط برای exchange/transfer */}
+          {/* فیلدهای انتقال - فقط برای transfer (فاز ۳۸.۴: exchange حذف شد) */}
           {needsTransferFields && (
             <>
               <div>

@@ -266,7 +266,7 @@ def get_dashboard_data(
     # ── برد/باخت ──
     win_loss = {"wins": wins_n, "losses": losses_n}
 
-    # ── فاز ۲۱: پول قابل خرج (از Transactionها) ──
+    # ── فاز ۲۱: پول قابل خرج (از FinancialTransactionها) ──
     from ..models.finance import FinancialAccount as FinAccount, AccountType, FinancialTransaction, TransactionType
     from ..models.prop import PropStage as PS, StageType
 

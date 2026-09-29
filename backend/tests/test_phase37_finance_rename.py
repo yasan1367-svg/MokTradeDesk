@@ -3,29 +3,31 @@
 پوشش:
 - rename کلاس‌ها (`Account`→`FinancialAccount`, `Transaction`→`FinancialTransaction`)
 - حفظ `__tablename__` (بدون migration)
-- aliasهای سازگاری
+- فاز ۳۸.۴ (Clean Break): **حذف aliasهای سازگاری** و **حذف `EXCHANGE`** از Enumها
 - مقادیر جدید Enumها (`CONVERSION`, `TRANSFER`, `ADJUSTMENT`)
 - سلامت relationshipها و endpointهای مالی موجود
 """
+from app.models import finance as finance_module
 from app.models.finance import (
-    Account,
     AccountType,
     Category,
     CategoryType,
     Currency,
     FinancialAccount,
     FinancialTransaction,
-    Transaction,
     TransactionType,
 )
 
 
 # ═════════════════════════════════════════════
-# rename + alias
+# rename — aliasهای قدیمی حذف شده‌اند (فاز ۳۸.۴)
 # ═════════════════════════════════════════════
-def test_aliases_are_identical():
-    assert Account is FinancialAccount
-    assert Transaction is FinancialTransaction
+def test_legacy_aliases_are_removed():
+    """فاز ۳۸.۴: `Account`/`Transaction` دیگر در `models.finance` وجود ندارند."""
+    assert not hasattr(finance_module, "Account")
+    assert not hasattr(finance_module, "Transaction")
+    assert finance_module.FinancialAccount is FinancialAccount
+    assert finance_module.FinancialTransaction is FinancialTransaction
 
 
 def test_tablenames_unchanged_no_migration():
@@ -44,10 +46,11 @@ def test_fk_targets_still_point_to_accounts():
 # ═════════════════════════════════════════════
 # Enumها
 # ═════════════════════════════════════════════
-def test_category_type_has_conversion_and_keeps_exchange():
+def test_category_type_has_conversion_and_no_exchange():
+    """فاز ۳۸.۴: `CategoryType.EXCHANGE` حذف شد ⇒ معادل آن `CONVERSION` است."""
     values = {e.value for e in CategoryType}
     assert "conversion" in values
-    assert "exchange" in values  # سازگاری با داده/کد قدیمی
+    assert "exchange" not in values
     assert CategoryType.CONVERSION.value == "conversion"
 
 
@@ -55,9 +58,10 @@ def test_transaction_type_has_transfer_and_adjustment():
     values = {e.value for e in TransactionType}
     assert "transfer" in values
     assert "adjustment" in values
-    # مقادیر قبلی دست‌نخورده
-    for old in ("deposit", "withdrawal", "exchange", "profit", "loss", "fee", "purchase"):
+    # مقادیر قبلی دست‌نخورده (به‌جز EXCHANGE که در فاز ۳۸.۴ حذف شد)
+    for old in ("deposit", "withdrawal", "profit", "loss", "fee", "purchase"):
         assert old in values
+    assert "exchange" not in values
 
 
 # ═════════════════════════════════════════════

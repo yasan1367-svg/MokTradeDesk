@@ -86,7 +86,7 @@ const ACCOUNT_TYPE_NAMES: Record<string, string> = {
 const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
   deposit: { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]' },
   withdrawal: { bg: 'bg-[#ef4444]/10', text: 'text-[#ef4444]' },
-  exchange: { bg: 'bg-[#8b5cf6]/10', text: 'text-[#8b5cf6]' },
+  transfer: { bg: 'bg-[#8b5cf6]/10', text: 'text-[#8b5cf6]' },  // فاز ۳۸.۴: جایگزین `exchange`
   profit: { bg: 'bg-[#10b981]/10', text: 'text-[#10b981]' },
   loss: { bg: 'bg-[#f97316]/10', text: 'text-[#f97316]' },
   fee: { bg: 'bg-[#eab308]/10', text: 'text-[#eab308]' },
@@ -95,12 +95,12 @@ const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
 
 // برچسب و رنگ فارسی انواع تراکنش (برای نمودار دایره‌ای)
 const TRANSACTION_TYPE_LABELS: Record<string, string> = {
-  deposit: 'واریز', withdrawal: 'برداشت', exchange: 'تبدیل',
+  deposit: 'واریز', withdrawal: 'برداشت', transfer: 'انتقال/تبدیل',  // فاز ۳۸.۴: exchange → transfer
   profit: 'سود', loss: 'ضرر', fee: 'کارمزد', purchase: 'خرید',
 };
 
 const TRANSACTION_TYPE_COLORS: Record<string, string> = {
-  deposit: '#22c55e', withdrawal: '#ef4444', exchange: '#8b5cf6',
+  deposit: '#22c55e', withdrawal: '#ef4444', transfer: '#8b5cf6',  // فاز ۳۸.۴: exchange → transfer
   profit: '#10b981', loss: '#f97316', fee: '#eab308', purchase: '#ec4899',
 };
 
@@ -493,7 +493,7 @@ export default function FinancePage() {
                 <option value="">همه</option>
                 <option value="deposit">💵 واریز</option>
                 <option value="withdrawal">🏧 برداشت</option>
-                <option value="exchange">🔄 تبدیل</option>
+                <option value="transfer">🔄 انتقال/تبدیل</option>  {/* فاز ۳۸.۴: جایگزین EXCHANGE */}
                 <option value="profit">📈 سود</option>
                 <option value="loss">📉 ضرر</option>
                 <option value="fee">💸 کارمزد</option>

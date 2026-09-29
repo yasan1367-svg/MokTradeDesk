@@ -10,7 +10,7 @@ from datetime import datetime, timezone
 
 from sqlalchemy import event, inspect
 
-from app.models.finance import Account, AccountType, Category, CategoryType, Currency, Transaction, TransactionType
+from app.models.finance import AccountType, Category, CategoryType, Currency, TransactionType
 from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
 from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
 from app.services.prop_rule_engine import PropRuleEngine

@@ -8,12 +8,9 @@ import {
   exportAnalysisPdf,
   analyzeVersionScoped,
   analyzePropStage,
-  analyzeBroker,
   getAnalysisVersion,
   getAnalysisProp,
-  getAnalysisBroker,
   getAllPropStages,
-  getFinanceAccounts,
 } from '../api/client';
 
 import EquityCurveChart from '../components/charts/EquityCurveChart';
@@ -22,21 +19,33 @@ import WinLossPieChart from '../components/charts/WinLossPieChart';
 import WeekdayBarChart from '../components/charts/WeekdayBarChart';
 import PnLDistributionChart from '../components/charts/PnLDistributionChart';
 
-type ScopeType = 'backtest' | 'forward' | 'prop_stage_1' | 'prop_stage_2' | 'prop_stage_3' | 'broker';
+// فاز ۳۸.۴ (Clean Break) — تب «بروکر» حذف شد: حساب مالیِ نوع «بروکر» وجود ندارد
+// (حساب‌های معاملاتی → `PersonalTradingAccount` در بک‌اند) و endpointهای تحلیل بروکر هم نیستند.
+type ScopeType = 'backtest' | 'forward' | 'prop_stage_1' | 'prop_stage_2' | 'prop_stage_3';
 const SCOPE_TABS: { key: ScopeType; icon: string; label: string }[] = [
   { key: 'backtest', icon: '📊', label: 'بک‌تست' },
   { key: 'forward', icon: '📈', label: 'فوروارد' },
   { key: 'prop_stage_1', icon: '🏁', label: 'مرحله ۱' },
   { key: 'prop_stage_2', icon: '🔍', label: 'مرحله ۲' },
   { key: 'prop_stage_3', icon: '💰', label: 'مرحله ۳' },
-  { key: 'broker', icon: '🏦', label: 'بروکر' },
 ];
 
 interface Version { id: number; version_name: string; strategy_name: string; }
 interface PropStageOption { id: number; display_name: string; stage_type: string; }
-interface BrokerOption { id: number; name: string; type: string; }
 
 const SCOPE_KEY = 'analysis_selected_scope';
+const VALID_SCOPES: ScopeType[] = SCOPE_TABS.map((t) => t.key);
+
+/** مقدار ذخیره‌شده در localStorage را اعتبارسنجی می‌کند (scopeهای حذف‌شده مثل 'broker') */
+function readStoredScope(): ScopeType {
+  if (typeof window === 'undefined') return 'backtest';
+  try {
+    const stored = JSON.parse(localStorage.getItem(SCOPE_KEY) || '"backtest"') as ScopeType;
+    return VALID_SCOPES.includes(stored) ? stored : 'backtest';
+  } catch {
+    return 'backtest';
+  }
+}
 
 // فاز ۲۳ — هر تب مرحله فقط مراحل همان نوع را نشان می‌دهد
 const STAGE_TYPE_BY_SCOPE: Record<string, string> = {
@@ -46,20 +55,18 @@ const STAGE_TYPE_BY_SCOPE: Record<string, string> = {
 };
 
 export default function AnalysisPage() {
-  const [scope, setScope] = useState<ScopeType>(() =>
-    (typeof window !== 'undefined' ? (JSON.parse(localStorage.getItem(SCOPE_KEY) || '"backtest"') as ScopeType) : 'backtest')
-  );
+  const [scope, setScope] = useState<ScopeType>(readStoredScope);
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [propStages, setPropStages] = useState<PropStageOption[]>([]);
-  const [brokerAccounts, setBrokerAccounts] = useState<BrokerOption[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   // ═════════════════════════════════════════════
-  // ۱. بارگذاری لیست‌های اولیه (نسخه‌ها / پراپ‌ها / بروکرها)
+  // ۱. بارگذاری لیست‌های اولیه (نسخه‌ها / پراپ‌ها)
+  // فاز ۳۸.۳ — بارگذاری «بروکرها» حذف شد (query مرده)
   // ═════════════════════════════════════════════
   useEffect(() => {
     getAllVersions()
@@ -68,9 +75,6 @@ export default function AnalysisPage() {
     getAllPropStages()
       .then((res) => setPropStages(res.data))
       .catch((err) => console.error('خطا در دریافت مراحل پراپ:', err));
-    getFinanceAccounts({ type: 'broker' })
-      .then((res) => setBrokerAccounts(res.data))
-      .catch((err) => console.error('خطا در دریافت حساب‌های بروکر:', err));
   }, []);
 
   // ═════════════════════════════════════════════
@@ -96,24 +100,22 @@ export default function AnalysisPage() {
         try {
           const isVersion = scope === 'backtest' || scope === 'forward';
           const testType = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
+          // فاز ۳۸.۴: تب «بروکر» حذف شد ⇒ فقط نسخه (backtest/forward) و مرحله پراپ
           const res = isVersion
             ? await getAnalysisVersion(selectedId, testType)
-            : scope.startsWith('prop_stage_')
-              ? await getAnalysisProp(selectedId)
-              : await getAnalysisBroker(selectedId);
+            : await getAnalysisProp(selectedId);
           analysisData = res.data;
         } catch (e) {
           console.log('تحلیلی یافت نشد');
         }
         try {
-          // فاز ۲۳ — لیست معاملات بر اساس scope (نسخه/مرحله/بروکر)
+          // فاز ۲۳ — لیست معاملات بر اساس scope (نسخه/مرحله پراپ)
+          // فاز ۳۸.۴: شاخهٔ «بروکر» (با پارامتر نامعتبر `finance_account_id`) حذف شد
           const isVersionScope = scope === 'backtest' || scope === 'forward';
           const tt = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
           const tradesRes = isVersionScope
             ? await getTrades({ version_id: selectedId, test_type: tt, limit: 500 })
-            : scope.startsWith('prop_stage_')
-              ? await getTrades({ prop_stage_id: selectedId, limit: 500 })
-              : await getTrades({ finance_account_id: selectedId, limit: 500 });
+            : await getTrades({ prop_stage_id: selectedId, limit: 500 });
           tradesData = tradesRes.data.trades || [];
         } catch (e) {
           console.log('معامله‌ای یافت نشد');
@@ -139,13 +141,10 @@ export default function AnalysisPage() {
         await analyzeVersionScoped(selectedId, testType);
         const res = await getAnalysisVersion(selectedId, testType);
         setAnalysis(res.data);
-      } else if (scope.startsWith('prop_stage_')) {
+      } else {
+        // فاز ۳۸.۴: تب «بروکر» حذف شد ⇒ باقی موارد مرحله پراپ است
         await analyzePropStage(selectedId);
         const res = await getAnalysisProp(selectedId);
-        setAnalysis(res.data);
-      } else {
-        await analyzeBroker(selectedId);
-        const res = await getAnalysisBroker(selectedId);
         setAnalysis(res.data);
       }
     } catch (err: any) {
@@ -188,16 +187,9 @@ export default function AnalysisPage() {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[250px]">
             <label className="text-[var(--text-secondary)] text-sm block mb-2">
-              {scope === 'broker' ? 'انتخاب حساب بروکر' :
-               scope.startsWith('prop_stage_') ? 'انتخاب مرحله پراپ' : 'انتخاب نسخه'}
+              {scope.startsWith('prop_stage_') ? 'انتخاب مرحله پراپ' : 'انتخاب نسخه'}
             </label>
-            {scope === 'broker' ? (
-              <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
-                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
-                <option value="">— حساب بروکری وجود ندارد —</option>
-                {brokerAccounts.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
-              </select>
-            ) : scope.startsWith('prop_stage_') ? (
+            {scope.startsWith('prop_stage_') ? (
               <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
                 className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
                 <option value="">— مرحله‌ای از این نوع وجود ندارد —</option>

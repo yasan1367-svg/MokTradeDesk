@@ -38,20 +38,20 @@ class CategoryType(str, enum.Enum):
     INCOME = "income"
     EXPENSE = "expense"
     TRANSFER = "transfer"
-    EXCHANGE = "exchange"        # نگه‌داشته شد (سازگاری با داده/کد قدیمی)
-    CONVERSION = "conversion"    # فاز ۳۷: تبدیل ارز (USD ↔ IRR) — در کنار EXCHANGE
+    CONVERSION = "conversion"    # فاز ۳۷: تبدیل ارز (USD ↔ IRR)
+    # فاز ۳۸.۴ (Clean Break): `EXCHANGE` حذف شد ⇒ معادل آن `CONVERSION` است.
 
 
 class TransactionType(str, enum.Enum):
     DEPOSIT = "deposit"
     WITHDRAWAL = "withdrawal"
-    EXCHANGE = "exchange"
     PROFIT = "profit"
     LOSS = "loss"
     FEE = "fee"
     PURCHASE = "purchase"
     TRANSFER = "transfer"        # فاز ۳۷: انتقال بین حساب‌ها (درآمد/هزینه نیست)
     ADJUSTMENT = "adjustment"    # فاز ۳۷: اصلاح دستی موجودی (مثبت/منفی)
+    # فاز ۳۸.۴ (Clean Break): `EXCHANGE` حذف شد ⇒ معادل آن `TRANSFER` است.
 
 
 # ═════════════════════════════════════════════
@@ -62,7 +62,9 @@ class FinancialAccount(Base):
 
     فاز ۳۷: کلاس از `Account` به `FinancialAccount` تغییر نام یافت تا با
     `PropAccount` و `PersonalTradingAccount` اشتباه نشود. نام جدول **بدون تغییر** است
-    (`accounts`) و alias سازگاری `Account = FinancialAccount` در انتهای فایل باقی می‌ماند.
+    (`accounts`).
+
+    فاز ۳۸.۴ (Clean Break): alias سازگاری `Account` **حذف شد** ⇒ فقط نام جدید معتبر است.
     """
     __tablename__ = "accounts"
 
@@ -115,8 +117,9 @@ class FinancialTransaction(Base):
 
     فاز ۳۷: کلاس از `Transaction` به `FinancialTransaction` تغییر نام یافت (افزودنی روی
     `TransactionType.TRANSFER`/`ADJUSTMENT` و `CategoryType.CONVERSION`). نام جدول
-    **بدون تغییر** است (`transactions`) و alias سازگاری `Transaction = FinancialTransaction`
-    در انتهای فایل باقی می‌ماند.
+    **بدون تغییر** است (`transactions`).
+
+    فاز ۳۸.۴ (Clean Break): alias سازگاری `Transaction` **حذف شد** ⇒ فقط نام جدید معتبر است.
     """
     __tablename__ = "transactions"
 
@@ -142,12 +145,3 @@ class FinancialTransaction(Base):
     category = relationship("Category", back_populates="transactions")
     related_trade = relationship("Trade")
     related_prop_account = relationship("PropAccount")
-
-
-# ═════════════════════════════════════════════
-# فاز ۳۷ — aliasهای سازگاری (Backward Compatibility)
-# ═════════════════════════════════════════════
-# نام‌های قدیمی همچنان کار می‌کنند تا importهای موجود نشکنند.
-# حذف تدریجی: پس از به‌روزرسانی همهٔ مصرف‌کننده‌ها در فازهای بعدی.
-Account = FinancialAccount
-Transaction = FinancialTransaction

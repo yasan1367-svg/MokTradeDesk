@@ -4,7 +4,7 @@
 - **درآمد فقط در نقطه‌ی دریافت (RECEIVED)** ثبت می‌شود
   (`FinancialTransaction.type = PROFIT` ⇒ در `finance/summary` به‌عنوان Income شمرده می‌شود).
 - **انتقال‌ها درآمد نیستند**: مسیر «Prop → Trust Wallet → Exchange → IRR → Bank Card»
-  با `FinancialTransaction.type = EXCHANGE` و `from_account_id`/`to_account_id` ثبت می‌شود
+  با `FinancialTransaction.type = TRANSFER` و `from_account_id`/`to_account_id` ثبت می‌شود
   (در `finance/summary` در `total_transfers` می‌آید، نه `total_income`).
 """
 from __future__ import annotations
@@ -219,8 +219,8 @@ class PayoutService:
     ) -> FinancialTransaction:
         """یک پرش انتقال (مثلاً Trust Wallet → Exchange) را ثبت می‌کند.
 
-        نوع تراکنش `EXCHANGE` است ⇒ در `finance/summary` به‌عنوان **انتقال** شمرده
-        می‌شود، نه درآمد. موجودی مبدأ کم و مقصد زیاد می‌شود.
+        نوع تراکنش `TRANSFER` است (فاز ۳۸.۴: جانشین `EXCHANGE` حذف‌شده) ⇒ در
+        `finance/summary` به‌عنوان **انتقال** شمرده می‌شود، نه درآمد. موجودی مبدأ کم و مقصد زیاد می‌شود.
         """
         if amount <= 0:
             raise ValueError("مبلغ انتقال باید مثبت باشد")
@@ -247,7 +247,7 @@ class PayoutService:
             currency=PayoutService._to_currency(currency if currency else dst.currency),
             date=when,
             description=note or f"انتقال از {src.name} به {dst.name}",
-            type=TransactionType.EXCHANGE,  # ← انتقال، نه درآمد
+            type=TransactionType.TRANSFER,  # ← انتقال، نه درآمد (فاز ۳۸.۴: جانشین EXCHANGE)
             from_account_id=src.id,
             to_account_id=dst.id,
             related_prop_account_id=related_prop_account_id,

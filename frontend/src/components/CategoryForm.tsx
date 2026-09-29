@@ -18,7 +18,7 @@ const CATEGORY_TYPES = [
   { value: 'income', label: '💰 درآمد' },
   { value: 'expense', label: '💸 هزینه' },
   { value: 'transfer', label: '🔄 انتقال' },
-  { value: 'exchange', label: '💱 تبدیل' },
+  { value: 'conversion', label: '💱 تبدیل' },  // فاز ۳۸.۴: جایگزین EXCHANGE
 ];
 
 const PRESET_COLORS = [

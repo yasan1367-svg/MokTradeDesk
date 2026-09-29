@@ -194,7 +194,7 @@ def test_reports_account_comparison(client):
 # ═════════════════════════════════════════════
 # فاز ۲۲ — گزارش‌های مالی جدید
 # ═════════════════════════════════════════════
-from app.models.finance import Account, AccountType, Currency, Transaction, TransactionType  # noqa: E402,F401
+from app.models.finance import FinancialAccount, AccountType, Currency, FinancialTransaction, TransactionType  # noqa: E402,F401
 from app.models.prop import PropFirm, PropAccount, PropStage, StageType, StageStatus  # noqa: E402
 
 
@@ -319,7 +319,7 @@ def test_money_flow(client):
 
 
 def test_expenses_breakdown(client):
-    # فاز ۲۸: Account دیگر type=prop ندارد؛ تفکیک پراپ بر اساس متن تراکنش انجام می‌شود.
+    # فاز ۲۸: FinancialAccount دیگر type=prop ندارد؛ تفکیک پراپ بر اساس متن تراکنش انجام می‌شود.
     prop_id = client.post("/api/finance/accounts", json={"name": "Prop", "type": "bank"}).json()["id"]
     exch_id = client.post("/api/finance/accounts", json={"name": "Ex", "type": "exchange"}).json()["id"]
     bank_id = client.post("/api/finance/accounts", json={"name": "Bank", "type": "bank"}).json()["id"]
@@ -341,9 +341,9 @@ def test_money_cycle(client):
     exch_id = client.post("/api/finance/accounts", json={"name": "Ex", "type": "exchange", "balance": 0}).json()["id"]
     client.post("/api/finance/transactions", json={"account_id": bank_id, "amount": 5000, "type": "deposit"})
     client.post("/api/finance/transactions", json={"account_id": bank_id, "amount": 2000, "type": "withdrawal"})
-    client.post("/api/finance/transactions", json={"account_id": exch_id, "amount": 3000, "type": "exchange"})
+    client.post("/api/finance/transactions", json={"account_id": exch_id, "amount": 3000, "type": "transfer"})
     client.post("/api/finance/transactions", json={
-        "account_id": exch_id, "amount": 4000, "type": "exchange",
+        "account_id": exch_id, "amount": 4000, "type": "transfer",
         "from_account_id": bank_id, "to_account_id": exch_id,
     })
 
@@ -395,11 +395,11 @@ def test_asset_trend(client):
 def test_exchange_rates(client):
     acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "exchange"}).json()["id"]
     client.post("/api/finance/transactions", json={
-        "account_id": acc_id, "amount": 100000000, "currency": "IRR", "type": "exchange",
+        "account_id": acc_id, "amount": 100000000, "currency": "IRR", "type": "transfer",
         "date": "2025-03-15T10:00:00+00:00",
     })
     client.post("/api/finance/transactions", json={
-        "account_id": acc_id, "amount": 1000, "currency": "USD", "type": "exchange",
+        "account_id": acc_id, "amount": 1000, "currency": "USD", "type": "transfer",
         "date": "2025-03-15T11:00:00+00:00",
     })
 

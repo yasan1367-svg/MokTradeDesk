@@ -1,7 +1,7 @@
 """سرویس همگام‌سازی معاملات → حسابداری (DEPRECATED در فاز ۲۸)
 
 ⚠️ تغییر معماری فاز ۲۷/۲۸:
-پیش‌تر این سرویس هر معاملهٔ بستهٔ REAL را به یک `Account` **مالی** پل می‌زد
+پیش‌تر این سرویس هر معاملهٔ بستهٔ REAL را به یک `FinancialAccount` **مالی** پل می‌زد
 (`Trade.finance_account_id` / `PropAccount.finance_account_id`). با تفکیک کامل دامنه‌ها،
 این پل‌ها حذف شدند:
 
@@ -10,7 +10,7 @@
 - پول تنها از مسیر **برداشت** (`PropWithdrawal.destination_account_id` → حساب مالی) وارد FINANCE می‌شود.
 
 بنابراین این سرویس عملاً غیرفعال است تا طراحی «ثبت خودکار P&L معاملات در حسابداری»
-در یک فاز جداگانه بازبینی شود. هر فراخوانی، ۰ برمی‌گرداند (بدون نوشتن Transaction).
+در یک فاز جداگانه بازبینی شود. هر فراخوانی، ۰ برمی‌گرداند (بدون نوشتن FinancialTransaction).
 """
 from typing import List, Optional
 
@@ -24,5 +24,5 @@ class FinanceSyncService:
         self.db = db
 
     def sync_closed_trades(self, trade_ids: Optional[List[int]] = None) -> int:
-        """غیرفعال: هیچ Transactionی ساخته نمی‌شود. همیشه ۰ برمی‌گرداند."""
+        """غیرفعال: هیچ FinancialTransactionی ساخته نمی‌شود. همیشه ۰ برمی‌گرداند."""
         return 0

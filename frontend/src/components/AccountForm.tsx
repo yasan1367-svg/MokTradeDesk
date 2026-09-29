@@ -11,9 +11,6 @@ interface AccountFormProps {
     currency: string;
     balance: number;
     card_number?: string;
-    broker_name?: string;
-    prop_firm_name?: string;
-    prop_firm_id?: number | null;
   };
   onSave: (data: Record<string, any>) => Promise<void>;
   onCancel: () => void;
@@ -39,9 +36,8 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
   const [currency, setCurrency] = useState('USD');
   const [balance, setBalance] = useState('0');
   const [cardNumber, setCardNumber] = useState('');
-  const [brokerName, setBrokerName] = useState('');
-  const [propFirmName, setPropFirmName] = useState('');
-  const [propFirmId, setPropFirmId] = useState('');
+  // فاز ۳۸.۳ — فیلدهای بی‌اثر `broker_name` / `prop_firm_name` / `prop_firm_id` حذف شدند
+  // (در `AccountCreate` بک‌اند وجود ندارند ⇒ Pydantic بی‌صدا دور می‌ریخت)
   const [saving, setSaving] = useState(false);
 
   useEffect(() => {
@@ -51,9 +47,6 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
       setCurrency(initialData.currency);
       setBalance(String(initialData.balance));
       setCardNumber(initialData.card_number || '');
-      setBrokerName(initialData.broker_name || '');
-      setPropFirmName(initialData.prop_firm_name || '');
-      setPropFirmId(initialData.prop_firm_id ? String(initialData.prop_firm_id) : '');
     }
   }, [mode, initialData]);
 
@@ -67,18 +60,12 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
         currency,
         balance: parseFloat(balance) || 0,
         card_number: cardNumber || null,
-        broker_name: brokerName || null,
-        prop_firm_name: propFirmName || null,
-        prop_firm_id: propFirmId ? parseInt(propFirmId) : null,
       });
       setName('');
       setType('bank');
       setCurrency('USD');
       setBalance('0');
       setCardNumber('');
-      setBrokerName('');
-      setPropFirmName('');
-      setPropFirmId('');
     } finally {
       setSaving(false);
     }
@@ -152,28 +139,6 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
               value={cardNumber}
               onChange={(e) => setCardNumber(e.target.value)}
               placeholder="6219-..."
-              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
-            />
-          </div>
-
-          {/* نام بروکر */}
-          <div>
-            <label className="text-[var(--text-secondary)] text-xs block mb-1">نام بروکر/صرافی</label>
-            <input
-              value={brokerName}
-              onChange={(e) => setBrokerName(e.target.value)}
-              placeholder="مثلاً Binance"
-              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
-            />
-          </div>
-
-          {/* نام پراپ */}
-          <div>
-            <label className="text-[var(--text-secondary)] text-xs block mb-1">نام پراپ فرم</label>
-            <input
-              value={propFirmName}
-              onChange={(e) => setPropFirmName(e.target.value)}
-              placeholder="مثلاً FTMO"
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
             />
           </div>

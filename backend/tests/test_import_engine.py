@@ -12,7 +12,7 @@ import io
 import pytest
 from openpyxl import Workbook
 
-from app.models.finance import Account, Currency
+from app.models.finance import FinancialAccount, Currency
 from app.models.imports import (
     ImportBatch,
     ImportBatchRow,
@@ -370,10 +370,10 @@ def test_import_never_creates_financial_account(client, db_session):
     preview = _preview_soft4x(
         client, test_type="real_prop", version_id=version.id, prop_stage_id=stage.id
     ).json()
-    before = db_session.query(Account).count()
+    before = db_session.query(FinancialAccount).count()
 
     assert _commit(client, preview["batch_id"]).status_code == 200
-    assert db_session.query(Account).count() == before == 0
+    assert db_session.query(FinancialAccount).count() == before == 0
 
     # سود مرحله‌ی پراپ هم پس از import به‌روزرسانی شده است
     db_session.expire_all()

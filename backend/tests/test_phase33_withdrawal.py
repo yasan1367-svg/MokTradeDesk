@@ -15,7 +15,7 @@ from app.models.prop import (
     PropFirm, PropAccount, PropStage, StageType, StageStatus,
     PropWithdrawal, WithdrawalStatus,
 )
-from app.models.finance import Account, AccountType, Currency, Transaction, TransactionType
+from app.models.finance import FinancialAccount, AccountType, Currency, FinancialTransaction, TransactionType
 from app.models.strategy import Trade, TradeSource, TestType, Strategy, StrategyVersion
 
 
@@ -66,7 +66,7 @@ def _funded_stage(db, profit=1500.0, profit_share=80.0):
 
 
 def _account(db, name="Trust Wallet", acc_type=AccountType.CRYPTO_WALLET):
-    a = Account(name=name, type=acc_type, currency=Currency.USD, balance=0.0)
+    a = FinancialAccount(name=name, type=acc_type, currency=Currency.USD, balance=0.0)
     db.add(a)
     db.commit()
     db.refresh(a)
@@ -94,7 +94,7 @@ def test_create_withdrawal_default_requested_no_income(client, db_session):
 
     db_session.refresh(dest)
     assert dest.balance == 0.0
-    assert db_session.query(Transaction).count() == 0
+    assert db_session.query(FinancialTransaction).count() == 0
     db_session.refresh(stage)
     assert (stage.total_withdrawn or 0.0) == 0.0
 
@@ -139,7 +139,7 @@ def test_status_transitions_and_income_at_received(client, db_session):
         assert r.status_code == 200
         assert r.json()["payout"]["status"] == target
         assert r.json()["income_transaction_id"] is None
-    assert db_session.query(Transaction).count() == 0
+    assert db_session.query(FinancialTransaction).count() == 0
 
     # PROCESSING → RECEIVED (اینجا درآمد ثبت می‌شود)
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "received"})
@@ -147,7 +147,7 @@ def test_status_transitions_and_income_at_received(client, db_session):
     tx_id = r.json()["income_transaction_id"]
     assert tx_id is not None
 
-    tx = db_session.query(Transaction).filter(Transaction.id == tx_id).first()
+    tx = db_session.query(FinancialTransaction).filter(FinancialTransaction.id == tx_id).first()
     assert tx.type == TransactionType.PROFIT
     assert tx.amount == 500.0
 
@@ -162,7 +162,7 @@ def test_status_transitions_and_income_at_received(client, db_session):
     # idempotent: دوباره RECEIVED ⇒ تراکنش جدید ساخته نمی‌شود
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "received"})
     assert r.status_code == 200
-    assert db_session.query(Transaction).count() == 1
+    assert db_session.query(FinancialTransaction).count() == 1
 
 
 def test_invalid_transition_rejected(client, db_session):
@@ -173,7 +173,7 @@ def test_invalid_transition_rejected(client, db_session):
     # REQUESTED → RECEIVED مجاز نیست (باید از APPROVED/PROCESSING بگذرد)
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "received"})
     assert r.status_code == 400
-    assert db_session.query(Transaction).count() == 0
+    assert db_session.query(FinancialTransaction).count() == 0
 
 
 def test_cancel_records_no_income(client, db_session):
@@ -184,7 +184,7 @@ def test_cancel_records_no_income(client, db_session):
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "cancelled"})
     assert r.status_code == 200
     assert r.json()["payout"]["status"] == "cancelled"
-    assert db_session.query(Transaction).count() == 0
+    assert db_session.query(FinancialTransaction).count() == 0
     db_session.refresh(dest)
     assert dest.balance == 0.0
     db_session.refresh(stage)
@@ -222,8 +222,8 @@ def test_transfer_is_not_income(client, db_session):
     assert wallet.balance == 0.0
     assert exchange.balance == 500.0
 
-    tx = db_session.query(Transaction).filter(
-        Transaction.type == TransactionType.EXCHANGE
+    tx = db_session.query(FinancialTransaction).filter(
+        FinancialTransaction.type == TransactionType.TRANSFER  # فاز ۳۸.۴: جانشین EXCHANGE
     ).first()
     assert tx is not None
 
@@ -244,7 +244,7 @@ def test_delete_reverses_income(client, db_session):
     assert dest.balance == 0.0
     db_session.refresh(stage)
     assert stage.total_withdrawn == 0.0
-    tx = db_session.query(Transaction).first()
+    tx = db_session.query(FinancialTransaction).first()
     assert tx.is_deleted is True
 
 
@@ -258,7 +258,7 @@ def test_update_amount_adjusts_transaction(client, db_session):
     r = client.put(f"/api/prop/payouts/{pid}", json={"amount": 700.0})
     assert r.status_code == 200
 
-    tx = db_session.query(Transaction).first()
+    tx = db_session.query(FinancialTransaction).first()
     assert tx.amount == 700.0
     db_session.refresh(dest)
     assert dest.balance == 700.0

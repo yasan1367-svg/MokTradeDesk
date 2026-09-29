@@ -224,15 +224,14 @@ export const analyzeVersionScoped = (versionId: number, testType?: string) =>
     { params: testType ? { test_type: testType } : {} });
 export const analyzePropStage = (propStageId: number) =>
   api.post(`/api/analytics/analyze/prop/${propStageId}`);
-export const analyzeBroker = (financeAccountId: number) =>
-  api.post(`/api/analytics/analyze/broker/${financeAccountId}`);
 export const getAnalysisVersion = (versionId: number, testType?: string) =>
   api.get(`/api/analytics/analysis/version/${versionId}`,
     { params: testType ? { test_type: testType } : {} });
 export const getAnalysisProp = (propStageId: number) =>
   api.get(`/api/analytics/analysis/prop/${propStageId}`);
-export const getAnalysisBroker = (financeAccountId: number) =>
-  api.get(`/api/analytics/analysis/broker/${financeAccountId}`);
+// فاز ۳۸.۴ (Clean Break): `analyzeBroker`/`getAnalysisBroker` حذف شدند
+// (مسیرهای `/analyze|analysis/broker/{id}` در بک‌اند وجود ندارند؛ معادل آن‌ها
+//  `/analyze|analysis/personal-account/{personal_trading_account_id}` است).
 
 // ─────────────────────────────────────────────
 // Prop Desk
@@ -371,7 +370,7 @@ export const forkVersion = (
 export const getTrades = (params?: {
   version_id?: number;
   prop_stage_id?: number;
-  finance_account_id?: number;
+  personal_trading_account_id?: number;  // فاز ۳۸.۴: جایگزین منسوخ `finance_account_id`
   symbol?: string;
   test_type?: string;
   source?: string;
@@ -418,6 +417,8 @@ export const createManualTrade = (data: {
   commission?: number;
   swap?: number;
   version_id?: number;
+  // ⚠️ فاز ۳۸.۴ — این فیلد در بک‌اند وجود ندارد (نام درست: `personal_trading_account_id`).
+  // عمداً دست‌نخورده ماند تا `TradesPage` نشکند؛ مهاجرت کامل آن به یک فاز جدا نیاز دارد.
   finance_account_id?: number;
   prop_stage_id?: number;
   test_type?: string;
@@ -529,9 +530,6 @@ export const createFinanceAccount = (data: {
   currency?: string;
   balance?: number;
   card_number?: string;
-  broker_name?: string;
-  prop_firm_name?: string;
-  prop_firm_id?: number | null;
 }) => api.post('/api/finance/accounts', data);
 
 export const updateFinanceAccount = (id: number, data: Record<string, any>) =>

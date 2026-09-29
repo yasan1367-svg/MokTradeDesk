@@ -384,7 +384,8 @@ def get_finance_summary(db: Session = Depends(get_db)):
         db.query(func.sum(FinancialTransaction.amount))
         .filter(
             FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.EXCHANGE,
+            # فاز ۳۸.۴: `TransactionType.EXCHANGE` حذف شد ⇒ معادل آن `TRANSFER` است
+            FinancialTransaction.type == TransactionType.TRANSFER,
         )
         .scalar() or 0.0
     )
@@ -1253,7 +1254,7 @@ def get_money_flow(db: Session = Depends(get_db)):
     flow_types = [
         TransactionType.DEPOSIT,
         TransactionType.WITHDRAWAL,
-        TransactionType.EXCHANGE,
+        TransactionType.TRANSFER,  # فاز ۳۸.۴: جایگزین EXCHANGE حذف‌شده
     ]
     txs = (
         db.query(FinancialTransaction)
@@ -1345,7 +1346,9 @@ def get_money_cycle(db: Session = Depends(get_db)):
 
     deposits = _total([TransactionType.DEPOSIT])
     withdrawals = _total([TransactionType.WITHDRAWAL])
-    exchanges = _total([TransactionType.EXCHANGE])
+    # فاز ۳۸.۴: کلید JSON (`total_exchanges`) برای سازگاری فرانت حفظ شد؛
+    # مقدارش از `TRANSFER` (جانشین EXCHANGE حذف‌شده) محاسبه می‌شود.
+    exchanges = _total([TransactionType.TRANSFER])
     transfers = float(
         db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
@@ -1481,7 +1484,7 @@ def get_exchange_rates(db: Session = Depends(get_db)):
 
     txs = (
         db.query(FinancialTransaction)
-        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type == TransactionType.EXCHANGE)
+        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type == TransactionType.TRANSFER)  # فاز ۳۸.۴: EXCHANGE → TRANSFER
         .all()
     )
     per_day: dict = defaultdict(lambda: {"IRR": 0.0, "USD": 0.0})
@@ -1524,7 +1527,7 @@ DEFAULT_CATEGORIES = [
     # انتقال
     {"name": "انتقال بین حساب‌ها", "type": CategoryType.TRANSFER, "color": "#6366f1", "icon": "🔄"},
     # تبدیل
-    {"name": "تبدیل ارز", "type": CategoryType.EXCHANGE, "color": "#8b5cf6", "icon": "💱"},
+    {"name": "تبدیل ارز", "type": CategoryType.CONVERSION, "color": "#8b5cf6", "icon": "💱"},  # فاز ۳۸.۴: EXCHANGE → CONVERSION
     # پراپ (فاز ۵)
     {"name": "خرید پراپ", "type": CategoryType.EXPENSE, "color": "#E74C3C", "icon": "🛒"},
     {"name": "برداشت پراپ", "type": CategoryType.INCOME, "color": "#27AE60", "icon": "💰"},

@@ -232,7 +232,7 @@ def test_analytics_calendar_excludes_deleted(client, db_session):
 # همگام‌سازی مالی (finance_sync_service.py)
 # ═════════════════════════════════════════════
 def test_finance_sync_is_noop_after_bridge_removal(client, db_session):
-    """فاز ۲۸: پل Trade→Finance حذف شد؛ sync_closed_trades هیچ Transaction نمی‌سازد."""
+    """فاز ۲۸: پل Trade→Finance حذف شد؛ sync_closed_trades هیچ FinancialTransaction نمی‌سازد."""
     pta = _pta(db_session)
     db_session.flush()
     db_session.add_all([
