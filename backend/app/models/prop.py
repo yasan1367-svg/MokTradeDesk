@@ -1,9 +1,10 @@
-from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey
+from sqlalchemy import Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey, func
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
 import enum
 
 from ..core.database import Base
+from .finance import Currency
 
 class StageType(str, enum.Enum):
     STAGE_1 = "stage_1"
@@ -24,6 +25,68 @@ class FailureReason(str, enum.Enum):
     RULE_VIOLATION = "rule_violation"
     MANUAL = "manual"
     OTHER = "other"
+
+
+# ── فاز ۳۲: موتور قوانین پراپ ──
+class RuleType(str, enum.Enum):
+    """انواع قوانین ارزیابی‌شده توسط PropRuleEngine.
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
+    ('DAILY_DRAWDOWN' / 'MAX_DRAWDOWN' / ...) نه value.
+    """
+    DAILY_DRAWDOWN = "daily_drawdown"
+    MAX_DRAWDOWN = "max_drawdown"
+    PROFIT_TARGET = "profit_target"
+    MIN_TRADING_DAYS = "min_trading_days"
+    EQUITY_BALANCE = "equity_balance"
+    FLOATING_PNL = "floating_pnl"
+    STAGE_STATUS = "stage_status"
+
+
+class Severity(str, enum.Enum):
+    """شدت نتیجه‌ی ارزیابی یک قاعده (خروجی Pipeline موتور قوانین).
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
+    ('PASS' / 'WARNING' / 'VIOLATION').
+    """
+    PASS = "pass"
+    WARNING = "warning"
+    VIOLATION = "violation"
+
+
+# ── فاز ۳۳: چرخه‌ی عمر برداشت پراپ ──
+class WithdrawalStatus(str, enum.Enum):
+    """وضعیت برداشت پراپ (فاز ۳۳).
+
+    جریان مجاز:
+        REQUESTED → APPROVED → PROCESSING → RECEIVED
+        (و هر مرحله‌ی غیرنهایی می‌تواند → CANCELLED شود)
+
+    **قانون مالی:** درآمد (FinancialTransaction) فقط در نقطه‌ی RECEIVED ثبت می‌شود.
+    """
+    REQUESTED = "requested"
+    APPROVED = "approved"
+    PROCESSING = "processing"
+    RECEIVED = "received"
+    CANCELLED = "cancelled"
+
+
+WITHDRAWAL_TRANSITIONS = {
+    WithdrawalStatus.REQUESTED: (
+        WithdrawalStatus.APPROVED,
+        WithdrawalStatus.CANCELLED,
+    ),
+    WithdrawalStatus.APPROVED: (
+        WithdrawalStatus.PROCESSING,
+        WithdrawalStatus.CANCELLED,
+    ),
+    WithdrawalStatus.PROCESSING: (
+        WithdrawalStatus.RECEIVED,
+        WithdrawalStatus.CANCELLED,
+    ),
+    WithdrawalStatus.RECEIVED: (),
+    WithdrawalStatus.CANCELLED: (),
+}
 
 class PropFirm(Base):
     __tablename__ = "prop_firms"
@@ -96,6 +159,10 @@ class PropStage(Base):
     trades = relationship("Trade", back_populates="prop_stage")
     withdrawals = relationship("PropWithdrawal", back_populates="stage", cascade="all, delete-orphan")
     alerts = relationship("PropAlert", back_populates="stage", cascade="all, delete-orphan")
+    # فاز ۳۲: تاریخچه‌ی ارزیابی قوانین (Rule Evaluation) برای این مرحله
+    rule_violations = relationship(
+        "RuleViolation", back_populates="stage", cascade="all, delete-orphan"
+    )
 
 class PropWithdrawal(Base):
     __tablename__ = "prop_withdrawals"
@@ -103,12 +170,31 @@ class PropWithdrawal(Base):
     id = Column(Integer, primary_key=True, index=True)
     prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=False)
     amount = Column(Float, nullable=False)
-    withdrawal_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
+
+    # ── فاز ۳۳ ──
+    currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
+    withdrawal_date = Column(
+        DateTime(timezone=True),
+        nullable=False,
+        default=lambda: datetime.now(timezone.utc),
+    )
+    destination_account_id = Column(
+        Integer, ForeignKey("accounts.id"), nullable=False
+    )
+    status = Column(
+        Enum(WithdrawalStatus), nullable=False,
+        default=WithdrawalStatus.REQUESTED, index=True,
+    )
+    reference = Column(String, nullable=True)
     note = Column(Text, nullable=True)
-    destination_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
+    # FinancialTransaction فقط در نقطه‌ی RECEIVED ساخته و این‌جا لینک می‌شود
+    transaction_id = Column(Integer, ForeignKey("transactions.id"), nullable=True)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     stage = relationship("PropStage", back_populates="withdrawals")
     destination_account = relationship("Account", foreign_keys=[destination_account_id])
+    financial_transaction = relationship("Transaction", foreign_keys=[transaction_id])
+
 
 class PropCost(Base):
     __tablename__ = "prop_costs"
@@ -134,3 +220,24 @@ class PropAlert(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     stage = relationship("PropStage", back_populates="alerts")
+
+
+class RuleViolation(Base):
+    """فاز ۳۲ — نتیجه‌ی ارزیابی یک قاعده برای یک مرحله پراپ.
+
+    هر رکورد یک «بررسی قاعده» (Rule Evaluation) را نگه می‌دارد؛ `severity` می‌تواند
+    PASS / WARNING / VIOLATION باشد (پس جدول تاریخچه‌ی کامل ارزیابی است، نه فقط نقض‌ها).
+    """
+    __tablename__ = "rule_violations"
+
+    id = Column(Integer, primary_key=True, index=True)
+    prop_stage_id = Column(
+        Integer, ForeignKey("prop_stages.id"), nullable=False, index=True
+    )
+    rule_type = Column(Enum(RuleType), nullable=False, index=True)
+    actual_value = Column(Float, nullable=False)
+    limit_value = Column(Float, nullable=False)
+    severity = Column(Enum(Severity), nullable=False, index=True)
+    occurred_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    stage = relationship("PropStage", back_populates="rule_violations")

@@ -4,6 +4,7 @@ from typing import Dict, List, Any, Optional
 from ..models.strategy import (
     Trade, AnalysisResult, AnalysisRun, CustomTimeInterval,
     StrategyVersion, Strategy, AnalysisScope, TestType,
+    AnalysisScopeRecord, AnalysisStatus,
 )
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 
@@ -88,6 +89,21 @@ class AnalysisService:
             self.db.delete(existing)
             self.db.commit()
 
+        # ── فاز ۳۴: ساخت AnalysisScopeRecord (دامنهٔ این اجرا) ──
+        open_times = [t.open_time for t in trades if t.open_time]
+        close_times = [t.close_time for t in trades if t.close_time]
+        scope_record = AnalysisScopeRecord(
+            strategy_version_id=version_id,
+            trade_type=self._resolve_trade_type(scope, test_type, trades),
+            personal_trading_account_id=personal_trading_account_id,
+            prop_stage_id=prop_stage_id,
+            from_date=min(open_times) if open_times else None,
+            to_date=max(close_times) if close_times else None,
+            is_deleted_filter=True,  # در تحلیل، معاملات حذف‌شده کنار گذاشته می‌شوند
+        )
+        self.db.add(scope_record)
+        self.db.flush()
+
         result = AnalysisResult(
             scope=scope, scope_key=scope_key, version_id=version_id,
             prop_stage_id=prop_stage_id,
@@ -104,9 +120,20 @@ class AnalysisService:
             custom_time_analysis=custom_a,
         )
         self.db.add(result)
+        self.db.flush()
 
         snap = {"basic": basic, "consistency": consist_a, "session": session_a,
                 "weekday": weekday_a, "hour": hour_a, "custom_time": custom_a}
+        # ── فاز ۳۵: هر اجرا یک Run جدید (Run #1 ثابت، Run #2 جدا) ──
+        filters_snapshot = {
+            "scope": scope.value if hasattr(scope, "value") else str(scope),
+            "scope_key": scope_key,
+            "version_id": version_id,
+            "prop_stage_id": prop_stage_id,
+            "personal_trading_account_id": personal_trading_account_id,
+            "test_type": test_type.name if test_type is not None else None,
+            "is_deleted_filter": True,
+        }
         run = AnalysisRun(
             scope=scope, scope_key=scope_key, version_id=version_id,
             prop_stage_id=prop_stage_id,
@@ -119,13 +146,43 @@ class AnalysisService:
             largest_win=basic["largest_win"], largest_loss=basic["largest_loss"],
             max_consecutive_losses=basic["max_consecutive_losses"],
             full_metrics=snap,
+            # فاز ۳۴/۳۵ (افزودنی)
+            scope_id=scope_record.id,
+            filters_snapshot=filters_snapshot,
+            trade_count=basic["total_trades"],
+            status=AnalysisStatus.COMPLETED,
         )
         self.db.add(run)
+        self.db.flush()
+
+        # اتصال نتیجهٔ جاری به اجرای همین بار
+        result.analysis_run_id = run.id
+
         self.db.commit()
         self.db.refresh(result)
 
-        return {"result": result, "run_id": run.id,
+        return {"result": result, "run_id": run.id, "scope_id": scope_record.id,
                 "message": "تحلیل انجام شد و در تاریخچه ذخیره گردید"}
+
+    @staticmethod
+    def _resolve_trade_type(scope, test_type, trades) -> TestType:
+        """نوع معاملهٔ دامنه را تعیین می‌کند (فاز ۳۴).
+
+        - VERSION          : test_type داده‌شده، وگرنه نوع غالب معاملات، وگرنه BACKTEST
+        - PROP_STAGE       : REAL_PROP
+        - PERSONAL_ACCOUNT : REAL_PERSONAL
+        """
+        if scope == AnalysisScope.PROP_STAGE:
+            return TestType.REAL_PROP
+        if scope == AnalysisScope.PERSONAL_ACCOUNT:
+            return TestType.REAL_PERSONAL
+        if test_type is not None:
+            return test_type
+        for t in trades:
+            if t.test_type is not None:
+                return t.test_type
+        return TestType.BACKTEST
+
 
 
     def compare_versions(self, version_ids: List[int], min_trades: int = 0) -> Dict[str, Any]:

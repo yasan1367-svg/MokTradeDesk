@@ -1,6 +1,6 @@
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, Enum, JSON, ForeignKey,
-    UniqueConstraint, Boolean, CheckConstraint,
+    UniqueConstraint, Boolean, CheckConstraint, func,
 )
 from sqlalchemy.orm import relationship
 from datetime import datetime, timezone
@@ -57,6 +57,18 @@ class AnalysisScope(str, enum.Enum):
     VERSION = "version"
     PROP_STAGE = "prop_stage"
     PERSONAL_ACCOUNT = "personal_account"
+
+
+class AnalysisStatus(str, enum.Enum):
+    """وضعیت اجرای تحلیل (فاز ۳۵) — افزودنی، بدون اثر روی enumهای موجود.
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود
+    ('PENDING' / 'RUNNING' / 'COMPLETED' / 'FAILED').
+    """
+    PENDING = "pending"
+    RUNNING = "running"
+    COMPLETED = "completed"
+    FAILED = "failed"
 
 
 # ═════════════════════════════════════════════
@@ -265,12 +277,19 @@ class AnalysisResult(Base):
 
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # ── فاز ۳۵: اتصال نتیجه به اجرای مربوطه (nullable — افزودنی، سازگار با دادهٔ موجود) ──
+    analysis_run_id = Column(
+        Integer, ForeignKey("analysis_runs.id"), nullable=True, index=True
+    )
+
     # یک رکورد «جاری» برای هر دامنه (نسخه / مرحله‌ی پراپ / حساب بروکر)
     __table_args__ = (
         UniqueConstraint("scope", "scope_key", name="uq_analysis_results_scope_key"),
     )
 
     version = relationship("StrategyVersion", back_populates="analysis_results")
+    analysis_run = relationship("AnalysisRun", foreign_keys=[analysis_run_id])
+
 
 
 class AnalysisRun(Base):
@@ -310,9 +329,47 @@ class AnalysisRun(Base):
     # کلیه متریک‌های کامل به صورت JSON snapshot
     full_metrics = Column(JSON, nullable=True)
 
+    # ── فاز ۳۵ (افزودنی): اتصال به AnalysisScopeRecord + وضعیت اجرا ──
+    scope_id = Column(
+        Integer, ForeignKey("analysis_scopes.id"), nullable=True, index=True
+    )
+    filters_snapshot = Column(JSON, nullable=True)
+    trade_count = Column(Integer, default=0)
+    status = Column(Enum(AnalysisStatus), nullable=True, default=AnalysisStatus.PENDING)
+
     created_at = Column(DateTime(timezone=True), default=lambda: datetime.now(timezone.utc))
 
     version = relationship("StrategyVersion", back_populates="analysis_runs")
+    scope_record = relationship("AnalysisScopeRecord", foreign_keys=[scope_id])
+
+
+class AnalysisScopeRecord(Base):
+    """فاز ۳۴ — دامنه‌ی تحلیل (جدول جدید `analysis_scopes`).
+
+    نام کلاس `AnalysisScopeRecord` است (نه `AnalysisScope`) تا با enum فعلی
+    `AnalysisScope` تضاد نام ایجاد نشود. قانون فاز ۳۴: همه‌ی تحلیل‌ها از این
+    دامنه استفاده کنند.
+
+    توجه: مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود.
+    """
+    __tablename__ = "analysis_scopes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    strategy_version_id = Column(
+        Integer, ForeignKey("strategy_versions.id"), nullable=True
+    )
+    trade_type = Column(Enum(TestType), nullable=False)
+    personal_trading_account_id = Column(
+        Integer, ForeignKey("personal_trading_accounts.id"), nullable=True
+    )
+    prop_stage_id = Column(Integer, ForeignKey("prop_stages.id"), nullable=True)
+    from_date = Column(DateTime(timezone=True), nullable=True)
+    to_date = Column(DateTime(timezone=True), nullable=True)
+    is_deleted_filter = Column(Boolean, default=False)
+    created_at = Column(DateTime(timezone=True), server_default=func.now())
+
+    version = relationship("StrategyVersion", foreign_keys=[strategy_version_id])
+
 
 
 class SymbolMapping(Base):

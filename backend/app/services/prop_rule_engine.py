@@ -4,7 +4,14 @@ from typing import Any, Dict, List, Tuple
 
 from sqlalchemy.orm import Session
 
-from ..models.prop import PropStage, StageType
+from ..models.prop import (
+    PropStage,
+    StageType,
+    StageStatus,
+    RuleType,
+    Severity,
+    RuleViolation,
+)
 from ..models.strategy import Trade
 
 
@@ -53,7 +60,11 @@ class PropRuleEngine:
 
         # ── Daily DD: بدترین روز (دلار) ──
         daily_pnl = PropRuleEngine._group_daily_pnl(trades)
-        max_daily_loss = abs(min(daily_pnl.values())) if daily_pnl else 0.0  # مقدار مثبت
+        # فاز ۳۲: فقط روزهای منفی به‌عنوان زیان شمرده می‌شوند.
+        # پیش‌تر `abs(min(...))` حتی روز پرسود را «زیان» می‌شمرد (باگ).
+        max_daily_loss = (
+            max(0.0, -min(daily_pnl.values())) if daily_pnl else 0.0
+        )  # مقدار مثبت
 
         # ── Total DD: بر اساس equity curve (دلار) ──
         max_total_dd = PropRuleEngine._calculate_max_drawdown(trades, initial)
@@ -142,6 +153,26 @@ class PropRuleEngine:
             else 0.0
         )
 
+        # ── فاز ۳۲: Rule Evaluation ساختاریافته (Pipeline) ──
+        # هر قاعده یک نتیجه‌ی {rule_type, actual_value, limit_value, severity, message}
+        # تولید می‌کند؛ severity ∈ {PASS, WARNING, VIOLATION}.
+        floating_pnl = sum((t.pnl or 0.0) for t in trades if t.close_time is None)
+        rule_checks = PropRuleEngine._build_rule_checks(
+            stage=stage,
+            initial=initial,
+            equity=equity,
+            total_pnl=total_pnl,
+            max_daily_loss=max_daily_loss,
+            max_daily_dd_limit=max_daily_dd_limit,
+            max_total_dd=max_total_dd,
+            max_total_dd_limit=max_total_dd_limit,
+            profit_target=profit_target,
+            trading_days=trading_days,
+            min_days=min_days,
+            floating_pnl=floating_pnl,
+        )
+        overall_severity = PropRuleEngine._overall_severity(rule_checks)
+
         return {
             "stage_id": stage_id,
             "stage_type": stage.stage_type.value if stage.stage_type else None,
@@ -180,6 +211,11 @@ class PropRuleEngine:
             "suggested_status": suggested_status,
             "violations": violations,
 
+            # فاز ۳۲ — Rule Evaluation (خروجی Pipeline)
+            "rule_checks": rule_checks,
+            "overall_severity": overall_severity.value,
+            "floating_pnl": round(floating_pnl, 2),
+
             # رییل
             "is_funded": is_funded,
             "total_withdrawn": round(total_withdrawn, 2),
@@ -214,6 +250,176 @@ class PropRuleEngine:
             )
 
         return True, ""
+
+    # ═════════════════════════════════════════════
+    # فاز ۳۲ — Rule Evaluation & Persistence
+    # ═════════════════════════════════════════════
+    @staticmethod
+    def record_violations(
+        db: Session,
+        stage_id: int,
+        checks: List[Dict[str, Any]] | None = None,
+        commit: bool = True,
+    ) -> List[RuleViolation]:
+        """نتیجه‌ی ارزیابی قوانین یک مرحله را در `rule_violations` ثبت می‌کند.
+
+        - اگر `checks` داده نشود، خودش `evaluate_stage` را اجرا می‌کند.
+        - append-only است (هر اجرای ارزیابی یک ردیف برای هر قاعده) تا تاریخچه حفظ شود.
+        """
+        if checks is None:
+            evaluation = PropRuleEngine.evaluate_stage(db, stage_id)
+            if "error" in evaluation:
+                return []
+            checks = evaluation.get("rule_checks", [])
+
+        rows: List[RuleViolation] = []
+        for chk in checks:
+            rule_type = chk["rule_type"]
+            severity = chk["severity"]
+            row = RuleViolation(
+                prop_stage_id=stage_id,
+                rule_type=rule_type if isinstance(rule_type, RuleType) else RuleType(rule_type),
+                actual_value=float(chk["actual_value"]),
+                limit_value=float(chk["limit_value"]),
+                severity=severity if isinstance(severity, Severity) else Severity(severity),
+            )
+            db.add(row)
+            rows.append(row)
+
+        if commit:
+            db.commit()
+            for row in rows:
+                db.refresh(row)
+        else:
+            db.flush()
+        return rows
+
+    @staticmethod
+    def get_violations(
+        db: Session,
+        stage_id: int,
+        severity: "Severity | str | None" = None,
+        limit: int | None = None,
+    ) -> List[RuleViolation]:
+        """تاریخچه‌ی ارزیابی‌های ثبت‌شده یک مرحله (جدیدترین اول)."""
+        q = db.query(RuleViolation).filter(RuleViolation.prop_stage_id == stage_id)
+        if severity is not None:
+            q = q.filter(
+                RuleViolation.severity
+                == (severity if isinstance(severity, Severity) else Severity(severity))
+            )
+        q = q.order_by(RuleViolation.occurred_at.desc(), RuleViolation.id.desc())
+        if limit:
+            q = q.limit(limit)
+        return q.all()
+
+    @staticmethod
+    def _build_rule_checks(
+        *,
+        stage: PropStage,
+        initial: float,
+        equity: float,
+        total_pnl: float,
+        max_daily_loss: float,
+        max_daily_dd_limit: float,
+        max_total_dd: float,
+        max_total_dd_limit: float,
+        profit_target: float,
+        trading_days: int,
+        min_days: int,
+        floating_pnl: float,
+    ) -> List[Dict[str, Any]]:
+        """۷ قاعده را ارزیابی و لیست نتایج ساختاریافته برمی‌گرداند."""
+        checks: List[Dict[str, Any]] = []
+
+        def add(rule_type, actual, limit_v, sev, msg) -> None:
+            checks.append({
+                "rule_type": rule_type,
+                "actual_value": round(float(actual), 2),
+                "limit_value": round(float(limit_v), 2),
+                "severity": sev,
+                "message": msg,
+            })
+
+        # ۱) Daily Drawdown
+        add(
+            RuleType.DAILY_DRAWDOWN, max_daily_loss, max_daily_dd_limit,
+            PropRuleEngine._grade_loss(max_daily_loss, max_daily_dd_limit),
+            f"Daily DD: {max_daily_loss:.2f}$ از حد {max_daily_dd_limit:.2f}$",
+        )
+        # ۲) Max (Total) Drawdown
+        add(
+            RuleType.MAX_DRAWDOWN, max_total_dd, max_total_dd_limit,
+            PropRuleEngine._grade_loss(max_total_dd, max_total_dd_limit),
+            f"Total DD: {max_total_dd:.2f}$ از حد {max_total_dd_limit:.2f}$",
+        )
+        # ۳) Profit Target
+        if profit_target > 0 and total_pnl >= profit_target:
+            tp_sev = Severity.PASS
+        elif profit_target > 0:
+            tp_sev = Severity.WARNING
+        else:
+            tp_sev = Severity.PASS
+        add(
+            RuleType.PROFIT_TARGET, total_pnl, profit_target, tp_sev,
+            f"سود: {total_pnl:.2f}$ از هدف {profit_target:.2f}$",
+        )
+        # ۴) Min Trading Days
+        add(
+            RuleType.MIN_TRADING_DAYS, float(trading_days), float(min_days),
+            Severity.PASS if (min_days <= 0 or trading_days >= min_days) else Severity.WARNING,
+            f"روزهای معاملاتی: {trading_days} از حداقل {min_days}",
+        )
+        # ۵) Equity Balance — کف مجاز = initial - max_total_dd
+        equity_floor = initial - max_total_dd_limit if max_total_dd_limit > 0 else initial
+        if equity < equity_floor:
+            eq_sev = Severity.VIOLATION
+        elif equity < initial:
+            eq_sev = Severity.WARNING
+        else:
+            eq_sev = Severity.PASS
+        add(
+            RuleType.EQUITY_BALANCE, equity, equity_floor, eq_sev,
+            f"موجودی: {equity:.2f}$ (کف مجاز {equity_floor:.2f}$)",
+        )
+        # ۶) Floating PnL (معاملات باز) — زیان شناور مثبت
+        floating_loss = max(-floating_pnl, 0.0)
+        add(
+            RuleType.FLOATING_PNL, floating_loss, max_daily_dd_limit,
+            PropRuleEngine._grade_loss(floating_loss, max_daily_dd_limit),
+            f"زیان شناور: {floating_loss:.2f}$ از حد {max_daily_dd_limit:.2f}$",
+        )
+        # ۷) Stage Status — ارزیابی فقط روی مرحله فعال مجاز است
+        is_active = stage.status == StageStatus.ACTIVE
+        add(
+            RuleType.STAGE_STATUS,
+            1.0 if is_active else 0.0,
+            1.0,
+            Severity.PASS if is_active else Severity.VIOLATION,
+            f"وضعیت مرحله: {stage.status.value if stage.status else 'unknown'}",
+        )
+        return checks
+
+    @staticmethod
+    def _grade_loss(actual_loss: float, limit: float, warn_ratio: float = 0.8) -> Severity:
+        """درجه‌بندی یک زیان در برابر حد مجاز (برای DD/Floating)."""
+        if limit <= 0:
+            return Severity.PASS
+        if actual_loss > limit:
+            return Severity.VIOLATION
+        if actual_loss >= limit * warn_ratio:
+            return Severity.WARNING
+        return Severity.PASS
+
+    @staticmethod
+    def _overall_severity(checks: List[Dict[str, Any]]) -> Severity:
+        """بدترین شدت میان همه‌ی بررسی‌ها."""
+        severities = [c["severity"] for c in checks]
+        if Severity.VIOLATION in severities:
+            return Severity.VIOLATION
+        if Severity.WARNING in severities:
+            return Severity.WARNING
+        return Severity.PASS
 
     # ═════════════════════════════════════════════
     # Internal helpers

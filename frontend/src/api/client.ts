@@ -708,10 +708,34 @@ export const createPropPayout = (data: {
   note?: string;
   destination_account_id: number;
   withdrawal_date?: string;
+  // فاز ۳۳
+  currency?: string;
+  reference?: string;
+  status?: string;
 }) => api.post('/api/prop/payouts', data);
 
 export const updatePropPayout = (id: number, data: Record<string, any>) =>
   api.put(`/api/prop/payouts/${id}`, data);
+
+// فاز ۳۳ — چرخهٔ عمر برداشت (REQUESTED→APPROVED→PROCESSING→RECEIVED / CANCELLED)
+export const updatePropPayoutStatus = (
+  id: number,
+  status: string,
+  reference?: string,
+) => api.post(`/api/prop/payouts/${id}/status`, { status, reference });
+
+// فاز ۳۳ — ثبت یک پرش انتقال بعد از دریافت (درآمد نیست)
+export const createPropPayoutTransfer = (
+  id: number,
+  data: {
+    to_account_id: number;
+    amount: number;
+    from_account_id?: number;
+    currency?: string;
+    note?: string;
+    date?: string;
+  },
+) => api.post(`/api/prop/payouts/${id}/transfer`, data);
 
 export const deletePropPayout = (id: number) =>
   api.delete(`/api/prop/payouts/${id}`);

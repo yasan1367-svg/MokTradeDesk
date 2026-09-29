@@ -8,6 +8,8 @@ import {
   getPropPayouts,
   getPropPayoutsStats,
   createPropPayout,
+  updatePropPayoutStatus,
+  createPropPayoutTransfer,
   deletePropPayout,
   getBrokerPayouts,
   getBrokerPayoutsStats,
@@ -18,6 +20,33 @@ import {
 import { gregorianToJalali } from '../utils/jalali';
 
 type Tab = 'prop' | 'broker';
+
+// فاز ۳۳ — چرخهٔ عمر برداشت
+const STATUS_META: Record<string, { label: string; cls: string; icon: string }> = {
+  requested: { label: 'درخواست‌شده', icon: '🕐', cls: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]' },
+  approved: { label: 'تأییدشده', icon: '✅', cls: 'bg-[#3F7CFF]/15 text-[#3F7CFF] border-[#3F7CFF]/30' },
+  processing: { label: 'در حال پردازش', icon: '⏳', cls: 'bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30' },
+  received: { label: 'دریافت‌شده', icon: '💰', cls: 'bg-[var(--profit)]/15 text-[var(--profit)] border-[var(--profit)]/30' },
+  cancelled: { label: 'لغوشده', icon: '🚫', cls: 'bg-[var(--loss)]/15 text-[var(--loss)] border-[var(--loss)]/30' },
+};
+
+const STATUS_ACTION_LABEL: Record<string, string> = {
+  approved: 'تأیید',
+  processing: 'پردازش',
+  received: 'دریافت',
+  cancelled: 'لغو',
+};
+
+function StatusBadge({ status }: { status?: string | null }) {
+  if (!status) return <span className="text-[var(--text-muted)]">—</span>;
+  const m = STATUS_META[status];
+  if (!m) return <span className="text-[var(--text-secondary)]">{status}</span>;
+  return (
+    <span className={`inline-flex items-center gap-1 px-2.5 py-1 rounded-full border text-[11px] font-bold whitespace-nowrap ${m.cls}`}>
+      {m.icon} {m.label}
+    </span>
+  );
+}
 
 /** تاریخ میلادی ISO → شمسی (YYYY/MM/DD) */
 function faDate(iso?: string | null): string {
@@ -72,6 +101,14 @@ export default function PayoutHistoryPage() {
   const [stages, setStages] = useState<any[]>([]);
   const [destAccounts, setDestAccounts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
+  const [busyId, setBusyId] = useState<number | null>(null);
+
+  // فاز ۳۳ — انتقال بین‌حسابی (Trust Wallet → Exchange → IRR → Bank Card)
+  const [transferRow, setTransferRow] = useState<any | null>(null);
+  const [transferSaving, setTransferSaving] = useState(false);
+  const [transferForm, setTransferForm] = useState({
+    from_account_id: '', to_account_id: '', amount: '', currency: '', date: '', note: '',
+  });
   const [form, setForm] = useState({ prop_stage_id: '', amount: '', destination_account_id: '', withdrawal_date: '', note: '' });
 
   const params = useMemo(
@@ -147,7 +184,72 @@ export default function PayoutHistoryPage() {
     }
   };
 
+  // فاز ۳۳ — تغییر وضعیت برداشت (REQUESTED → APPROVED → PROCESSING → RECEIVED / CANCELLED)
+  const handleAdvance = async (id: number, status: string) => {
+    if (
+      status === 'received' &&
+      !window.confirm('با ثبت «دریافت»، این مبلغ وارد حسابداری مالی (درآمد) می‌شود. ادامه؟')
+    ) {
+      return;
+    }
+    setBusyId(id);
+    try {
+      await updatePropPayoutStatus(id, status);
+      toast.success(`وضعیت به «${STATUS_META[status]?.label || status}» تغییر کرد`);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'خطا در تغییر وضعیت برداشت');
+    } finally {
+      setBusyId(null);
+    }
+  };
+
+  // فاز ۳۳ — باز کردن فرم انتقال برای یک برداشت دریافت‌شده
+  const openTransfer = (row: any) => {
+    setTransferRow(row);
+    setTransferForm({
+      from_account_id: String(row.destination_account_id ?? ''),
+      to_account_id: '',
+      amount: String(row.amount ?? ''),
+      currency: row.currency || 'USD',
+      date: '',
+      note: '',
+    });
+  };
+
+  const handleTransferSubmit = async () => {
+    if (!transferRow) return;
+    if (!transferForm.to_account_id || !transferForm.amount) {
+      toast.warning('حساب مقصد و مبلغ الزامی است');
+      return;
+    }
+    if (transferForm.from_account_id && transferForm.from_account_id === transferForm.to_account_id) {
+      toast.warning('حساب مبدأ و مقصد باید متفاوت باشند');
+      return;
+    }
+    setTransferSaving(true);
+    try {
+      await createPropPayoutTransfer(transferRow.id, {
+        to_account_id: Number(transferForm.to_account_id),
+        from_account_id: transferForm.from_account_id ? Number(transferForm.from_account_id) : undefined,
+        amount: Number(transferForm.amount),
+        currency: transferForm.currency || undefined,
+        date: transferForm.date || undefined,
+        note: transferForm.note || undefined,
+      });
+      toast.success('انتقال ثبت شد (درآمد نیست)');
+      setTransferRow(null);
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'خطا در ثبت انتقال');
+    } finally {
+      setTransferSaving(false);
+    }
+  };
+
   const isProp = tab === 'prop';
+  // حساب‌های مالی مجاز برای انتقال (بدون حساب‌های پراپ)
+  const transferAccounts = (destAccounts || []).filter((a: any) => a.type !== 'prop');
   const chartData = (stats?.monthly || []).map((m: any) => ({ name: m.month, amount: m.amount }));
   const money = (v: any) => `$${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
@@ -196,6 +298,7 @@ export default function PayoutHistoryPage() {
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
                  style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>➕</div>
             <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ثبت برداشت جدید</h3>
+            <span className="text-[11px] text-[var(--text-muted)]">وضعیت اولیه: «درخواست‌شده» — با دکمه‌های جدول → تأیید → پردازش → دریافت</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <div>
@@ -350,11 +453,12 @@ export default function PayoutHistoryPage() {
                     <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
                       <th className="text-right py-3 px-4">تاریخ</th>
                       <th className="text-right py-3 px-4">مبلغ</th>
+                      {isProp && <th className="text-right py-3 px-4">وضعیت</th>}
                       <th className="text-right py-3 px-4">{isProp ? 'پراپ' : 'بروکر'}</th>
                       {isProp && <th className="text-right py-3 px-4">مرحله</th>}
                       <th className="text-right py-3 px-4">حساب مقصد</th>
                       <th className="text-right py-3 px-4">توضیحات</th>
-                      {isProp && <th className="text-right py-3 px-4"></th>}
+                      {isProp && <th className="text-right py-3 px-4">عملیات</th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -367,6 +471,9 @@ export default function PayoutHistoryPage() {
                           {faDate(r.withdrawal_date || r.date)}
                         </td>
                         <td className="py-3 px-4 font-extrabold text-[var(--profit)]">{money(r.amount)}</td>
+                        {isProp && (
+                          <td className="py-3 px-4"><StatusBadge status={r.status} /></td>
+                        )}
                         <td className="py-3 px-4 text-[var(--text-primary)]">
                           {isProp ? (r.firm_name || '—') : (r.broker_name || r.account_name || '—')}
                         </td>
@@ -381,13 +488,41 @@ export default function PayoutHistoryPage() {
                         </td>
                         {isProp && (
                           <td className="py-3 px-4">
-                            <button
-                              onClick={() => handleDelete(r.id)}
-                              title="حذف"
-                              className="text-xs font-bold text-[var(--loss)] hover:underline"
-                            >
-                              🗑️
-                            </button>
+                            <div className="flex items-center gap-2">
+                              {(r.allowed_transitions || []).map((s: string) => (
+                                <button
+                                  key={s}
+                                  disabled={busyId === r.id}
+                                  onClick={() => handleAdvance(r.id, s)}
+                                  title={`تغییر وضعیت به ${STATUS_META[s]?.label || s}`}
+                                  className={`text-[11px] font-bold px-2.5 py-1 rounded-[8px] border transition-all disabled:opacity-40 ${
+                                    s === 'cancelled'
+                                      ? 'text-[var(--loss)] border-[var(--loss)]/40 hover:bg-[var(--loss)]/10'
+                                      : s === 'received'
+                                      ? 'text-[var(--profit)] border-[var(--profit)]/40 hover:bg-[var(--profit)]/10'
+                                      : 'text-[var(--accent)] border-[var(--accent)]/40 hover:bg-[var(--accent-soft)]'
+                                  }`}
+                                >
+                                  {busyId === r.id ? '…' : STATUS_ACTION_LABEL[s] || s}
+                                </button>
+                              ))}
+                              {r.status === 'received' && (
+                                <button
+                                  onClick={() => openTransfer(r)}
+                                  title="ثبت انتقال بین‌حسابی (درآمد نیست)"
+                                  className="text-xs font-bold text-[#6366f1] hover:underline"
+                                >
+                                  🔄
+                                </button>
+                              )}
+                              <button
+                                onClick={() => handleDelete(r.id)}
+                                title="حذف"
+                                className="text-xs font-bold text-[var(--loss)] hover:underline"
+                              >
+                                🗑️
+                              </button>
+                            </div>
                           </td>
                         )}
                       </tr>
@@ -399,6 +534,121 @@ export default function PayoutHistoryPage() {
           </div>
         </>
       )}
+      {/* فاز ۳۳ — Modal انتقال بین‌حسابی (درآمد نیست) */}
+      {transferRow && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm p-4"
+          onClick={() => setTransferRow(null)}
+        >
+          <div
+            className="w-full max-w-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center gap-3">
+              <div
+                className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #A78BFA)' }}
+              >
+                🔄
+              </div>
+              <div>
+                <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ثبت انتقال بین‌حسابی</h3>
+                <p className="text-[11px] text-[var(--text-muted)]">
+                  این انتقال <b>درآمد نیست</b>؛ فقط بین حساب‌های مالی جابه‌جا می‌شود.
+                </p>
+              </div>
+            </div>
+
+            <div className="text-[11px] text-[var(--text-secondary)] bg-[var(--accent-soft)] rounded-[10px] px-3 py-2 my-4">
+              زنجیرهٔ نمونه: Prop → Trust Wallet → Exchange → IRR → Bank Card
+            </div>
+
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📤 حساب مبدأ</label>
+                <select
+                  className={inputCls}
+                  value={transferForm.from_account_id}
+                  onChange={(e) => setTransferForm({ ...transferForm, from_account_id: e.target.value })}
+                >
+                  <option value="">— (حساب مقصد همان برداشت)</option>
+                  {transferAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📥 حساب مقصد</label>
+                <select
+                  className={inputCls}
+                  value={transferForm.to_account_id}
+                  onChange={(e) => setTransferForm({ ...transferForm, to_account_id: e.target.value })}
+                >
+                  <option value="">انتخاب حساب…</option>
+                  {transferAccounts.map((a: any) => (
+                    <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                  ))}
+                </select>
+              </div>
+              <div>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💵 مبلغ</label>
+                <input
+                  type="number"
+                  className={inputCls}
+                  value={transferForm.amount}
+                  placeholder="مثلاً 500"
+                  onChange={(e) => setTransferForm({ ...transferForm, amount: e.target.value })}
+                />
+              </div>
+              <div>
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💱 ارز</label>
+                <select
+                  className={inputCls}
+                  value={transferForm.currency}
+                  onChange={(e) => setTransferForm({ ...transferForm, currency: e.target.value })}
+                >
+                  <option value="USD">USD</option>
+                  <option value="IRR">IRR</option>
+                </select>
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📅 تاریخ انتقال (شمسی)</label>
+                <PersianDateInput
+                  value={transferForm.date}
+                  onChange={(iso) => setTransferForm({ ...transferForm, date: iso })}
+                />
+              </div>
+              <div className="md:col-span-2">
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📝 توضیحات</label>
+                <input
+                  className={inputCls}
+                  value={transferForm.note}
+                  placeholder="اختیاری"
+                  onChange={(e) => setTransferForm({ ...transferForm, note: e.target.value })}
+                />
+              </div>
+            </div>
+
+            <div className="flex justify-end gap-3 mt-6">
+              <button
+                onClick={() => setTransferRow(null)}
+                className="px-5 py-3 rounded-[12px] text-sm font-extrabold bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)]"
+              >
+                انصراف
+              </button>
+              <button
+                onClick={handleTransferSubmit}
+                disabled={transferSaving}
+                className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(99,102,241,0.3)] disabled:opacity-50"
+                style={{ background: 'linear-gradient(135deg, #6366f1, #A78BFA)' }}
+              >
+                {transferSaving ? '⏳ در حال ثبت…' : '🔄 ثبت انتقال'}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
     </div>
   );
 }

@@ -16,6 +16,8 @@ from app.models.strategy import (
     CustomTimeInterval,
     TimePoint,
     AnalysisResult,
+    AnalysisRun,
+    AnalysisScopeRecord,
     SymbolMapping,
 )
 

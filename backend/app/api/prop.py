@@ -9,7 +9,8 @@ import logging
 from ..core.database import get_db
 from ..models.prop import (
     PropFirm, PropFirmDefaultRules, PropAccount, PropStage, PropWithdrawal, PropCost,
-    PropAlert, StageType, StageStatus, FailureReason
+    PropAlert, StageType, StageStatus, FailureReason,
+    WithdrawalStatus, WITHDRAWAL_TRANSITIONS,
 )
 from ..models.finance import (
     Account, Category, CategoryType, Currency, Transaction, TransactionType
@@ -106,6 +107,10 @@ class WithdrawalCreate(BaseModel):
     note: Optional[str] = None
     destination_account_id: int  # 🆕 فاز ۵ — حساب مالی مقصد (اجباری)
     withdrawal_date: Optional[str] = None  # 🆕 فاز ۵.۱ — تاریخ برداشت (ISO 8601)
+    # 🆕 فاز ۳۳
+    currency: Optional[str] = None
+    reference: Optional[str] = None
+    status: Optional[str] = None  # اگر داده شود، بعد از ایجاد اعمال می‌شود
 
 
 # ── فاز ۱۶: Schemas تاریخچهٔ برداشت (Payout) ──
@@ -115,6 +120,10 @@ class PayoutCreate(BaseModel):
     note: Optional[str] = None
     destination_account_id: int
     withdrawal_date: Optional[str] = None
+    # 🆕 فاز ۳۳
+    currency: Optional[str] = None
+    reference: Optional[str] = None
+    status: Optional[str] = None
 
 
 class PayoutUpdate(BaseModel):
@@ -122,6 +131,27 @@ class PayoutUpdate(BaseModel):
     note: Optional[str] = None
     destination_account_id: Optional[int] = None
     withdrawal_date: Optional[str] = None
+    # 🆕 فاز ۳۳
+    currency: Optional[str] = None
+    reference: Optional[str] = None
+    status: Optional[str] = None
+
+
+class PayoutStatusUpdate(BaseModel):
+    """تغییر وضعیت برداشت (فاز ۳۳)."""
+    status: str
+    reference: Optional[str] = None
+
+
+class TransferCreate(BaseModel):
+    """ثبت یک پرش انتقال بین حساب‌های مالی (فاز ۳۳) — درآمد نیست."""
+    to_account_id: int
+    amount: float
+    from_account_id: Optional[int] = None  # پیش‌فرض: حساب مقصد برداشت
+    currency: Optional[str] = None
+    note: Optional[str] = None
+    date: Optional[str] = None
+
 
 
 class PropCostCreate(BaseModel):
@@ -490,11 +520,76 @@ def get_stage_trades(stage_id: int, db: Session = Depends(get_db)):
 
 
 # ═════════════════════════════════════════════
+# فاز ۳۲ — Rule Engine (Rule Evaluation)
+# ═════════════════════════════════════════════
+def _serialize_rule_violation(v) -> dict:
+    """خروجی JSON یک رکورد ارزیابی قاعده"""
+    return {
+        "id": v.id,
+        "prop_stage_id": v.prop_stage_id,
+        "rule_type": enum_value(v.rule_type),
+        "actual_value": v.actual_value,
+        "limit_value": v.limit_value,
+        "severity": enum_value(v.severity),
+        "occurred_at": v.occurred_at.isoformat() if v.occurred_at else None,
+    }
+
+
+@router.post("/stages/{stage_id}/evaluate")
+def evaluate_stage_rules(stage_id: int, db: Session = Depends(get_db)):
+    """اجرای Rule Evaluation یک مرحله و ثبت نتایج در `rule_violations`."""
+    from ..services.prop_rule_engine import PropRuleEngine
+
+    evaluation = PropRuleEngine.evaluate_stage(db, stage_id)
+    if "error" in evaluation:
+        raise HTTPException(status_code=404, detail=evaluation["error"])
+
+    checks = evaluation.get("rule_checks", [])
+    recorded = PropRuleEngine.record_violations(db, stage_id, checks)
+    _generate_alerts_for_stage(db, stage_id, evaluation)
+
+    return {
+        "stage_id": stage_id,
+        "overall_severity": evaluation.get("overall_severity"),
+        "recorded": len(recorded),
+        "rule_checks": checks,
+        "evaluation": evaluation,
+    }
+
+
+@router.get("/stages/{stage_id}/violations")
+def get_stage_violations(
+    stage_id: int,
+    severity: Optional[str] = None,
+    limit: Optional[int] = None,
+    db: Session = Depends(get_db),
+):
+    """تاریخچهٔ ارزیابی قوانین یک مرحله (جدیدترین اول) — فاز ۳۲."""
+    from ..services.prop_rule_engine import PropRuleEngine
+
+    stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
+    if not stage:
+        raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
+
+    if severity is not None and severity not in ("pass", "warning", "violation"):
+        raise HTTPException(
+            status_code=400, detail="severity نامعتبر است (pass | warning | violation)"
+        )
+
+    rows = PropRuleEngine.get_violations(db, stage_id, severity=severity, limit=limit)
+    return [_serialize_rule_violation(r) for r in rows]
+
+
+# ═════════════════════════════════════════════
 # Withdrawal
 # ═════════════════════════════════════════════
 @router.post("/stages/{stage_id}/withdraw")
 def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get_db)):
-    """ثبت برداشت برای یک مرحله (فاز ۵) — حالا از منطق مشترک فاز ۱۶ استفاده می‌کند"""
+    """ثبت برداشت برای یک مرحله (فاز ۵ / به‌روزرسانی فاز ۳۳).
+
+    پیش‌فرض وضعیت REQUESTED است؛ اگر `status` داده شود همان اعمال می‌شود
+    (درآمد فقط در نقطه‌ی RECEIVED ثبت می‌شود).
+    """
     return _create_payout_record(
         db,
         stage_id=stage_id,
@@ -502,6 +597,9 @@ def withdraw(stage_id: int, request: WithdrawalCreate, db: Session = Depends(get
         note=request.note,
         destination_account_id=request.destination_account_id,
         withdrawal_date=request.withdrawal_date,
+        currency=request.currency,
+        reference=request.reference,
+        status=request.status,
     )
 
 
@@ -543,14 +641,19 @@ def _create_payout_record(
     note: Optional[str],
     destination_account_id: int,
     withdrawal_date: Optional[str] = None,
+    currency: Optional[str] = None,
+    reference: Optional[str] = None,
+    status: Optional[str] = None,
 ) -> dict:
-    """منطق مشترک ثبت برداشت پراپ (استفاده در `withdraw` و `POST /payouts`) — فاز ۱۶.
+    """منطق مشترک ثبت برداشت پراپ (فاز ۱۶ → بازنویسی در فاز ۳۳).
 
-    - اعتبارسنجی مرحله (باید FUNDED_REAL باشد) با PropRuleEngine
-    - اعتبارسنجی حساب مقصد
-    - ساخت PropWithdrawal + Transaction(type=withdrawal) + به‌روزرسانی موجودی‌ها
+    - اعتبارسنجی مرحله (FUNDED_REAL) با PropRuleEngine
+    - ایجاد `PropWithdrawal` با وضعیت پیش‌فرض REQUESTED (بدون تراکنش مالی)
+    - اگر `status` داده شود، انتقال وضعیت اعمال می‌شود؛ **درآمد فقط در RECEIVED**
+      توسط `PayoutService` ثبت می‌شود (نه در لحظه‌ی ایجاد).
     """
     from ..services.prop_rule_engine import PropRuleEngine
+    from ..services.payout_service import PayoutService
 
     stage = db.query(PropStage).filter(PropStage.id == stage_id).first()
     if not stage:
@@ -563,69 +666,32 @@ def _create_payout_record(
     if not is_valid:
         raise HTTPException(status_code=400, detail=error)
 
-    dest = db.query(Account).filter(Account.id == destination_account_id).first()
-    if not dest:
-        raise HTTPException(
-            status_code=400,
-            detail="حساب مقصد معتبر نیست (باید بانک/صرافی/کیف‌پول باشد)",
+    try:
+        withdrawal = PayoutService.create(
+            db,
+            stage=stage,
+            amount=amount,
+            destination_account_id=destination_account_id,
+            note=note,
+            reference=reference,
+            withdrawal_date=withdrawal_date,
+            currency=currency,
         )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    # فاز ۲۸: مبدأ برداشت مرحلهٔ پراپ است (نه حساب مالی). پول مستقیم به حساب مقصد می‌رود.
-    prop_acc = db.query(PropAccount).filter(PropAccount.id == stage.prop_account_id).first()
-
-    withdrawal_dt = datetime.now(timezone.utc)
-    if withdrawal_date:
+    posted = None
+    if status:
         try:
-            parsed = datetime.fromisoformat(str(withdrawal_date).replace("Z", "+00:00"))
-            withdrawal_dt = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
-            )
-
-    withdrawal = PropWithdrawal(
-        prop_stage_id=stage_id,
-        amount=amount,
-        note=note,
-        destination_account_id=destination_account_id,
-        withdrawal_date=withdrawal_dt,
-    )
-    db.add(withdrawal)
-
-    # فقط total_withdrawn افزایش می‌یابد (current_profit از روی trades محاسبه می‌شود)
-    stage.total_withdrawn = (stage.total_withdrawn or 0) + amount
-
-    description = f"برداشت از {prop_acc.account_label if prop_acc else 'پراپ'}"
-    if note:
-        description += f" - {note}"
-
-    cat = _get_or_create_category(db, "برداشت پراپ", CategoryType.INCOME, "#27AE60", "💰")
-
-    tx = Transaction(
-        account_id=destination_account_id,
-        category_id=cat.id,
-        amount=amount,
-        currency=_to_currency(prop_acc.currency if prop_acc else None),
-        date=withdrawal_dt,
-        description=description,
-        type=TransactionType.WITHDRAWAL,
-        from_account_id=None,
-        to_account_id=destination_account_id,
-        related_prop_account_id=stage.prop_account_id,
-    )
-    db.add(tx)
-
-    # فقط موجودی حساب مقصد افزایش می‌یابد (مبدأ = مرحله پراپ، نه حساب مالی)
-    dest.balance = (dest.balance or 0.0) + amount
-
-    db.commit()
-    db.refresh(withdrawal)
+            withdrawal, posted = PayoutService.set_status(db, withdrawal, status)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc))
 
     return {
-        "message": f"{amount} دلار برداشت ثبت شد و به حساب مقصد واریز شد",
+        "message": f"برداشت {amount} با وضعیت {withdrawal.status.value} ثبت شد",
         "id": withdrawal.id,
-        "transaction_id": tx.id,
+        "status": withdrawal.status.value,
+        "transaction_id": posted.id if posted else withdrawal.transaction_id,
         "source_account_id": None,
         "destination_account_id": destination_account_id,
     }
@@ -643,11 +709,20 @@ def _serialize_payout(w: PropWithdrawal) -> dict:
         "stage_status": stage.status.value if stage and stage.status else None,
         "prop_account_id": account.id if account else None,
         "account_label": account.account_label if account else None,
-        "currency": account.currency if account else None,
+        "currency": (w.currency.value if w.currency else (account.currency if account else None)),
         "firm_id": firm.id if firm else None,
         "firm_name": firm.name if firm else None,
         "amount": w.amount,
+        "status": enum_value(w.status) if w.status else None,
+        "reference": w.reference,
+        "transaction_id": w.transaction_id,
+        "allowed_transitions": (
+            [s.value for s in WITHDRAWAL_TRANSITIONS.get(w.status, ())]
+            if w.status
+            else []
+        ),
         "withdrawal_date": w.withdrawal_date.isoformat() if w.withdrawal_date else None,
+        "created_at": w.created_at.isoformat() if w.created_at else None,
         "note": w.note,
         "destination_account_id": w.destination_account_id,
         "destination_account_name": w.destination_account.name if w.destination_account else None,
@@ -761,7 +836,10 @@ def get_payout_stats(
 
 @router.post("/payouts")
 def create_payout(data: PayoutCreate, db: Session = Depends(get_db)):
-    """ثبت برداشت جدید پراپ (فاز ۱۶)"""
+    """ثبت برداشت جدید پراپ (فاز ۱۶ → به‌روزرسانی فاز ۳۳).
+
+    پیش‌فرض وضعیت `REQUESTED` است؛ درآمد فقط در `RECEIVED` ثبت می‌شود.
+    """
     return _create_payout_record(
         db,
         stage_id=data.prop_stage_id,
@@ -769,64 +847,115 @@ def create_payout(data: PayoutCreate, db: Session = Depends(get_db)):
         note=data.note,
         destination_account_id=data.destination_account_id,
         withdrawal_date=data.withdrawal_date,
+        currency=data.currency,
+        reference=data.reference,
+        status=data.status,
     )
 
 
 @router.put("/payouts/{payout_id}")
 @router.patch("/payouts/{payout_id}")
 def update_payout(payout_id: int, data: PayoutUpdate, db: Session = Depends(get_db)):
-    """ویرایش برداشت پراپ (فاز ۱۶) — هم PUT و هم PATCH"""
+    """ویرایش برداشت پراپ (فاز ۱۶ → یکپارچگی کامل فاز ۳۳) — هم PUT و هم PATCH"""
+    from ..services.payout_service import PayoutService
+
     w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
 
     payload = data.model_dump(exclude_unset=True)
-    stage = db.query(PropStage).filter(PropStage.id == w.prop_stage_id).first()
+    try:
+        PayoutService.update(db, w, payload)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
 
-    if "amount" in payload and payload["amount"] is not None and stage:
-        # اصلاح total_withdrawn مرحله به‌اندازهٔ اختلاف مبلغ
-        delta = float(payload["amount"]) - float(w.amount or 0)
-        stage.total_withdrawn = (stage.total_withdrawn or 0) + delta
-
-    if "withdrawal_date" in payload and payload["withdrawal_date"]:
-        try:
-            parsed = datetime.fromisoformat(str(payload["withdrawal_date"]).replace("Z", "+00:00"))
-            payload["withdrawal_date"] = parsed if parsed.tzinfo else parsed.replace(tzinfo=timezone.utc)
-        except ValueError:
-            raise HTTPException(
-                status_code=400,
-                detail="فرمت تاریخ برداشت نامعتبر است (ISO 8601: YYYY-MM-DD)",
-            )
-
-    if "destination_account_id" in payload and payload["destination_account_id"] is not None:
-        dest = db.query(Account).filter(
-            Account.id == payload["destination_account_id"],
-        ).first()
-        if not dest:
-            raise HTTPException(status_code=400, detail="حساب مقصد معتبر نیست")
-
-    for field, value in payload.items():
-        setattr(w, field, value)
-
-    db.commit()
-    db.refresh(w)
     return {"message": "برداشت به‌روزرسانی شد", "payout": _serialize_payout(w)}
 
 
 @router.delete("/payouts/{payout_id}")
 def delete_payout(payout_id: int, db: Session = Depends(get_db)):
-    """حذف برداشت پراپ + اصلاح total_withdrawn مرحله (فاز ۱۶)"""
+    """حذف برداشت + برگشت کامل اثر مالی آن (فاز ۱۶ → فاز ۳۳)"""
+    from ..services.payout_service import PayoutService
+
     w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
 
-    stage = db.query(PropStage).filter(PropStage.id == w.prop_stage_id).first()
-    if stage:
-        stage.total_withdrawn = max((stage.total_withdrawn or 0) - (w.amount or 0), 0.0)
+    PayoutService.delete_and_reverse(db, w)
+    return {"message": "برداشت حذف و اثر مالی آن برگشت داده شد"}
 
-    db.delete(w)
-    db.commit()
-    return {"message": "برداشت حذف شد"}
+
+@router.post("/payouts/{payout_id}/status")
+def update_payout_status(
+    payout_id: int, data: PayoutStatusUpdate, db: Session = Depends(get_db)
+):
+    """تغییر وضعیت برداشت (فاز ۳۳).
+
+    فقط انتقال‌های مجاز؛ در نقطه‌ی `RECEIVED` برای اولین بار **درآمد**
+    (`FinancialTransaction` از نوع `PROFIT`) ثبت می‌شود.
+    """
+    from ..services.payout_service import PayoutService
+
+    w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+
+    if data.reference is not None:
+        w.reference = data.reference
+
+    try:
+        w, posted = PayoutService.set_status(db, w, data.status)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "message": f"وضعیت برداشت به {enum_value(w.status)} تغییر کرد",
+        "payout": _serialize_payout(w),
+        "income_transaction_id": posted.id if posted else None,
+    }
+
+
+@router.post("/payouts/{payout_id}/transfer")
+def create_payout_transfer(
+    payout_id: int, data: TransferCreate, db: Session = Depends(get_db)
+):
+    """ثبت یک پرش انتقال بعد از دریافت (فاز ۳۳) — **درآمد نیست**.
+
+    سناریو: Prop → Trust Wallet → Exchange → IRR → Bank Card.
+    هر پرش با `type=exchange` ثبت می‌شود و در `finance/summary` در
+    `total_transfers` می‌آید، نه `total_income`.
+    """
+    from ..services.payout_service import PayoutService
+
+    w = db.query(PropWithdrawal).filter(PropWithdrawal.id == payout_id).first()
+    if not w:
+        raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
+
+    from_account_id = data.from_account_id or w.destination_account_id
+    stage = db.query(PropStage).filter(PropStage.id == w.prop_stage_id).first()
+
+    try:
+        tx = PayoutService.record_transfer(
+            db,
+            from_account_id=from_account_id,
+            to_account_id=data.to_account_id,
+            amount=data.amount,
+            currency=data.currency,
+            note=data.note,
+            related_prop_account_id=stage.prop_account_id if stage else None,
+            date=data.date,
+        )
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail=str(exc))
+
+    return {
+        "message": "انتقال ثبت شد (درآمد نیست)",
+        "transaction_id": tx.id,
+        "from_account_id": from_account_id,
+        "to_account_id": data.to_account_id,
+        "amount": tx.amount,
+    }
+
 
 
 # ═════════════════════════════════════════════
