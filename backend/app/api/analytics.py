@@ -9,7 +9,7 @@ from ..core.database import get_db
 from ..services.analysis_service import AnalysisService, compare_versions
 from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
-from ..utils.trade_scope import analysis_trades_filter
+from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 from ..utils import jalali
 from ..utils.time_utils import to_tehran, TEHRAN
 from ..schemas.analytics import (
@@ -923,16 +923,54 @@ def _analysis_response(result):
     }
 
 
-@router.get("/{version_id}")
-def get_analysis(version_id: int, db: Session = Depends(get_db)):
-    """دریافت آخرین تحلیل ذخیره‌شده‌ی یک نسخه
+def _tt_from_scope_key(version_id: int, scope_key: str):
+    """استخراج `test_type` از کلید دامنه («12:BACKTEST» ⇒ BACKTEST)."""
+    prefix = f"{version_id}:"
+    if scope_key and scope_key.startswith(prefix):
+        try:
+            return TestType(scope_key[len(prefix):].strip().lower())
+        except ValueError:
+            return None
+    return None
 
-    فاز ۱۹: تحلیل نسخه فقط روی معاملات Backtest/Forward انجام می‌شود؛ پس نتیجه‌ای
-    سرو می‌شود که با مجموعه‌ی معاملات قابل‌تحلیل فعلی نسخه هم‌خوان باشد.
+
+@router.get("/{version_id}")
+def get_analysis(
+    version_id: int,
+    test_type: Optional[str] = "BACKTEST",
+    db: Session = Depends(get_db),
+):
+    """دریافت تحلیل ذخیره‌شده‌ی یک نسخه — فاز 48a.2.
+
+    `test_type` (پیش‌فرض BACKTEST) کلید دامنه را قطعی می‌کند (قبلاً `.first()`
+    روی `version_id` بین Backtest/Forward نتیجه‌ی نامعین می‌داد). در نبود رکورد
+    scoped، به جدیدترین تحلیل همان نسخه (legacy یا نوع دیگر) برمی‌گردد.
     """
-    result = db.query(AnalysisResult).filter(
-        AnalysisResult.version_id == version_id
-    ).first()
+    tt = None
+    if test_type:
+        try:
+            tt = TestType(str(test_type).strip().lower())
+        except ValueError:
+            tt = None
+
+    result = None
+    if tt is not None:
+        result = db.query(AnalysisResult).filter(
+            AnalysisResult.scope == AnalysisScope.VERSION,
+            AnalysisResult.scope_key == version_scope_key(version_id, tt),
+        ).first()
+
+    if result is None:
+        # fallback قطعی: جدیدترین تحلیل همین نسخه
+        result = (
+            db.query(AnalysisResult)
+            .filter(
+                AnalysisResult.scope == AnalysisScope.VERSION,
+                AnalysisResult.version_id == version_id,
+            )
+            .order_by(AnalysisResult.id.desc())
+            .first()
+        )
 
     if not result:
         raise HTTPException(
@@ -940,13 +978,14 @@ def get_analysis(version_id: int, db: Session = Depends(get_db)):
             detail="تحلیلی برای این نسخه یافت نشد. ابتدا POST /analyze/{version_id} را اجرا کنید."
         )
 
-    # ── گارد سازگاری (فاز ۱۹) ──
-    # تعداد معاملات قابل‌تحلیل = غیر-REAL (BACKTEST / FORWARD)
-    analyzable_trades = (
-        db.query(Trade)
-        .filter(Trade.version_id == version_id, analysis_trades_filter())
-        .count()
+    # ── گارد سازگاری (فاز ۱۹ / 48a.2) — شمارش هم‌نوع با رکورد سرو‌شده ──
+    eff_tt = _tt_from_scope_key(version_id, result.scope_key)
+    count_q = db.query(Trade).filter(
+        Trade.version_id == version_id, analysis_trades_filter()
     )
+    if eff_tt is not None:
+        count_q = count_q.filter(Trade.test_type == eff_tt)
+    analyzable_trades = count_q.count()
 
     if analyzable_trades == 0:
         raise HTTPException(
