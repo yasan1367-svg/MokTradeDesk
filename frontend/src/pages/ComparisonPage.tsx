@@ -1,12 +1,16 @@
 import { useState, useEffect } from 'react';
 import ComparisonBarChart from '../components/charts/ComparisonBarChart';
 import ComparisonRadarChart from '../components/charts/ComparisonRadarChart';
+import EmptyState from '../components/ui/EmptyState';
+import Skeleton from '../components/Skeleton';
+import { useToast } from '../components/ToastProvider';
 
 import {
   getAllVersions,
   getStrategies,
-  compareVersionsWithDetails,
+  compareVersions,
 } from '../api/client';
+import type { CompareResponse, VersionComparisonItem } from '../api/client';
 
 interface Version {
   id: number;
@@ -22,17 +26,39 @@ interface Strategy {
   name: string;
 }
 
+const TEST_TYPES = [
+  { value: 'BACKTEST', label: 'بک‌تست' },
+  { value: 'FORWARD', label: 'فوروارد' },
+  { value: 'REAL_PERSONAL', label: 'واقعی شخصی' },
+  { value: 'REAL_PROP', label: 'واقعی پراپ' },
+];
+
+const MAX_SELECT = 5;
+
+/**
+ * فاز ۴۸a.۶ — صفحه‌ی مقایسه/رتبه‌بندی نسخه‌ها (قرارداد جدید).
+ * قرارداد بک‌اند: `{comparison, test_type, filters, best}` — هر item: rank/score/metrics/reasons[/error]
+ */
 export default function ComparisonPage() {
+  const toast = useToast();
+
+  // ── داده‌های پایه ──
   const [versions, setVersions] = useState<Version[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
+
+  // ── انتخاب‌ها و فیلترها ──
   const [selectedIds, setSelectedIds] = useState<number[]>([]);
   const [filterStrategy, setFilterStrategy] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [comparison, setComparison] = useState<any>(null);
+  const [testType, setTestType] = useState<string>('BACKTEST');
+  const [symbol, setSymbol] = useState('');
+  const [dateFrom, setDateFrom] = useState('');
+  const [dateTo, setDateTo] = useState('');
+
+  // ── نتیجه ──
+  const [result, setResult] = useState<CompareResponse | null>(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [activeDetailTab, setActiveDetailTab] = useState<'session' | 'weekday' | 'hour' | 'custom'>('session');
-  const [minTrades, setMinTrades] = useState<number>(20); // فیلتر هوشمند: حداقل تعداد معامله برای مقایسه
+  const [drawerVersion, setDrawerVersion] = useState<VersionComparisonItem | null>(null);
 
   useEffect(() => {
     loadData();
@@ -44,38 +70,52 @@ export default function ComparisonPage() {
         getAllVersions(),
         getStrategies(),
       ]);
-      setVersions(versionsRes.data);
-      setStrategies(strategiesRes.data);
+      setVersions(versionsRes.data || []);
+      setStrategies(strategiesRes.data || []);
     } catch (err) {
       console.error('خطا:', err);
+      toast.error('خطا در بارگذاری نسخه‌ها');
     }
   };
+
+  // نگاشت version_id ⇒ «استراتژی / نسخه»
+  const labelOf = (versionId: number) => {
+    const v = versions.find((x) => x.id === versionId);
+    return v ? `${v.strategy_name} / ${v.version_name}` : `نسخه #${versionId}`;
+  };
+
+  const strategyOf = (versionId: number) =>
+    versions.find((x) => x.id === versionId)?.strategy_name ?? '—';
 
   const toggleVersion = (id: number) => {
     if (selectedIds.includes(id)) {
       setSelectedIds(selectedIds.filter((v) => v !== id));
-    } else {
-      if (selectedIds.length >= 5) {
-        setError('حداکثر ۵ نسخه قابل مقایسه است');
-        setTimeout(() => setError(null), 3000);
-        return;
-      }
-      setSelectedIds([...selectedIds, id]);
+      return;
     }
+    if (selectedIds.length >= MAX_SELECT) {
+      toast.warning(`حداکثر ${MAX_SELECT} نسخه قابل مقایسه است`);
+      return;
+    }
+    setSelectedIds([...selectedIds, id]);
   };
 
   const handleCompare = async () => {
     if (selectedIds.length < 2) {
-      setError('حداقل ۲ نسخه برای مقایسه انتخاب کنید');
+      toast.error('حداقل ۲ نسخه انتخاب کن');
       return;
     }
     setLoading(true);
-    setError(null);
     try {
-      const res = await compareVersionsWithDetails(selectedIds, minTrades);
-      setComparison(res.data);
+      const r = await compareVersions({
+        version_ids: selectedIds,
+        test_type: testType,
+        symbol: symbol.trim() || undefined,
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      });
+      setResult(r.data);
     } catch (err: any) {
-      setError(err.response?.data?.detail || 'خطا در مقایسه');
+      toast.error(err?.response?.data?.detail || 'خطا در مقایسه');
     } finally {
       setLoading(false);
     }
@@ -83,92 +123,122 @@ export default function ComparisonPage() {
 
   const filteredVersions = versions.filter((v) => {
     if (filterStrategy && v.strategy_id !== filterStrategy) return false;
-    if (searchQuery && !v.version_name.toLowerCase().includes(searchQuery.toLowerCase()) &&
-        !v.strategy_name.toLowerCase().includes(searchQuery.toLowerCase())) return false;
+    if (
+      searchQuery &&
+      !v.version_name.toLowerCase().includes(searchQuery.toLowerCase()) &&
+      !v.strategy_name.toLowerCase().includes(searchQuery.toLowerCase())
+    ) {
+      return false;
+    }
     return true;
   });
 
-  const getCellStyle = (item: any, allItems: any[], metric: string, higherIsBetter: boolean = true) => {
-    if (allItems.length < 2) return 'text-[var(--text-primary)]';
-    const values = allItems.map((i: any) => i[metric]);
-    const maxVal = Math.max(...values);
-    const minVal = Math.min(...values);
-    const val = item[metric];
-    if (higherIsBetter) {
-      if (val === maxVal) return 'text-[var(--profit)] font-extrabold';
-      if (val === minVal) return 'text-[var(--loss)] font-bold';
-    } else {
-      if (val === minVal) return 'text-[var(--profit)] font-extrabold';
-      if (val === maxVal) return 'text-[var(--loss)] font-bold';
-    }
-    return 'text-[var(--text-primary)] font-semibold';
+  // آرایهٔ flat برای نمودارهای موجود (Bar/Radar) — معادل `metrics` تودرتو را باز می‌کند
+  const chartItems = (result?.comparison ?? [])
+    .filter((i) => !i.error && i.metrics)
+    .map((i) => {
+      const m = i.metrics || {};
+      return {
+        version_id: i.version_id,
+        version_name: labelOf(i.version_id),
+        strategy_name: strategyOf(i.version_id),
+        win_rate: Number(m.win_rate ?? 0),
+        profit_factor: Number(m.profit_factor ?? 0),
+        net_pnl: Number(m.net_pnl ?? 0),
+        max_dd: Number(m.max_dd ?? 0),
+        health_score: Number(i.score ?? 0), // Radar نام health_score می‌خواهد ⇒ از score پر می‌شود
+      };
+    });
+
+  const scoreBadgeClass = (rank?: number) => {
+    if (rank === 1)
+      return 'bg-[var(--warning-soft)] text-[var(--warning-strong)] border-[var(--warning-border)]';
+    if (rank === 2)
+      return 'bg-[var(--accent-soft)] text-[var(--accent)] border-[var(--border-accent)]';
+    return 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
   };
 
   return (
-    <div className="space-y-6">
-      {error && (
-        <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] text-[var(--loss)] p-4 rounded-[14px] text-sm font-semibold shadow-sm">
-          ❌ {error}
-        </div>
-      )}
+    <div dir="rtl" className="p-7">
+      {/* Header */}
+      <div className="mb-6">
+        <h1 className="text-2xl font-extrabold text-[var(--text-primary)]">📊 مقایسه نسخه‌ها</h1>
+        <p className="text-[13px] text-[var(--text-secondary)] mt-1">
+          انتخاب ۲ تا {MAX_SELECT} نسخه + فیلتر نماد/تاریخ ⇒ رتبه‌بندی بر اساس Score
+        </p>
+      </div>
 
-      {/* ═══════════════════════════════════════════
-          بخش انتخاب
-      ═══════════════════════════════════════════ */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-        <div className="flex items-center gap-3 mb-5">
-          <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl shadow-[0_4px_12px_rgba(63,124,255,0.12)]">
-            ⚖️
-          </div>
+      {/* پنل فیلتر */}
+      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md mb-6">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-5">
           <div>
-            <h2 className="text-lg font-extrabold text-[var(--text-primary)]">انتخاب نسخه‌ها برای مقایسه</h2>
-            <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">حداقل ۲ و حداکثر ۵ نسخه را انتخاب کنید</p>
-          </div>
-        </div>
-
-        {/* فیلترها */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-3">
-          <div>
-            <label className="text-[12px] text-[var(--text-secondary)] font-semibold block mb-1.5">استراتژی</label>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">استراتژی</label>
             <select
-              value={filterStrategy || ''}
+              value={filterStrategy ?? ''}
               onChange={(e) => setFilterStrategy(e.target.value ? Number(e.target.value) : null)}
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-4 py-2.5 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-soft)]"
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
             >
-              <option value="">همه‌ی استراتژی‌ها</option>
+              <option value="">همه</option>
               {strategies.map((s) => (
                 <option key={s.id} value={s.id}>{s.name}</option>
               ))}
             </select>
           </div>
-          <div className="md:col-span-2">
-            <label className="text-[12px] text-[var(--text-secondary)] font-semibold block mb-1.5">جستجو</label>
+
+          <div>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">جستجو</label>
             <input
-              type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="🔍 جستجوی نام نسخه یا استراتژی..."
-              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-4 py-2.5 text-[var(--text-primary)] text-sm font-medium focus:border-[var(--accent)] focus:outline-none focus:ring-2 focus:ring-[var(--accent-soft)]"
+              placeholder="نام نسخه / استراتژی"
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">نوع تست</label>
+            <select
+              value={testType}
+              onChange={(e) => setTestType(e.target.value)}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
+            >
+              {TEST_TYPES.map((t) => (
+                <option key={t.value} value={t.value}>{t.label}</option>
+              ))}
+            </select>
+          </div>
+          <div>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">نماد (اختیاری)</label>
+            <input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value)}
+              placeholder="XAUUSD"
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">از تاریخ</label>
+            <input
+              type="date"
+              value={dateFrom}
+              onChange={(e) => setDateFrom(e.target.value)}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
+            />
+          </div>
+
+          <div>
+            <label className="block text-[12px] font-bold text-[var(--text-secondary)] mb-2">تا تاریخ</label>
+            <input
+              type="date"
+              value={dateTo}
+              onChange={(e) => setDateTo(e.target.value)}
+              className="w-full bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[13px] text-[var(--text-primary)] focus:outline-none focus:border-[var(--border-accent)]"
             />
           </div>
         </div>
 
-        {/* فیلتر هوشمند: حداقل تعداد معامله */}
-        <div className="flex items-center gap-3 mb-5 bg-[var(--warning-soft-alt)] border border-[var(--warning-border)] rounded-[10px] px-4 py-2.5">
-          <label className="text-[12px] text-[var(--warning-strong)] font-bold whitespace-nowrap">
-            ⚠️ حداقل تعداد معامله برای ورود به مقایسه:
-          </label>
-          <input
-            type="number"
-            min={0}
-            value={minTrades}
-            onChange={(e) => setMinTrades(Math.max(0, Number(e.target.value)))}
-            className="w-24 bg-[var(--bg-card)] border border-[var(--warning-border)] rounded-[8px] px-3 py-1.5 text-[var(--warning-strong)] text-sm font-bold focus:outline-none focus:ring-2 focus:ring-[var(--warning-border)]"
-          />
-          <span className="text-[11px] text-[var(--warning-strong)]">نسخه‌های کمتر از این تعداد از مقایسه کنار گذاشته می‌شن</span>
-        </div>
-
-        {/* لیست نسخه‌ها */}
+        {/* لیست نسخه‌ها (چندتایی) */}
         <div className="max-h-72 overflow-y-auto border border-[var(--border-subtle)] rounded-[14px] p-2 mb-5 bg-[var(--bg-input)]">
           {filteredVersions.length === 0 ? (
             <div className="text-[var(--text-muted)] text-sm text-center py-8">نسخه‌ای یافت نشد</div>
@@ -176,7 +246,6 @@ export default function ComparisonPage() {
             <div className="space-y-1.5">
               {filteredVersions.map((v) => {
                 const isSelected = selectedIds.includes(v.id);
-                const belowThreshold = minTrades > 0 && v.trades_count < minTrades;
                 return (
                   <label
                     key={v.id}
@@ -202,18 +271,9 @@ export default function ComparisonPage() {
                         </div>
                       </div>
                     </div>
-                    <div className="flex items-center gap-2">
-                      {belowThreshold && (
-                        <span className="text-[10px] font-bold px-2.5 py-1 rounded-full bg-[var(--warning-soft-alt)] text-[var(--warning-strong)] border border-[var(--warning-border)]">
-                          کمتر از حدنصاب
-                        </span>
-                      )}
-                      {isSelected && (
-                        <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#3F7CFF] text-white">
-                          انتخاب‌شده
-                        </span>
-                      )}
-                    </div>
+                    {isSelected && (
+                      <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#3F7CFF] text-white">انتخاب‌شده</span>
+                    )}
                   </label>
                 );
               })}
@@ -223,11 +283,11 @@ export default function ComparisonPage() {
 
         <div className="flex justify-between items-center flex-wrap gap-3">
           <div className="text-[13px] text-[var(--text-secondary)] font-medium">
-            انتخاب‌شده: <span className="text-[var(--accent)] font-extrabold text-base">{selectedIds.length}</span> از ۵
+            انتخاب‌شده: <span className="text-[var(--accent)] font-extrabold text-base">{selectedIds.length}</span> از {MAX_SELECT}
           </div>
           <div className="flex gap-2">
             <button
-              onClick={() => setSelectedIds([])}
+              onClick={() => { setSelectedIds([]); setResult(null); }}
               className="bg-[var(--bg-card)] border border-[var(--border-subtle)] hover:border-[var(--border-accent)] text-[var(--text-secondary)] hover:text-[var(--accent)] px-5 py-2.5 rounded-[10px] text-sm font-bold transition-all"
             >
               ✕ پاک کردن
@@ -235,436 +295,234 @@ export default function ComparisonPage() {
             <button
               onClick={handleCompare}
               disabled={loading || selectedIds.length < 2}
-              className="text-white px-7 py-2.5 rounded-[10px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-              style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
+              className="text-white px-6 py-2.5 rounded-[10px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
+              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
             >
-              {loading ? '⏳ در حال مقایسه...' : '🚀 مقایسه کن'}
+              {loading ? 'در حال مقایسه...' : '🔍 مقایسه'}
             </button>
           </div>
         </div>
       </div>
 
-      {/* ═══════════════════════════════════════════
-          نتیجه
-      ═══════════════════════════════════════════ */}
-      {comparison && (
+      {/* حالت بارگذاری */}
+      {loading && (
+        <div className="space-y-4">
+          <Skeleton variant="card" className="h-32" />
+          <Skeleton variant="card" className="h-72" />
+        </div>
+      )}
+
+      {/* حالت خالی */}
+      {!loading && !result && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] shadow-md">
+          <EmptyState
+            icon="📊"
+            title="هنوز مقایسه‌ای انجام نشده"
+            description="۲ تا ۵ نسخه را انتخاب کن و «مقایسه» را بزن."
+          />
+        </div>
+      )}
+      {!loading && result && (
         <>
-          {/* جدول مقایسه */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-            <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-              <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">
-                📋
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-[var(--text-primary)]">جدول مقایسه</h3>
-                <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{comparison.items.length} نسخه</p>
-              </div>
-            </div>
-
-            {comparison.skipped && comparison.skipped.length > 0 && (
-              <div className="mb-5 bg-[var(--warning-soft-alt)] border border-[var(--warning-border)] rounded-[12px] p-4">
-                <div className="text-[13px] font-extrabold text-[var(--warning-strong)] mb-2">⚠️ این نسخه‌ها وارد مقایسه نشدن:</div>
-                <ul className="space-y-1">
-                  {comparison.skipped.map((s: any, idx: number) => (
-                    <li key={idx} className="text-[12px] text-[var(--warning-strong)]">
-                      • {s.version_name || `نسخه #${s.version_id}`} — {s.reason}
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            <div className="overflow-x-auto rounded-[14px] border border-[var(--border-subtle)]">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="bg-[var(--bg-elevated)]">
-                    <th className="text-right py-4 px-5 text-[12px] text-[var(--text-secondary)] font-extrabold uppercase tracking-wider rounded-r-[14px]">
-                      معیار
-                    </th>
-                    {comparison.items.map((item: any) => (
-                      <th key={item.version_id} className="text-right py-4 px-5 rounded-l-[14px]">
-                        <div className="font-extrabold text-[14px] text-[var(--text-primary)]">{item.version_name}</div>
-                        <div className="text-[11px] text-[var(--text-secondary)] font-medium mt-0.5">{item.strategy_name}</div>
-                      </th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">تعداد معاملات</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-bold text-[var(--text-primary)]">
-                        {item.total_trades}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🥇 نرخ برد</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'win_rate')}`}>
-                        {item.win_rate}٪
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">💰 سود خالص</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'net_pnl')}`}>
-                        {item.net_pnl >= 0 ? '+' : ''}{item.net_pnl} $
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🏆 فاکتور سود</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'profit_factor')}`}>
-                        {item.profit_factor}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🛡️ حداکثر DD</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'max_dd', false)}`}>
-                        -{item.max_dd} $
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🎯 Net R</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'net_r')}`}>
-                        {item.net_r} R
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">📐 اکسپکتنسی</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'expectancy')}`}>
-                        {item.expectancy} $ {item.expectancy_r !== null && item.expectancy_r !== undefined ? `(${item.expectancy_r} R)` : ''}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">📈 میانگین برد / باخت</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-semibold text-[var(--text-primary)]">
-                        +{item.avg_win} $ / -{item.avg_loss} $
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🚀 بزرگ‌ترین برد / باخت</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-semibold text-[var(--text-primary)]">
-                        +{item.largest_win} $ / -{item.largest_loss} $
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🔻 بیشترین باخت متوالی</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[14px] ${getCellStyle(item, comparison.items, 'max_consecutive_losses', false)}`}>
-                        {item.max_consecutive_losses}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">⚖️ نسبت میانگین برد به باخت</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-semibold text-[var(--text-primary)]">
-                        {item.consistency_analysis?.avg_win_avg_loss_ratio ?? '-'}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">📉 انحراف معیار سود (یکنواختی)</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-semibold text-[var(--text-primary)]">
-                        {item.consistency_analysis?.pnl_std_dev ?? '-'}
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-secondary)] font-semibold">🎲 وابستگی به معاملات بزرگ</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className="py-4 px-5 text-[14px] font-semibold text-[var(--text-primary)]">
-                        {item.consistency_analysis?.top_trades_contribution_percent ?? '-'}٪ از ۳ معامله‌ی برتر
-                      </td>
-                    ))}
-                  </tr>
-                  <tr className="bg-[var(--accent-soft)]">
-                    <td className="py-4 px-5 text-[13px] text-[var(--text-primary)] font-extrabold">⭐ Health Score</td>
-                    {comparison.items.map((item: any) => (
-                      <td key={item.version_id} className={`py-4 px-5 text-[16px] ${getCellStyle(item, comparison.items, 'health_score')}`}>
-                        {item.health_score} / ۱۰۰
-                      </td>
-                    ))}
-                  </tr>
-                </tbody>
-              </table>
-            </div>
-            {/* ═══════════════════════════════════════════
-    نمودارهای مقایسه
-═══════════════════════════════════════════ */}
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-  <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-      <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">
-        📊
-      </div>
-      <div>
-        <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی نرخ برد</h3>
-        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">درصد معاملات برنده</p>
-      </div>
-    </div>
-    <ComparisonBarChart items={comparison.items} metric="win_rate" />
-  </div>
-
-  <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-      <div className="w-11 h-11 rounded-[14px] bg-[var(--profit-soft)] flex items-center justify-center text-xl">
-        💰
-      </div>
-      <div>
-        <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی سود خالص</h3>
-        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">مجموع سود/زیان</p>
-      </div>
-    </div>
-    <ComparisonBarChart items={comparison.items} metric="net_pnl" />
-  </div>
-</div>
-
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
-  <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-      <div className="w-11 h-11 rounded-[14px] bg-[var(--purple-soft)] flex items-center justify-center text-xl">
-        🏆
-      </div>
-      <div>
-        <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی فاکتور سود</h3>
-        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">سود کل / ضرر کل</p>
-      </div>
-    </div>
-    <ComparisonBarChart items={comparison.items} metric="profit_factor" />
-  </div>
-
-  <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-      <div className="w-11 h-11 rounded-[14px] bg-[var(--loss-soft)] flex items-center justify-center text-xl">
-        ⚠️
-      </div>
-      <div>
-        <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی حداکثر DD</h3>
-        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">کمتر بهتر</p>
-      </div>
-    </div>
-    <ComparisonBarChart items={comparison.items} metric="max_dd" />
-  </div>
-</div>
-
-{/* نمودار راداری */}
-<div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md mb-6">
-  <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-    <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">
-      🎯
-    </div>
-    <div>
-      <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی کلی متریک‌ها</h3>
-      <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">نمای راداری از تمام متریک‌ها</p>
-    </div>
-  </div>
-  <ComparisonRadarChart items={comparison.items} />
-</div>
-          </div>
-
-          {/* پیشنهاد هوشمند */}
-          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-            <div className="flex items-center gap-3 mb-5">
-              <div className="w-11 h-11 rounded-[14px] bg-[var(--warning-soft)] flex items-center justify-center text-xl">
-                💡
-              </div>
-              <div>
-                <h3 className="text-base font-extrabold text-[var(--text-primary)]">پیشنهاد هوشمند</h3>
-                <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">تحلیل خودکار بهترین نسخه</p>
-              </div>
-            </div>
-
-            <div
-              className="rounded-[18px] p-6 mb-5 border border-[var(--border-accent)] relative overflow-hidden"
-              style={{ background: 'linear-gradient(135deg, var(--accent-soft) 0%, var(--accent-light) 100%)' }}
-            >
-              <div className="absolute top-0 right-0 left-0 h-1" style={{ background: 'linear-gradient(90deg, var(--accent), var(--purple))' }} />
-              <div className="flex items-center justify-between flex-wrap gap-4">
+          {/* بهترین نسخه */}
+          {result.best && (
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md mb-6">
+              <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                <div className="w-11 h-11 rounded-[14px] bg-[var(--warning-soft)] flex items-center justify-center text-xl">🏆</div>
                 <div>
-                  <div className="text-[22px] font-extrabold text-[var(--text-primary)] mb-1">
-                    🏆 {comparison.best_version_name}
-                  </div>
-                  <div className="text-[14px] text-[var(--text-secondary)] font-medium">
-                    {comparison.recommendation}
-                  </div>
-                </div>
-                <div className="text-center">
-                  <div className="text-[11px] text-[var(--text-secondary)] font-semibold mb-1">Health Score</div>
-                  <div className="text-[36px] font-extrabold accent-gradient-text leading-none">
-                    {comparison.best_health_score} <span className="text-[16px]">/ ۱۰۰</span>
-                  </div>
+                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">بهترین نسخه</h3>
+                  <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">بالاترین Score در این مقایسه</p>
                 </div>
               </div>
-            </div>
-
-            {/* دلایل */}
-            {comparison.reasons && comparison.reasons.length > 0 && (
-              <div>
-                <h4 className="text-[14px] font-extrabold text-[var(--text-primary)] mb-3">📊 دلایل برتری:</h4>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {comparison.reasons.map((reason: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="flex items-start gap-3 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[14px] p-4 hover:border-[var(--border-accent)] hover:shadow-sm transition-all"
-                    >
-                      <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-card)] flex items-center justify-center text-xl shadow-sm shrink-0">
-                        {reason.icon}
-                      </div>
-                      <span className="text-[13px] text-[var(--text-primary)] font-medium leading-relaxed pt-2">{reason.text}</span>
+              <div
+                className="rounded-[18px] p-6 border border-[var(--border-accent)] relative overflow-hidden"
+                style={{ background: 'linear-gradient(135deg, var(--accent-soft) 0%, var(--accent-light) 100%)' }}
+              >
+                <div className="absolute top-0 right-0 left-0 h-1" style={{ background: 'linear-gradient(90deg, var(--accent), var(--purple))' }} />
+                <div className="flex items-center justify-between flex-wrap gap-4">
+                  <div>
+                    <div className="text-[20px] font-extrabold text-[var(--text-primary)] mb-1">
+                      🏆 {labelOf(result.best.version_id)}
                     </div>
-                  ))}
+                    <div className="text-[13px] text-[var(--text-secondary)] font-medium">
+                      {strategyOf(result.best.version_id)} • نوع تست: {result.test_type}
+                    </div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-[11px] text-[var(--text-secondary)] font-semibold mb-1">Score</div>
+                    <div className="text-[36px] font-extrabold accent-gradient-text leading-none">
+                      {result.best.score?.toFixed(1) ?? '—'} <span className="text-[16px]">/ ۱۰۰</span>
+                    </div>
+                  </div>
                 </div>
               </div>
-            )}
-          </div>
-
-          {/* بهترین نسخه برای هر نماد */}
-          {comparison.symbol_bests && comparison.symbol_bests.length > 0 && (
-            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-11 h-11 rounded-[14px] bg-[var(--profit-soft)] flex items-center justify-center text-xl">
-                  🥇
-                </div>
+            </div>
+          )}
+          {/* جدول رتبه‌بندی */}
+          {result.comparison.length > 0 && (
+            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md mb-6">
+              <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">📋</div>
                 <div>
-                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">بهترین نسخه برای هر نماد</h3>
-                  <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">بر اساس امتیاز کلی</p>
+                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">جدول رتبه‌بندی</h3>
+                  <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
+                    {result.comparison.length} نسخه • نوع تست: {result.test_type}
+                    {result.filters.symbol ? ` • نماد: ${result.filters.symbol}` : ''}
+                  </p>
                 </div>
               </div>
 
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                {comparison.symbol_bests.map((sb: any, idx: number) => (
-                  <div
-                    key={idx}
-                    className="bg-gradient-to-bl from-[#E5F8F1] to-[#F0FDF9] border border-[var(--profit-border)] rounded-[18px] p-5 hover:shadow-md transition-all"
-                  >
-                    <div className="text-[15px] font-extrabold text-[var(--text-primary)] mb-4">{sb.symbol_label}</div>
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="w-12 h-12 rounded-[14px] bg-[var(--bg-card)] flex items-center justify-center text-2xl shadow-sm">
-                        🥇
-                      </div>
+              <div className="overflow-x-auto rounded-[14px] border border-[var(--border-subtle)]">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-[var(--bg-elevated)]">
+                      {['رتبه', 'نسخه', 'Score', 'نرخ برد', 'فاکتور سود', 'سود خالص', 'حداکثر DD', 'دلایل'].map((h) => (
+                        <th key={h} className="text-right py-4 px-4 text-[12px] text-[var(--text-secondary)] font-extrabold uppercase tracking-wider whitespace-nowrap">
+                          {h}
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {result.comparison.map((item) => {
+                      const m = item.metrics || {};
+                      const reasons = item.reasons ?? [];
+                      return (
+                        <tr key={item.version_id} className="border-b border-[var(--border-subtle)] hover:bg-[var(--bg-input)] transition-colors">
+                          <td className="py-4 px-4">
+                            <span className={`inline-flex items-center justify-center w-8 h-8 rounded-full border text-[13px] font-extrabold ${scoreBadgeClass(item.rank)}`}>
+                              {item.rank ?? '—'}
+                            </span>
+                          </td>
+                          <td className="py-4 px-4">
+                            <div className="text-[13px] font-extrabold text-[var(--text-primary)]">{labelOf(item.version_id)}</div>
+                            <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">{strategyOf(item.version_id)}</div>
+                          </td>
+                          {item.error ? (
+                            <td colSpan={6} className="py-4 px-4 text-[12px] font-bold text-[var(--warning-strong)]">
+                              ⚠️ {item.error}
+                            </td>
+                          ) : (
+                            <>
+                              <td className="py-4 px-4 text-[15px] font-extrabold accent-gradient-text">
+                                {item.score?.toFixed(1) ?? '—'}
+                              </td>
+                              <td className="py-4 px-4 text-[13px] font-bold text-[var(--text-primary)]">
+                                {m.win_rate?.toFixed(1) ?? '—'}٪
+                              </td>
+                              <td className="py-4 px-4 text-[13px] font-bold text-[var(--text-primary)]">
+                                {m.profit_factor?.toFixed(2) ?? '—'}
+                              </td>
+                              <td className={`py-4 px-4 text-[13px] font-bold ${(m.net_pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                                {(m.net_pnl ?? 0) >= 0 ? '+' : ''}{(m.net_pnl ?? 0).toFixed(0)} $
+                              </td>
+                              <td className="py-4 px-4 text-[13px] font-bold text-[var(--loss)]">
+                                -{(m.max_dd ?? 0).toFixed(0)} $
+                              </td>
+                              <td className="py-4 px-4">
+                                <div className="space-y-1">
+                                  {reasons.slice(0, 2).map((r, i) => (
+                                    <div key={i} className="text-[11px] text-[var(--text-secondary)] flex items-center gap-1.5">
+                                      <span>{r.icon}</span>
+                                      <span className="truncate max-w-[180px]">{r.text}</span>
+                                    </div>
+                                  ))}
+                                </div>
+                                <button
+                                  onClick={() => setDrawerVersion(item)}
+                                  className="mt-2 text-[11px] font-bold text-[var(--accent)] hover:underline"
+                                >
+                                  مشاهده همه
+                                </button>
+                              </td>
+                            </>
+                          )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+          {/* نمودارها */}
+          {chartItems.length > 0 && (
+            <>
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
+                {([
+                  { title: 'مقایسه‌ی نرخ برد', sub: 'درصد معاملات برنده', icon: '📊', metric: 'win_rate' },
+                  { title: 'مقایسه‌ی سود خالص', sub: 'مجموع سود/زیان', icon: '💰', metric: 'net_pnl' },
+                  { title: 'مقایسه‌ی فاکتور سود', sub: 'سود کل / ضرر کل', icon: '🏆', metric: 'profit_factor' },
+                  { title: 'مقایسه‌ی حداکثر DD', sub: 'کمتر بهتر', icon: '⚠️', metric: 'max_dd' },
+                ] as const).map((c) => (
+                  <div key={c.metric} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+                    <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                      <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">{c.icon}</div>
                       <div>
-                        <div className="text-[15px] font-extrabold text-[var(--profit)]">{sb.best_version_name}</div>
-                        <div className="text-[11px] text-[var(--text-secondary)] font-medium mt-0.5">{sb.best_strategy}</div>
+                        <h3 className="text-base font-extrabold text-[var(--text-primary)]">{c.title}</h3>
+                        <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">{c.sub}</p>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-3">
-                      <div className="bg-[var(--bg-card-translucent)] rounded-[10px] p-3">
-                        <div className="text-[10px] text-[var(--text-secondary)] font-semibold mb-1">نرخ برد</div>
-                        <div className="text-[16px] font-extrabold text-[var(--text-primary)]">{sb.win_rate}٪</div>
-                      </div>
-                      <div className="bg-[var(--bg-card-translucent)] rounded-[10px] p-3">
-                        <div className="text-[10px] text-[var(--text-secondary)] font-semibold mb-1">سود خالص</div>
-                        <div className={`text-[16px] font-extrabold ${sb.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {sb.net_pnl >= 0 ? '+' : ''}{sb.net_pnl} $
-                        </div>
-                      </div>
-                    </div>
+                    <ComparisonBarChart items={chartItems} metric={c.metric} />
                   </div>
                 ))}
               </div>
-            </div>
-          )}
 
-          {/* مقایسه‌ی تفکیکی */}
-          {comparison.detail_bests && (
-            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-              <div className="flex items-center gap-3 mb-5">
-                <div className="w-11 h-11 rounded-[14px] bg-[var(--purple-soft)] flex items-center justify-center text-xl">
-                  📈
-                </div>
-                <div>
-                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">بهترین نسخه در هر بخش</h3>
-                  <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">تفکیک‌شده بر اساس سشن، روز، ساعت و بازه</p>
-                </div>
-              </div>
-
-              {/* تب‌ها */}
-              <div className="flex gap-2 mb-5 flex-wrap">
-                {[
-                  { key: 'session', label: '🌍 سشن‌ها' },
-                  { key: 'weekday', label: '📅 روزهای هفته' },
-                  { key: 'hour', label: '🕐 ساعت‌ها' },
-                  { key: 'custom', label: '⏰ بازه‌های سفارشی' },
-                ].map((tab) => {
-                  const isActive = activeDetailTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      onClick={() => setActiveDetailTab(tab.key as any)}
-                      className={`px-5 py-2.5 rounded-[10px] text-[13px] font-bold transition-all ${
-                        isActive
-                          ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
-                          : 'bg-[var(--bg-input)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--accent)]'
-                      }`}
-                      style={isActive ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
-                    >
-                      {tab.label}
-                    </button>
-                  );
-                })}
-              </div>
-
-              <div className="space-y-2.5">
-                {comparison.detail_bests[activeDetailTab === 'custom' ? 'custom_interval' : activeDetailTab]?.map(
-                  (detail: any, idx: number) => (
-                    <div
-                      key={idx}
-                      className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[14px] p-4 flex justify-between items-center flex-wrap gap-4 hover:border-[var(--border-accent)] hover:bg-[var(--bg-card)] hover:shadow-sm transition-all"
-                    >
-                      <div className="text-[14px] font-extrabold text-[var(--text-primary)] min-w-[140px]">
-                        {detail.name}
-                      </div>
-                      <div className="flex items-center gap-6 flex-wrap">
-                        <div className="text-center">
-                          <div className="text-[10px] text-[var(--text-secondary)] font-bold mb-1">نسخه برتر</div>
-                          <div className="text-[14px] font-extrabold text-[var(--profit)]">{detail.best.version_name}</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-[10px] text-[var(--text-secondary)] font-bold mb-1">نرخ برد</div>
-                          <div className="text-[14px] font-extrabold text-[var(--text-primary)]">{detail.best.win_rate}٪</div>
-                        </div>
-                        <div className="text-center">
-                          <div className="text-[10px] text-[var(--text-secondary)] font-bold mb-1">سود</div>
-                          <div className={`text-[14px] font-extrabold ${detail.best.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                            {detail.best.net_pnl >= 0 ? '+' : ''}{detail.best.net_pnl} $
-                          </div>
-                        </div>
-                        {detail.best.total_trades !== undefined && (
-                          <div className="text-center">
-                            <div className="text-[10px] text-[var(--text-secondary)] font-bold mb-1">معاملات</div>
-                            <div className="text-[14px] font-extrabold text-[var(--text-primary)]">{detail.best.total_trades}</div>
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  )
-                )}
-                {comparison.detail_bests[activeDetailTab === 'custom' ? 'custom_interval' : activeDetailTab]?.length === 0 && (
-                  <div className="text-[var(--text-muted)] text-sm text-center py-8">
-                    داده‌ای برای این بخش وجود ندارد
+              <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md mb-6">
+                <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                  <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">🎯</div>
+                  <div>
+                    <h3 className="text-base font-extrabold text-[var(--text-primary)]">مقایسه‌ی کلی متریک‌ها</h3>
+                    <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">نمای راداری (Score جای Health Score)</p>
                   </div>
-                )}
+                </div>
+                <ComparisonRadarChart items={chartItems} />
               </div>
-            </div>
+            </>
           )}
         </>
+      )}
+
+      {/* Drawer دلایل */}
+      {drawerVersion && (
+        <div className="fixed inset-0 z-50 flex" dir="rtl">
+          <div className="flex-1 bg-black/40" onClick={() => setDrawerVersion(null)} />
+          <div className="w-full max-w-md h-full overflow-y-auto bg-[var(--bg-card)] border-r border-[var(--border-subtle)] shadow-2xl p-6">
+            <div className="flex items-start justify-between gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+              <div>
+                <h3 className="text-base font-extrabold text-[var(--text-primary)]">
+                  دلایل — {labelOf(drawerVersion.version_id)}
+                </h3>
+                <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
+                  رتبه {drawerVersion.rank ?? '—'} • Score {drawerVersion.score?.toFixed(1) ?? '—'}
+                </p>
+              </div>
+              <button
+                onClick={() => setDrawerVersion(null)}
+                className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] text-lg transition-colors"
+                aria-label="بستن"
+              >
+                ✕
+              </button>
+            </div>
+            <div className="space-y-3">
+              {(drawerVersion.reasons ?? []).map((r, i) => (
+                <div
+                  key={i}
+                  className="flex items-start gap-3 bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[14px] p-4"
+                >
+                  <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-card)] flex items-center justify-center text-xl shadow-sm shrink-0">
+                    {r.icon}
+                  </div>
+                  <span className="text-[13px] text-[var(--text-primary)] font-medium leading-relaxed pt-2">{r.text}</span>
+                </div>
+              ))}
+              {(drawerVersion.reasons ?? []).length === 0 && (
+                <div className="text-[var(--text-muted)] text-sm text-center py-8">دلیلی ثبت نشده است</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
