@@ -471,12 +471,13 @@ class AnalysisService:
         }
 
     def _analyze_by_session(self, trades: List[Trade]) -> Dict[str, Any]:
+        """تحلیل سشن بر پایهٔ **زمان ورود** (`open_time`) — فاز 48a.3."""
         sessions = {"Asia": [], "Europe": [], "America": [], "Other": []}
 
         for t in trades:
-            if not t.close_time:
+            if not t.open_time:
                 continue
-            hour = t.close_time.hour
+            hour = t.open_time.hour
             if 0 <= hour < 8:
                 sessions["Asia"].append(t)
             elif 8 <= hour < 16:
@@ -489,6 +490,7 @@ class AnalysisService:
         return {name: self._summarize(trades) for name, trades in sessions.items() if trades}
 
     def _analyze_by_weekday(self, trades: List[Trade]) -> Dict[str, Any]:
+        """تحلیل روز هفته بر پایهٔ **زمان ورود** (`open_time`) — فاز 48a.3."""
         weekdays = {
             0: "Monday", 1: "Tuesday", 2: "Wednesday",
             3: "Thursday", 4: "Friday", 5: "Saturday", 6: "Sunday"
@@ -496,20 +498,21 @@ class AnalysisService:
         by_day = {day: [] for day in weekdays.values()}
 
         for t in trades:
-            if not t.close_time:
+            if not t.open_time:
                 continue
-            day_name = weekdays[t.close_time.weekday()]
+            day_name = weekdays[t.open_time.weekday()]
             by_day[day_name].append(t)
 
         return {name: self._summarize(trades) for name, trades in by_day.items() if trades}
 
     def _analyze_by_hour(self, trades: List[Trade]) -> Dict[str, Any]:
+        """تحلیل ساعت بر پایهٔ **زمان ورود** (`open_time`) — فاز 48a.3."""
         by_hour = {str(h): [] for h in range(24)}
 
         for t in trades:
-            if not t.close_time:
+            if not t.open_time:
                 continue
-            hour = str(t.close_time.hour)
+            hour = str(t.open_time.hour)
             by_hour[hour].append(t)
 
         return {h: self._summarize(trades) for h, trades in by_hour.items() if trades}
@@ -523,12 +526,12 @@ class AnalysisService:
         for interval in intervals:
             matched = []
             for t in trades:
-                if not t.close_time:
+                if not t.open_time:
                     continue
                 if t.symbol != interval.symbol:
                     continue
-                hour = t.close_time.hour
-                minute = t.close_time.minute
+                hour = t.open_time.hour
+                minute = t.open_time.minute
                 start = interval.start_hour * 60 + interval.start_minute
                 end = interval.end_hour * 60 + interval.end_minute
                 current = hour * 60 + minute
