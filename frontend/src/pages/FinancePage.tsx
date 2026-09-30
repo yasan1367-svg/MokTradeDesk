@@ -198,6 +198,8 @@ export default function FinancePage() {
   const [moneyCycle, setMoneyCycle] = useState<any>(null);
   const [calendar, setCalendar] = useState<Array<any>>([]);
   const [exchangeRates, setExchangeRates] = useState<Array<any>>([]);
+  // فاز ۴۴.۵ — ارز فعال گزارش‌های مالی
+  const [currency, setCurrency] = useState<'USD' | 'IRR'>('USD');
 
   // Load functions
   const loadAccounts = async () => {
@@ -222,9 +224,9 @@ export default function FinancePage() {
   const loadReports = async () => {
     try {
       const [sumRes, flowRes, wdRes] = await Promise.all([
-        getFinanceSummary(),
-        getFinanceCashflow(),
-        getFinanceWithdrawalStats(),
+        getFinanceSummary({ currency }),
+        getFinanceCashflow({ currency }),
+        getFinanceWithdrawalStats({ currency }),
       ]);
       setSummary(sumRes.data);
       setCashflow(flowRes.data);
@@ -258,10 +260,10 @@ export default function FinancePage() {
       const m = advMonth || undefined;
       const acc = advAccountId || undefined;
       const [monthlyRes, catRes, accRes, plRes] = await Promise.all([
-        getFinanceMonthlyReport({ year: y, account_id: acc }),
-        getFinanceCategoryBreakdown({ year: y, month: m, account_id: acc }),
+        getFinanceMonthlyReport({ year: y, account_id: acc, currency }),
+        getFinanceCategoryBreakdown({ year: y, month: m, account_id: acc, currency }),
         getFinanceAccountComparison({ year: y, month: m }),
-        getFinanceProfitLoss({ year: y, account_id: acc }),
+        getFinanceProfitLoss({ year: y, account_id: acc, currency }),
       ]);
       setMonthlyReport(monthlyRes.data);
       setCategoryBreakdown(catRes.data);
@@ -286,10 +288,10 @@ export default function FinancePage() {
       const [spRes, rpRes, npRes, mfRes, exRes, mcRes, calRes, rtRes] = await Promise.all([
         getSpendableAssets(),
         getRealPnl(),
-        getNetProfit(),
+        getNetProfit({ currency }),
         getMoneyFlow(),
-        getFinanceExpenses(),
-        getMoneyCycle(),
+        getFinanceExpenses({ currency }),
+        getMoneyCycle({ currency }),
         getFinancialCalendar(),
         getExchangeRates(),
       ]);
@@ -311,7 +313,7 @@ export default function FinancePage() {
     if (tab === 'advanced') loadAdvancedReports();
     if ((['real', 'moneyflow', 'expenses', 'cycle', 'calendar', 'rates'] as Tab[]).includes(tab)) loadPhase22();
   },
-    [tab, filterDateFrom, filterDateTo, filterAccountId, filterType, filterCategoryId, advYear, advMonth, advAccountId]);
+    [tab, filterDateFrom, filterDateTo, filterAccountId, filterType, filterCategoryId, advYear, advMonth, advAccountId, currency]);
 
   const showSuccess = (msg: string) => toast.success(msg);
 
@@ -362,6 +364,27 @@ export default function FinancePage() {
           </button>
         ))}
       </div>
+
+      {/* فاز ۴۴.۵: انتخاب ارز گزارش‌ها (IRR و USD جدا) */}
+      {(['reports', 'advanced', 'real', 'expenses', 'cycle'] as Tab[]).includes(tab) && (
+        <div className="flex items-center gap-2 mb-5 flex-wrap">
+          <span className="text-xs font-bold text-[var(--text-secondary)]">💱 ارز:</span>
+          {(['USD', 'IRR'] as const).map((c) => (
+            <button
+              key={c}
+              onClick={() => setCurrency(c)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                currency === c
+                  ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
+              }`}
+              style={currency === c ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+            >
+              {c}
+            </button>
+          ))}
+        </div>
+      )}
 
       {/* ═══ Accounts Tab ═══ */}
       {tab === 'accounts' && (

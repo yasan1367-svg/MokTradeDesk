@@ -51,28 +51,40 @@ export const generatePropAlerts = () =>
 // ─────────────────────────────────────────────
 // Calendar
 // ─────────────────────────────────────────────
+// فاز ۴۴.۱: دامنهٔ معاملات (پیش‌فرض Backend = real)
+export type TradeScope = 'real' | 'backtest' | 'forward' | 'all';
+
 export const getCalendarData = (params?: {
   year?: number;
   month?: number;
   from_date?: string;
   to_date?: string;
+  scope?: TradeScope;
 }) => api.get('/api/analytics/calendar', { params });
 
 // ─────────────────────────────────────────────
 // Dashboard
 // ─────────────────────────────────────────────
-export const getDashboardData = (params?: { date_from?: string; date_to?: string }) =>
-  api.get('/api/analytics/dashboard', { params });
+export const getDashboardData = (params?: {
+  date_from?: string;
+  date_to?: string;
+  scope?: TradeScope;
+}) => api.get('/api/analytics/dashboard', { params });
 
-export const getYesterdayData = () => api.get('/api/analytics/yesterday');
+export const getYesterdayData = (params?: { scope?: TradeScope }) =>
+  api.get('/api/analytics/yesterday', { params });
 
-export const getRiskAdvanced = (params?: { date_from?: string; date_to?: string }) =>
-  api.get('/api/analytics/risk-advanced', { params });
+export const getRiskAdvanced = (params?: {
+  date_from?: string;
+  date_to?: string;
+  scope?: TradeScope;
+}) => api.get('/api/analytics/risk-advanced', { params });
 
 // ─────────────────────────────────────────────
 // Risk Management
 // ─────────────────────────────────────────────
-export const getRiskMetrics = () => api.get('/api/analytics/risk-metrics');
+export const getRiskMetrics = (params?: { scope?: TradeScope }) =>
+  api.get('/api/analytics/risk-metrics', { params });
 
 // ─────────────────────────────────────────────
 // Export
@@ -591,16 +603,19 @@ export const seedFinanceCategories = () => api.post('/api/finance/seed');
 // ─────────────────────────────────────────────
 // Finance Reports
 // ─────────────────────────────────────────────
-export const getFinanceSummary = () =>
-  api.get('/api/finance/summary');
+// فاز ۴۴.۵: جداکردن ارزها
+export type CurrencyCode = 'USD' | 'IRR';
+
+export const getFinanceSummary = (params?: { currency?: CurrencyCode }) =>
+  api.get('/api/finance/summary', { params });
 
 export const getFinanceAccountStats = (accountId: number) =>
   api.get(`/api/finance/accounts/${accountId}/stats`);
 
-export const getFinanceWithdrawalStats = () =>
-  api.get('/api/finance/withdrawals/stats');
+export const getFinanceWithdrawalStats = (params?: { currency?: CurrencyCode }) =>
+  api.get('/api/finance/withdrawals/stats', { params });
 
-export const getFinanceCashflow = (params?: { year?: number }) =>
+export const getFinanceCashflow = (params?: { year?: number; currency?: CurrencyCode }) =>
   api.get('/api/finance/charts/cashflow', { params });
 
 export const getFinanceDistribution = (params?: {
@@ -611,7 +626,7 @@ export const getFinanceDistribution = (params?: {
 // ─────────────────────────────────────────────
 // Advanced Finance Reports (فاز ۱۱)
 // ─────────────────────────────────────────────
-export const getFinanceMonthlyReport = (params?: { year?: number; account_id?: number }) =>
+export const getFinanceMonthlyReport = (params?: { year?: number; account_id?: number; currency?: CurrencyCode }) =>
   api.get('/api/finance/reports/monthly', { params });
 
 export const getFinanceCategoryBreakdown = (params?: {
@@ -619,6 +634,7 @@ export const getFinanceCategoryBreakdown = (params?: {
   month?: number;
   type?: string;
   account_id?: number;
+  currency?: CurrencyCode;
 }) => api.get('/api/finance/reports/category-breakdown', { params });
 
 export const getFinanceAccountComparison = (params?: {
@@ -627,7 +643,7 @@ export const getFinanceAccountComparison = (params?: {
   currency?: string;
 }) => api.get('/api/finance/reports/account-comparison', { params });
 
-export const getFinanceProfitLoss = (params?: { year?: number; account_id?: number }) =>
+export const getFinanceProfitLoss = (params?: { year?: number; account_id?: number; currency?: CurrencyCode }) =>
   api.get('/api/finance/reports/profit-loss', { params });
 
 // ─────────────────────────────────────────────
@@ -647,10 +663,11 @@ export const getRealPnl = () =>
     total: { pnl: number; trades: number };
   }>('/api/finance/real-pnl');
 
-export const getNetProfit = () =>
-  api.get<{ real_pnl: number; expenses: number; net_profit: number }>(
-    '/api/finance/net-profit',
-  );
+export const getNetProfit = (params?: { currency?: CurrencyCode }) =>
+  api.get<{
+    real_pnl: number; expenses: number; net_profit: number;
+    currency?: string; by_currency?: Record<string, { expenses: number }>;
+  }>('/api/finance/net-profit', { params });
 
 export type MoneyFlow = {
   from: string | null; to: string | null; amount: number;
@@ -662,15 +679,21 @@ export const getMoneyFlow = () =>
 export type ExpensesBreakdown = {
   prop_purchase: number; prop_subscription: number; exchange_fee: number;
   withdrawal_fee: number; other: number; total: number;
+  currency?: string; by_currency?: Record<string, number>;
 };
-export const getFinanceExpenses = () =>
-  api.get<ExpensesBreakdown>('/api/finance/expenses');
+export const getFinanceExpenses = (params?: { currency?: CurrencyCode }) =>
+  api.get<ExpensesBreakdown>('/api/finance/expenses', { params });
 
-export const getMoneyCycle = () =>
+export const getMoneyCycle = (params?: { currency?: CurrencyCode }) =>
   api.get<{
     total_deposits: number; total_withdrawals: number; total_exchanges: number;
     total_transfers: number; current_balance: number;
-  }>('/api/finance/money-cycle');
+    currency?: string;
+    by_currency?: Record<string, {
+      total_deposits: number; total_withdrawals: number; total_exchanges: number;
+      total_transfers: number; current_balance: number;
+    }>;
+  }>('/api/finance/money-cycle', { params });
 
 export type CalendarDay = {
   date: string; pnl: number; trades: number; deposits: number; withdrawals: number;

@@ -565,7 +565,8 @@ def test_full_cycle_dashboard_after_full_dataset(client, db_session):
     positive = next(t for t in listing if t["pnl"] == 100.0)
     assert client.delete(f"/api/trades/{positive['id']}").status_code == 200
 
-    summary = client.get("/api/analytics/dashboard").json()["summary"]
+    # فاز ۴۴.۱: پیش‌فرض scope=real است؛ این تست دربارهٔ Soft-Delete است ⇒ scope=all
+    summary = client.get("/api/analytics/dashboard?scope=all").json()["summary"]
     assert summary["total_trades"] == 3
     assert summary["net_pnl"] == 150.0  # 100 + 100 - 50
 

@@ -8,7 +8,7 @@ from collections import defaultdict
 from ..core.database import get_db
 from ..services.analysis_service import AnalysisService
 from ..services import metrics
-from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope
+from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
 from ..utils.trade_scope import analysis_trades_filter
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
@@ -43,10 +43,41 @@ def _parse_bound(value: Optional[str], end: bool = False):
     return dt
 
 
-def _scope_filter(query, df_bound, dt_bound):
-    """اعمال فیلتر بازه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳)"""
+# فاز ۴۴.۱ — دامنهٔ معاملات (scope) برای داشبورد/ریسک/تقویم
+#   real      → فقط REAL_PERSONAL + REAL_PROP  (پیش‌فرض)
+#   backtest  → فقط BACKTEST
+#   forward   → فقط FORWARD
+#   all       → بدون فیلتر نوع
+VALID_SCOPES = ("real", "backtest", "forward", "all")
+
+
+def normalize_scope(scope: Optional[str]) -> str:
+    """اعتبارسنجی و نرمال‌سازی پارامتر scope."""
+    s = (scope or "real").strip().lower()
+    if s not in VALID_SCOPES:
+        raise HTTPException(
+            status_code=400,
+            detail="scope نامعتبر است (real / backtest / forward / all)",
+        )
+    return s
+
+
+def _apply_scope(query, scope: str):
+    """فیلتر test_type بر اساس scope (فاز ۴۴.۱)."""
+    if scope == "real":
+        return query.filter(Trade.test_type.in_([TestType.REAL_PERSONAL, TestType.REAL_PROP]))
+    if scope == "backtest":
+        return query.filter(Trade.test_type == TestType.BACKTEST)
+    if scope == "forward":
+        return query.filter(Trade.test_type == TestType.FORWARD)
+    return query  # all
+
+
+def _scope_filter(query, df_bound, dt_bound, scope: str = "real"):
+    """اعمال فیلتر بازه + دامنه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳ / ۴۴.۱)"""
     # فاز ۲۵: معاملات حذف‌شده (Soft Delete) همیشه کنار گذاشته می‌شوند
     query = query.filter(Trade.is_deleted == False)
+    query = _apply_scope(query, scope)
     if df_bound or dt_bound:
         query = query.filter(Trade.close_time.isnot(None))
     if df_bound:
@@ -125,23 +156,28 @@ def analyze_personal_account_endpoint(personal_trading_account_id: int, db: Sess
 def get_dashboard_data(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    scope: str = Query("real", description="real | backtest | forward | all"),
     db: Session = Depends(get_db),
 ):
-    """داده‌های داشبورد — فاز ۱۵.۳: محاسبات در SQL (بدون لود کل جدول)"""
+    """داده‌های داشبورد — فاز ۱۵.۳: محاسبات در SQL (بدون لود کل جدول)
+
+    فاز ۴۴.۱: پارامتر `scope` (پیش‌فرض `real`) — بک‌تست با نتایج واقعی قاطی نمی‌شود.
+    """
     from ..services.prop_rule_engine import PropRuleEngine
     from ..models.prop import PropStage, StageStatus
 
+    sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
     net = _net_expr()
     is_closed = Trade.close_time.isnot(None)
     win_cond = and_(is_closed, net > 0)
     loss_cond = and_(is_closed, net < 0)
-    scope = _scope_filter(db.query(Trade), df_bound, dt_bound)
-    closed_scope = scope.filter(is_closed)
+    scoped_q = _scope_filter(db.query(Trade), df_bound, dt_bound, sc)
+    closed_scope = scoped_q.filter(is_closed)
 
     # ── ۱) آمار کلی در یک کوئری (بدون لود ردیف‌ها) ──
-    agg = scope.with_entities(
+    agg = scoped_q.with_entities(
         func.count(Trade.id),
         func.sum(case((is_closed, 1), else_=0)),
         func.sum(net),
@@ -200,9 +236,10 @@ def get_dashboard_data(
 
     now = datetime.now(timezone.utc)
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    opn = db.query(Trade).filter(
-        Trade.close_time.is_(None), Trade.is_deleted == False
-    ).count()
+    # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
+    opn = _apply_scope(
+        db.query(Trade).filter(Trade.is_deleted == False), sc
+    ).filter(Trade.close_time.is_(None)).count()
     # ── ۳) منحنی اکوییتی روزانه ──
     daily_pnl = defaultdict(float)
     for _ct, _n in seq:
@@ -263,29 +300,12 @@ def get_dashboard_data(
     # ── برد/باخت ──
     win_loss = {"wins": wins_n, "losses": losses_n}
 
-    # ── فاز ۲۱: پول قابل خرج (از FinancialTransactionها) ──
-
-    # ── فاز ۲۸: محاسبه بر پایهٔ حساب‌های معاملاتی شخصی (پل مالی حذف شد) ──
-    from ..models.trading import PersonalTradingAccount
-
-    personal_accts = db.query(PersonalTradingAccount).all()
-    broker_pnl = float(sum(
-        (a.current_balance or 0.0) - (a.initial_balance or 0.0) for a in personal_accts
-    ))
-    broker_balance = float(sum(a.current_balance or 0.0 for a in personal_accts))
-    init_capital = float(sum(a.initial_balance or 0.0 for a in personal_accts))
-
-    # سود مرحله ۳ پراپ از معاملات REAL_PROP (بدون پل مالی) — فاز ۴۳: net_pnl
-    from ..models.strategy import TestType as _TestType
-    funded_pnl = float(
-        db.query(func.coalesce(func.sum(_net_expr()), 0.0))
-        .filter(
-            Trade.prop_stage_id.isnot(None),
-            Trade.test_type == _TestType.REAL_PROP,
-            Trade.is_deleted == False,
-        )
-        .scalar() or 0.0
-    )
+    # ── فاز ۲۸/۴۴.۴: پول قابل خرج — یک منبع حقیقت مشترک (finance_metrics) ──
+    from ..services import finance_metrics
+    broker_pnl = finance_metrics.broker_pnl(db)
+    broker_balance = finance_metrics.broker_balance(db)
+    init_capital = finance_metrics.initial_capital(db)
+    funded_pnl = finance_metrics.funded_pnl(db)
 
     spendable_net = round(broker_pnl + funded_pnl, 2)
 
@@ -332,7 +352,9 @@ def get_dashboard_data(
         "win_loss": win_loss,
         "spendable_money": {
             "net_pnl": spendable_net,
-            "total_balance": round(broker_balance + broker_pnl + funded_pnl, 2),
+            # فاز ۴۴.۲: broker_balance خودش شامل broker_pnl است ⇒ اضافه‌کردن دوبارهٔ
+            # broker_pnl باعث Double Counting می‌شد.
+            "total_balance": round(broker_balance + funded_pnl, 2),
             "initial_capital": round(init_capital, 2),
         },
         "periods": {
@@ -358,10 +380,15 @@ _WEEKDAYS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج�
 
 
 @router.get("/yesterday")
-def get_yesterday_data(db: Session = Depends(get_db)):
-    """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC)"""
+def get_yesterday_data(
+    scope: str = Query("real", description="real | backtest | forward | all"),
+    db: Session = Depends(get_db),
+):
+    """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC) — فاز ۴۴.۱: scope"""
     from ..models.strategy import Trade
     from .finance import _gregorian_to_jalali
+
+    sc = normalize_scope(scope)
 
     def _ensure_utc(dt):
         if dt is not None and dt.tzinfo is None:
@@ -374,9 +401,10 @@ def get_yesterday_data(db: Session = Depends(get_db)):
     y_end = today_start
 
     yt = []
-    for t in db.query(Trade).filter(
-        Trade.close_time != None, Trade.is_deleted == False
-    ).all():
+    _yq = _apply_scope(
+        db.query(Trade).filter(Trade.close_time != None, Trade.is_deleted == False), sc
+    )
+    for t in _yq.all():
         ct = _ensure_utc(t.close_time)
         if ct is not None and y_start <= ct < y_end:
             t.close_time = ct
@@ -437,15 +465,19 @@ def get_yesterday_data(db: Session = Depends(get_db)):
 
 
 @router.get("/risk-metrics")
-def get_risk_metrics(db: Session = Depends(get_db)):
-    """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی"""
+def get_risk_metrics(
+    scope: str = Query("real", description="real | backtest | forward | all"),
+    db: Session = Depends(get_db),
+):
+    """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی · فاز ۴۴.۱: scope"""
     import math
+
+    sc = normalize_scope(scope)
 
     # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
     _rows = (
-        db.query(Trade)
-        .filter(Trade.close_time.isnot(None), Trade.is_deleted == False)
+        _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None), Trade.is_deleted == False), sc)
         .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple, Trade.sl, Trade.open_price)
         .order_by(Trade.id.asc())
         .all()
@@ -490,8 +522,9 @@ def get_risk_metrics(db: Session = Depends(get_db)):
     else: ror = 0.5
     rv = [c["r_multiple"] for c in closed_trades if c["r_multiple"] and c["r_multiple"] != 0]
     arm = sum(rv) / len(rv) if rv else 0
-    oe = float(db.query(func.sum(func.abs(_net_expr())))
-               .filter(Trade.close_time.is_(None), Trade.is_deleted == False).scalar() or 0.0)
+    oe = float(_apply_scope(
+        db.query(func.sum(func.abs(_net_expr()))).filter(Trade.close_time.is_(None), Trade.is_deleted == False), sc
+    ).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
     streak = 0; ms = 0
     for r in returns:
@@ -541,18 +574,20 @@ def _percentile(sorted_vals, p: float) -> float:
 def get_risk_advanced(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
+    scope: str = Query("real", description="real | backtest | forward | all"),
     db: Session = Depends(get_db),
 ):
-    """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...)"""
+    """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...) — فاز ۴۴.۱: scope"""
     import math
 
+    sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
 
     # فاز ۱۵.۳: فیلتر بازه در SQL + واکشی فقط ۳ ستون (بدون لود ORM)
     _net = _net_expr()
     _rows = (
-        _scope_filter(db.query(Trade), df_bound, dt_bound)
+        _scope_filter(db.query(Trade), df_bound, dt_bound, sc)
         .filter(Trade.close_time.isnot(None))
         .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple)
         .order_by(Trade.close_time.asc(), Trade.id.asc())
@@ -711,12 +746,14 @@ def get_calendar_data(
     month: Optional[int] = Query(None, description="ماه شمسی (1-12)"),
     from_date: Optional[str] = Query(None, description="تاریخ شروع میلادی (ISO)"),
     to_date: Optional[str] = Query(None, description="تاریخ پایان میلادی (ISO)"),
+    scope: str = Query("real", description="real | backtest | forward | all"),
     db: Session = Depends(get_db),
 ):
-    """Get trades grouped by day for calendar view (supports Jalali year/month or Gregorian range)"""
-    query = db.query(Trade).filter(
+    """Get trades grouped by day for calendar view — فاز ۴۴.۱: scope"""
+    sc = normalize_scope(scope)
+    query = _apply_scope(db.query(Trade).filter(
         Trade.close_time.isnot(None), Trade.is_deleted == False
-    )
+    ), sc)
 
     # ── اگر سال و ماه شمسی داده شده ──
     if year is not None and month is not None:

@@ -211,7 +211,8 @@ def test_analytics_dashboard_excludes_deleted(client, db_session):
     ])
     db_session.commit()
 
-    summary = client.get("/api/analytics/dashboard").json()["summary"]
+    # فاز ۴۴.۱: پیش‌فرض scope=real است؛ این تست دربارهٔ Soft-Delete است ⇒ scope=all
+    summary = client.get("/api/analytics/dashboard?scope=all").json()["summary"]
     assert summary["total_trades"] == 1
     assert summary["net_pnl"] == 100.0
 
@@ -223,7 +224,7 @@ def test_analytics_calendar_excludes_deleted(client, db_session):
     ])
     db_session.commit()
 
-    days = client.get("/api/analytics/calendar").json()
+    days = client.get("/api/analytics/calendar?scope=all").json()
     assert sum(d["trade_count"] for d in days) == 1
     assert sum(d["total_pnl"] for d in days) == 100.0
 

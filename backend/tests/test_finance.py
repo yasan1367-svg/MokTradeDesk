@@ -248,7 +248,9 @@ def test_spendable_assets(client, db_session):
     db_session.commit()
 
     body = client.get("/api/finance/spendable-assets").json()
-    assert body["prop_stage_3"]["amount"] == 500
+    # فاز ۴۴.۳: prop_stage_3 اکنون سهمِ کاربر از سود = ۵۰۰ × ۸۰٪ = ۴۰۰
+    # (پیش‌تر سود کامل ۵۰۰ بدون اعمال profit_share شمرده می‌شد.)
+    assert body["prop_stage_3"]["amount"] == 400
     assert body["broker"]["amount"] == 3000
     assert body["exchange"]["amount"] == 200
     # فاز ۳۹ (رفع G6): سبد trust_wallet از TRUST_WALLET پر می‌شود و کیف‌پول دیجیتال
@@ -256,7 +258,7 @@ def test_spendable_assets(client, db_session):
     assert body["trust_wallet"]["amount"] == 0
     assert body["crypto_wallet"]["amount"] == 100
     assert body["bank"]["amount"] == 100000000
-    assert body["total"]["usd"] == 3800
+    assert body["total"]["usd"] == 3700
     assert body["total"]["irr"] == 100000000
 
 

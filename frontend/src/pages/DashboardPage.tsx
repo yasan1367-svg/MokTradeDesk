@@ -14,6 +14,7 @@ import {
   getSpendableAssets, getNetProfit, getAssetTrend,
   listBackups, createBackup,
 } from '../api/client';
+import type { TradeScope } from '../api/client';
 import { DashboardSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/ToastProvider';
 import PersianDateInput from '../components/PersianDateInput';
@@ -44,6 +45,14 @@ const RANGE_FILTERS: { key: RangeKey; label: string; icon: string }[] = [
   { key: 'year', label: 'امسال', icon: '🏵️' },
   { key: 'all', label: 'همه', icon: '♾️' },
   { key: 'custom', label: 'سفارشی', icon: '⚙️' },
+];
+
+// فاز ۴۴.۱: دامنهٔ معاملات — پیش‌فرض «واقعی» تا بک‌تست با نتایج زنده قاطی نشود
+const SCOPE_FILTERS: { key: TradeScope; label: string }[] = [
+  { key: 'real', label: 'واقعی' },
+  { key: 'backtest', label: 'بک‌تست' },
+  { key: 'forward', label: 'فوروارد' },
+  { key: 'all', label: 'همه' },
 ];
 
 function isoDate(d: Date): string {
@@ -190,6 +199,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [customFrom, setCustomFrom] = useState<string>(() => localStorage.getItem('mok_dashboard_custom_from') || '');
   const [customTo, setCustomTo] = useState<string>(() => localStorage.getItem('mok_dashboard_custom_to') || '');
 
+  // فاز ۴۴.۱ — دامنهٔ معاملات (واقعی/بک‌تست/فوروارد/همه)
+  const [scope, setScope] = useState<TradeScope>(
+    () => (localStorage.getItem('mok_dashboard_scope') as TradeScope) || 'real',
+  );
+
   // جدول‌های معاملات
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [openTrades, setOpenTrades] = useState<any[]>([]);
@@ -240,12 +254,12 @@ const [payouts, setPayouts] = useState<any>(null);
       setRefreshing(true);
       try {
         const [dash, yest, sum, flow, accs, riskRes, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
-          getDashboardData({ date_from: r.from, date_to: r.to }),
-          getYesterdayData(),
+          getDashboardData({ date_from: r.from, date_to: r.to, scope }),
+          getYesterdayData({ scope }),
           getFinanceSummary(),
           getFinanceCashflow(),
           getFinanceAccounts(),
-          getRiskAdvanced({ date_from: r.from, date_to: r.to }),
+          getRiskAdvanced({ date_from: r.from, date_to: r.to, scope }),
           getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc' }),
           getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc' }),
           getPropAlerts({ unread_only: true }),
@@ -274,7 +288,7 @@ const [payouts, setPayouts] = useState<any>(null);
         setRefreshing(false);
       }
     },
-    [rangeKey, customFrom, customTo, toast],
+    [rangeKey, customFrom, customTo, scope, toast],
   );
 
   useEffect(() => {
@@ -286,7 +300,8 @@ const [payouts, setPayouts] = useState<any>(null);
     localStorage.setItem('mok_dashboard_range', rangeKey);
     localStorage.setItem('mok_dashboard_custom_from', customFrom);
     localStorage.setItem('mok_dashboard_custom_to', customTo);
-  }, [rangeKey, customFrom, customTo]);
+    localStorage.setItem('mok_dashboard_scope', scope);
+  }, [rangeKey, customFrom, customTo, scope]);
 
   // ساعت زنده
   useEffect(() => {
@@ -405,6 +420,24 @@ const [payouts, setPayouts] = useState<any>(null);
               style={rangeKey === f.key ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
             >
               {f.icon} {f.label}
+            </button>
+          ))}
+        </div>
+        {/* فاز ۴۴.۱: انتخاب دامنه (واقعی/بک‌تست/فوروارد/همه) */}
+        <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-[var(--border-subtle)]">
+          <span className="text-xs font-bold text-[var(--text-secondary)] ml-1">🎯 دامنه:</span>
+          {SCOPE_FILTERS.map((f) => (
+            <button
+              key={f.key}
+              onClick={() => setScope(f.key)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+                scope === f.key
+                  ? 'text-white shadow-[0_4px_12px_rgba(121,89,255,0.3)]'
+                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
+              }`}
+              style={scope === f.key ? { background: 'linear-gradient(135deg, var(--purple), var(--accent))' } : {}}
+            >
+              {f.label}
             </button>
           ))}
         </div>

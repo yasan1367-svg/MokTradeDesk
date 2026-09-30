@@ -16,7 +16,7 @@ from ..models.finance import (
 )
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
-from ..services import metrics
+from ..services import metrics, finance_metrics
 
 router = APIRouter()
 
@@ -387,9 +387,16 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
 # ═════════════════════════════════════════════
 
 @router.get("/summary")
-def get_finance_summary(db: Session = Depends(get_db)):
-    """خلاصه مالی: مجموع دارایی‌ها، درآمد، هزینه، تعداد تراکنش‌ها"""
-    from sqlalchemy import func
+def get_finance_summary(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """خلاصه مالی: مجموع دارایی‌ها، درآمد، هزینه، تعداد تراکنش‌ها.
+
+    فاز ۴۴.۵: اعداد دیگر IRR و USD را با هم جمع نمی‌کنند — مقدار پیش‌فرض USD است و
+    تفکیک کامل هر ارز در `by_currency` برمی‌گردد.
+    """
+    target = currency or Currency.USD
 
     # مجموع دارایی‌ها به تفکیک ارز
     accounts = db.query(FinancialAccount).all()
@@ -398,40 +405,25 @@ def get_finance_summary(db: Session = Depends(get_db)):
         cur = a.currency.value if a.currency else "USD"
         assets_by_currency[cur] = assets_by_currency.get(cur, 0.0) + (a.balance or 0.0)
 
-    # انواع تراکنش‌ها (غیرحذف شده)
-    income_types = [TransactionType.DEPOSIT, TransactionType.PROFIT]
-    expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
+    by_currency: dict[str, dict] = {}
+    for c in (Currency.USD, Currency.IRR):
+        by_currency[c.value] = {
+            "total_income": round(_tx_sum(db, INCOME_TYPES_F, c), 2),
+            "total_expense": round(_tx_sum(db, EXPENSE_TYPES_F, c), 2),
+            "total_transfers": round(_tx_sum(db, [TransactionType.TRANSFER], c), 2),
+            "transaction_count": _tx_count(db, c),
+        }
 
-    total_income = (
-        db.query(func.sum(FinancialTransaction.amount))
-        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(income_types))
-        .scalar() or 0.0
-    )
-
-    total_expense = (
-        db.query(func.sum(FinancialTransaction.amount))
-        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(expense_types))
-        .scalar() or 0.0
-    )
-
-    total_transfers = (
-        db.query(func.sum(FinancialTransaction.amount))
-        .filter(
-            FinancialTransaction.is_deleted == False,
-            # فاز ۳۸.۴: `TransactionType.EXCHANGE` حذف شد ⇒ معادل آن `TRANSFER` است
-            FinancialTransaction.type == TransactionType.TRANSFER,
-        )
-        .scalar() or 0.0
-    )
-
-    tx_count = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False).count()
-
+    sel = by_currency[target.value]
     return {
         "assets_by_currency": assets_by_currency,
-        "total_income": total_income,
-        "total_expense": total_expense,
-        "total_transfers": total_transfers,
-        "transaction_count": tx_count,
+        "total_income": sel["total_income"],
+        "total_expense": sel["total_expense"],
+        "total_transfers": sel["total_transfers"],
+        "transaction_count": sel["transaction_count"],
+        # فاز ۴۴.۵
+        "currency": target.value,
+        "by_currency": by_currency,
     }
 
 
@@ -495,9 +487,15 @@ def sync_trades(db: Session = Depends(get_db)):
 
 
 @router.get("/withdrawals/stats")
-def get_withdrawal_stats(db: Session = Depends(get_db)):
-    """آمار برداشت‌ها: از پراپ، از بروکر، تعداد، تاریخچه"""
+def get_withdrawal_stats(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """آمار برداشت‌ها: از پراپ، از بروکر، تعداد، تاریخچه — فاز ۴۴.۵: یک ارز"""
     from sqlalchemy import func as sa_func
+
+    target = currency or Currency.USD
+    _cur = FinancialTransaction.currency == target
 
     # برداشت‌های مرتبط با پراپ (فاز ۲۸: بر اساس related_prop_account_id، نه نوع حساب)
     prop_withdrawals = (
@@ -506,6 +504,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type == TransactionType.WITHDRAWAL,
             FinancialTransaction.related_prop_account_id.isnot(None),
+            _cur,
         )
         .scalar() or 0.0
     )
@@ -517,6 +516,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type == TransactionType.WITHDRAWAL,
             FinancialTransaction.related_prop_account_id.is_(None),
+            _cur,
         )
         .scalar() or 0.0
     )
@@ -526,6 +526,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            _cur,
         )
         .scalar() or 0.0
     )
@@ -535,6 +536,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            _cur,
         )
         .count()
     )
@@ -544,6 +546,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type == TransactionType.WITHDRAWAL,
+            _cur,
         )
         .order_by(FinancialTransaction.date.desc())
         .limit(20)
@@ -555,6 +558,7 @@ def get_withdrawal_stats(db: Session = Depends(get_db)):
         "prop_withdrawals": prop_withdrawals,
         "broker_withdrawals": broker_withdrawals,
         "withdrawal_count": withdrawal_count,
+        "currency": target.value,
         "history": [
             {
                 "id": w.id,
@@ -693,15 +697,20 @@ def delete_withdrawal(withdrawal_id: int, db: Session = Depends(get_db)):
 @router.get("/charts/cashflow")
 def get_cashflow_chart(
     year: Optional[int] = Query(None, description="سال (میلادی)"),
+    currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """نمودار جریان نقدی: درآمد vs هزینه به صورت ماهانه"""
+    """نمودار جریان نقدی: درآمد vs هزینه به صورت ماهانه.
+
+    فاز ۴۴.۵: فقط یک ارز (پیش‌فرض USD) — IRR و USD با هم جمع نمی‌شوند.
+    """
     from sqlalchemy import func as sa_func, extract
 
-    income_types = [TransactionType.DEPOSIT, TransactionType.PROFIT]
-    expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
-
-    base_filter = [FinancialTransaction.is_deleted == False]
+    target = currency or Currency.USD
+    base_filter = [
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.currency == target,
+    ]
     if year:
         base_filter.append(extract("year", FinancialTransaction.date) == year)
 
@@ -712,7 +721,7 @@ def get_cashflow_chart(
             extract("month", FinancialTransaction.date).label("month"),
             sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, FinancialTransaction.type.in_(income_types))
+        .filter(*base_filter, FinancialTransaction.type.in_(INCOME_TYPES_F))
         .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
@@ -725,7 +734,7 @@ def get_cashflow_chart(
             extract("month", FinancialTransaction.date).label("month"),
             sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, FinancialTransaction.type.in_(expense_types))
+        .filter(*base_filter, FinancialTransaction.type.in_(EXPENSE_TYPES_F))
         .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
@@ -886,14 +895,17 @@ def _current_jalali_year() -> int:
 def get_monthly_report(
     year: Optional[int] = Query(None, description="سال شمسی (مثلاً 1404)"),
     account_id: Optional[int] = None,
+    currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """گزارش ماهانه: درآمد vs هزینه، گروه‌بندی بر اساس ماه شمسی"""
+    """گزارش ماهانه: درآمد vs هزینه، گروه‌بندی بر اساس ماه شمسی — فاز ۴۴.۵: یک ارز"""
+    target = currency or Currency.USD
     target_year = year or _current_jalali_year()
     start, end = _jalali_range(target_year)
 
     q = db.query(FinancialTransaction).filter(
         FinancialTransaction.is_deleted == False,
+        FinancialTransaction.currency == target,
         FinancialTransaction.date >= start,
         FinancialTransaction.date < end,
     )
@@ -940,10 +952,15 @@ def get_category_breakdown(
     month: Optional[int] = Query(None, ge=1, le=12, description="ماه شمسی"),
     type: Optional[str] = Query(None, description="income یا expense"),
     account_id: Optional[int] = None,
+    currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """تفکیک دسته‌بندی: مجموع درآمد/هزینه هر دسته + درصد از کل (نمودار دایره‌ای)"""
-    q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
+    """تفکیک دسته‌بندی: مجموع درآمد/هزینه هر دسته + درصد از کل (نمودار دایره‌ای) — فاز ۴۴.۵: یک ارز"""
+    target = currency or Currency.USD
+    q = db.query(FinancialTransaction).filter(
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.currency == target,
+    )
     if year:
         start, end = _jalali_range(year, month)
         q = q.filter(FinancialTransaction.date >= start, FinancialTransaction.date < end)
@@ -1053,10 +1070,15 @@ def get_account_comparison(
 def get_profit_loss(
     year: Optional[int] = Query(None, description="سال شمسی"),
     account_id: Optional[int] = None,
+    currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """سود و زیان: سود خالص (درآمد - هزینه) به تفکیک ماه/سال + روند"""
-    q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
+    """سود و زیان: سود خالص (درآمد - هزینه) به تفکیک ماه/سال + روند — فاز ۴۴.۵: یک ارز"""
+    target = currency or Currency.USD
+    q = db.query(FinancialTransaction).filter(
+        FinancialTransaction.is_deleted == False,
+        FinancialTransaction.currency == target,
+    )
     if account_id:
         q = q.filter(FinancialTransaction.account_id == account_id)
     txs = q.all()
@@ -1151,6 +1173,42 @@ def _trade_net_expr():
     return metrics.net_pnl_sql()
 
 
+# ═════════════════════════════════════════════
+# فاز ۴۴.۵ — جداکردن ارزها (IRR ≠ USD)
+# ═════════════════════════════════════════════
+def _tx_sum(db: Session, types, currency: Currency) -> float:
+    """مجموع مبلغ تراکنش‌های غیرحذف‌شده از انواع داده‌شده، فقط در یک ارز."""
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
+        .filter(
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.type.in_(types),
+            FinancialTransaction.currency == currency,
+        )
+        .scalar() or 0.0
+    )
+
+
+def _tx_count(db: Session, currency: Currency) -> int:
+    """تعداد تراکنش‌های غیرحذف‌شده در یک ارز."""
+    return int(
+        db.query(FinancialTransaction)
+        .filter(
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.currency == currency,
+        )
+        .count()
+    )
+
+
+INCOME_TYPES_F = [TransactionType.DEPOSIT, TransactionType.PROFIT]
+EXPENSE_TYPES_F = [
+    TransactionType.WITHDRAWAL, TransactionType.LOSS,
+    TransactionType.FEE, TransactionType.PURCHASE,
+]
+
+
 def _jalali_date_str(dt) -> Optional[str]:
     """تاریخ شمسی به قالب YYYY/MM/DD (بر پایهٔ UTC مثل بقیهٔ گزارش‌ها)"""
     if not dt:
@@ -1160,22 +1218,6 @@ def _jalali_date_str(dt) -> Optional[str]:
     except Exception:
         return None
     return f"{jy}/{jm:02d}/{jd:02d}"
-
-
-def _prop_stage3_tx_net(db: Session) -> float:
-    """سود خالص تحقق‌یافتهٔ مرحلهٔ ۳ پراپ از معاملات REAL_PROP (فاز ۲۸: بدون پل مالی)"""
-    from sqlalchemy import func
-    from ..models.strategy import Trade, TestType
-    return float(
-        db.query(func.coalesce(func.sum(_trade_net_expr()), 0.0))
-        .select_from(Trade)
-        .filter(
-            Trade.prop_stage_id.isnot(None),
-            Trade.test_type == TestType.REAL_PROP,
-            Trade.is_deleted == False,
-        )
-        .scalar() or 0.0
-    )
 
 
 def _balance_sum(db: Session, acc_type: AccountType) -> float:
@@ -1245,14 +1287,16 @@ def _compute_real_pnl(db: Session) -> dict:
     }
 
 
-def _expenses_total(db: Session) -> float:
-    """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE)"""
+def _expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
+    """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USD)"""
     from sqlalchemy import func
+    target = currency or Currency.USD
     return float(
         db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.currency == target,
         )
         .scalar() or 0.0
     )
@@ -1276,7 +1320,7 @@ def get_spendable_assets(db: Session = Depends(get_db)):
     کلیدهای قدیمی (`prop_stage_3`, `broker`, `exchange`, `trust_wallet`, `bank`,
     `total.usd`, `total.irr`) دست‌نخورده حفظ شده‌اند ⇒ سازگاری فرانت‌اند.
     """
-    prop_stage_3 = round(_prop_stage3_tx_net(db), 2)
+    prop_stage_3 = finance_metrics.prop_stage_3(db)
     # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه FinancialAccount مالی)
     from ..models.trading import PersonalTradingAccount as _PTA
     from sqlalchemy import func as _f
@@ -1315,15 +1359,26 @@ def get_real_pnl(db: Session = Depends(get_db)):
 
 
 @router.get("/net-profit")
-def get_net_profit(db: Session = Depends(get_db)):
-    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE)"""
+def get_net_profit(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USD)"""
+    target = currency or Currency.USD
     real = _compute_real_pnl(db)
-    expenses = round(_expenses_total(db), 2)
+    expenses = round(_expenses_total(db, target), 2)
     real_pnl = real["total"]["pnl"]
     return {
         "real_pnl": real_pnl,
         "expenses": expenses,
         "net_profit": round(real_pnl - expenses, 2),
+        "currency": target.value,
+        "by_currency": {
+            c.value: {
+                "expenses": round(_expenses_total(db, c), 2),
+            }
+            for c in (Currency.USD, Currency.IRR)
+        },
     }
 
 
@@ -1371,15 +1426,20 @@ def get_money_flow(db: Session = Depends(get_db)):
 
 
 @router.get("/expenses")
-def get_expenses(db: Session = Depends(get_db)):
-    """گزارش هزینه‌ها: تفکیک کارمزد/خرید به خرید پراپ، اشتراک پراپ، کارمزد صرافی، کارمزد برداشت و سایر"""
+def get_expenses(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """گزارش هزینه‌ها — فاز ۴۴.۵: یک ارز (پیش‌فرض USD) + تفکیک by_currency"""
     from sqlalchemy.orm import joinedload
+    target = currency or Currency.USD
     txs = (
         db.query(FinancialTransaction)
         .options(joinedload(FinancialTransaction.category), joinedload(FinancialTransaction.account))
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.currency == target,
         )
         .all()
     )
@@ -1412,46 +1472,60 @@ def get_expenses(db: Session = Depends(get_db)):
     total = round(sum(buckets.values()), 2)
     result = {k: round(v, 2) for k, v in buckets.items()}
     result["total"] = total
+    # فاز ۴۴.۵
+    result["currency"] = target.value
+    result["by_currency"] = {
+        c.value: round(_tx_sum(db, [TransactionType.FEE, TransactionType.PURCHASE], c), 2)
+        for c in (Currency.USD, Currency.IRR)
+    }
     return result
 
 
 @router.get("/money-cycle")
-def get_money_cycle(db: Session = Depends(get_db)):
-    """چرخهٔ پول: مجموع واریز/برداشت/تبدیل/انتقال + موجودی فعلی همهٔ حساب‌ها"""
+def get_money_cycle(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """چرخهٔ پول: مجموع واریز/برداشت/تبدیل/انتقال + موجودی فعلی — فاز ۴۴.۵: یک ارز."""
     from sqlalchemy import func
 
-    def _total(types) -> float:
+    target = currency or Currency.USD
+
+    def _transfers(curr) -> float:
         return float(
             db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
-            .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type.in_(types))
+            .filter(
+                FinancialTransaction.is_deleted == False,
+                FinancialTransaction.currency == curr,
+                FinancialTransaction.from_account_id.isnot(None),
+                FinancialTransaction.to_account_id.isnot(None),
+            )
             .scalar() or 0.0
         )
 
-    deposits = _total([TransactionType.DEPOSIT])
-    withdrawals = _total([TransactionType.WITHDRAWAL])
-    # فاز ۳۸.۴: کلید JSON (`total_exchanges`) برای سازگاری فرانت حفظ شد؛
-    # مقدارش از `TRANSFER` (جانشین EXCHANGE حذف‌شده) محاسبه می‌شود.
-    exchanges = _total([TransactionType.TRANSFER])
-    transfers = float(
-        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
-        .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.from_account_id.isnot(None),
-            FinancialTransaction.to_account_id.isnot(None),
+    def _balance(curr) -> float:
+        return float(
+            db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0))
+            .filter(FinancialAccount.currency == curr)
+            .scalar() or 0.0
         )
-        .scalar() or 0.0
-    )
-    current_balance = float(
-        db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0)).scalar() or 0.0
-    )
 
-    return {
-        "total_deposits": round(deposits, 2),
-        "total_withdrawals": round(withdrawals, 2),
-        "total_exchanges": round(exchanges, 2),
-        "total_transfers": round(transfers, 2),
-        "current_balance": round(current_balance, 2),
-    }
+    by_currency: dict[str, dict] = {}
+    for c in (Currency.USD, Currency.IRR):
+        by_currency[c.value] = {
+            "total_deposits": round(_tx_sum(db, [TransactionType.DEPOSIT], c), 2),
+            "total_withdrawals": round(_tx_sum(db, [TransactionType.WITHDRAWAL], c), 2),
+            # فاز ۳۸.۴: کلید JSON (`total_exchanges`) برای سازگاری فرانت حفظ شد؛
+            # مقدارش از `TRANSFER` (جانشین EXCHANGE حذف‌شده) محاسبه می‌شود.
+            "total_exchanges": round(_tx_sum(db, [TransactionType.TRANSFER], c), 2),
+            "total_transfers": round(_transfers(c), 2),
+            "current_balance": round(_balance(c), 2),
+        }
+
+    sel = dict(by_currency[target.value])
+    sel["currency"] = target.value
+    sel["by_currency"] = by_currency
+    return sel
 
 
 # ═════════════════════════════════════════════
