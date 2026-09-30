@@ -1078,6 +1078,26 @@ def compare_versions_endpoint(data: CompareRequest, db: Session = Depends(get_db
     )
 
 
+@router.post("/rank")
+def rank_versions(data: CompareRequest, db: Session = Depends(get_db)):
+    """رتبه‌بندی Versionها بر پایهٔ Score — فاز 48a.5.
+
+    خروجی: `{ranking: [...], best: {...}}` (مرتب‌شده نزولی بر اساس Score).
+    """
+    result = compare_versions(
+        version_ids=data.version_ids,
+        test_type=data.test_type,
+        symbol=data.symbol,
+        date_from=data.date_from,
+        date_to=data.date_to,
+        db=db,
+    )
+    return {
+        "ranking": result["comparison"],
+        "best": result["best"],
+    }
+
+
 # ═════════════════════════════════════════════
 # CustomTimeInterval (بازه‌های سفارشی)
 # ═════════════════════════════════════════════
