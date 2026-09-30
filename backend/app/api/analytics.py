@@ -6,7 +6,7 @@ from datetime import datetime, timezone, timedelta
 from collections import defaultdict
 
 from ..core.database import get_db
-from ..services.analysis_service import AnalysisService
+from ..services.analysis_service import AnalysisService, compare_versions
 from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
 from ..utils.trade_scope import analysis_trades_filter
@@ -15,8 +15,7 @@ from ..utils.time_utils import to_tehran, TEHRAN
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
     CustomTimeIntervalResponse,
-    VersionComparisonRequest,
-    VersionComparisonResponse,
+    CompareRequest,
 )
 
 router = APIRouter()
@@ -1023,18 +1022,21 @@ def get_analysis_history(version_id: int, db: Session = Depends(get_db)):
     ]
 
 
-@router.post("/compare", response_model=VersionComparisonResponse)
-def compare_versions(request: VersionComparisonRequest, db: Session = Depends(get_db)):
-    """مقایسه‌ی چند نسخه و پیشنهاد بهترین"""
-    try:
-        service = AnalysisService(db)
-        result = service.compare_versions(request.version_ids, min_trades=request.min_trades or 0)
-        return result
-    except ValueError as e:
-        # فاز ۴۱.۳: نبود/کمبود نسخهٔ قابل‌مقایسه ⇒ 404 (قبلاً به‌اشتباه 500 می‌شد)
-        raise HTTPException(status_code=404, detail=str(e))
-    except Exception as e:
-        raise HTTPException(status_code=500, detail=f"خطا در مقایسه: {str(e)}")
+@router.post("/compare")
+def compare_versions_endpoint(data: CompareRequest, db: Session = Depends(get_db)):
+    """مقایسهٔ چند نسخه + فیلتر (نماد/تاریخ) + Score/Rank — فاز 48a.
+
+    قرارداد جدید: `{comparison, test_type, filters, best}`.
+    نسخهٔ تحلیل‌نشده با فیلد `error` گزارش می‌شود.
+    """
+    return compare_versions(
+        version_ids=data.version_ids,
+        test_type=data.test_type,
+        symbol=data.symbol,
+        date_from=data.date_from,
+        date_to=data.date_to,
+        db=db,
+    )
 
 
 # ═════════════════════════════════════════════

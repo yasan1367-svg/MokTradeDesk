@@ -1,9 +1,8 @@
-"""تست‌های Phase 41.3 — رفع باگ `POST /api/analytics/compare`.
+"""تست‌های Phase 41.3 + 48a — `POST /api/analytics/compare`.
 
-باگ‌ها:
-- کد مرده: `raise HTTPException(404, ...)` بعد از `return` (unreachable + NameError).
-- `service = AnalysisService(db)` دو بار تکرار شده بود.
-- `except ValueError` حذف شده بود ⇒ نبود نسخهٔ قابل‌مقایسه **۵۰۰** برمی‌گرداند نه **۴۰۴**.
+فاز 41.3: `except ValueError` و ۴۰۴ (قبلاً ۵۰۰) — در 48a قرارداد عوض شد.
+فاز 48a: قرارداد جدید `{comparison, test_type, filters, best}` — نسخهٔ تحلیل‌نشده
+با فیلد `error` گزارش می‌شود (نه ۴۰۴)؛ لیست < ۲ نسخه ⇒ ۴۲۲.
 """
 from datetime import datetime, timezone
 
@@ -49,22 +48,26 @@ def _add_trade(client, version_id: int, pnl: float, day: int) -> None:
 # ═════════════════════════════════════════════
 # ۴۰۴ به‌جای ۵۰۰
 # ═════════════════════════════════════════════
-def test_compare_unanalyzed_version_returns_404(client, db_session):
-    """نسخه‌ی تحلیل‌نشده ⇒ ۴۰۴ (قبلاً ۵۰۰)."""
-    version_id = _make_version(client, db_session, "S-unanalyzed")
+def test_compare_unanalyzed_returns_error(client, db_session):
+    """نسخه‌ی تحلیل‌نشده ⇒ entry با `error` (نه ۴۰۴) — فاز 48a."""
+    r = client.post("/api/analytics/compare", json={
+        "version_ids": [999, 998],
+        "test_type": "BACKTEST",
+    })
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert len(body["comparison"]) == 2
+    assert all("error" in item for item in body["comparison"])
+    assert body["best"] is None
 
-    r = client.post("/api/analytics/compare", json={"version_ids": [version_id]})
-    assert r.status_code == 404, r.text
-    assert r.json()["detail"]
 
-
-def test_compare_invalid_input_returns_404(client, db_session):
-    """ورودی نامعتبر (نسخه‌ی ناموجود / لیست خالی) ⇒ ۴۰۴ نه ۵۰۰."""
-    missing = client.post("/api/analytics/compare", json={"version_ids": [999999]})
-    assert missing.status_code == 404, missing.text
-
+def test_compare_invalid_input_returns_422(client, db_session):
+    """لیست کمتر از ۲ نسخه ⇒ ۴۲۲ (اعتبارسنجی schema) — فاز 48a."""
     empty = client.post("/api/analytics/compare", json={"version_ids": []})
-    assert empty.status_code == 404, empty.text
+    assert empty.status_code == 422, empty.text
+
+    single = client.post("/api/analytics/compare", json={"version_ids": [1]})
+    assert single.status_code == 422, single.text
 
 
 # ═════════════════════════════════════════════
@@ -85,6 +88,8 @@ def test_compare_two_analyzed_versions_works(client, db_session):
     assert r.status_code == 200, r.text
     body = r.json()
 
-    assert {item["version_id"] for item in body["items"]} == {v1, v2}
-    assert body["best_version_id"] in (v1, v2)
-    assert body["recommendation"]
+    assert {item["version_id"] for item in body["comparison"]} == {v1, v2}
+    assert all("metrics" in item for item in body["comparison"])
+    assert body["best"]["version_id"] in (v1, v2)
+    assert body["comparison"][0]["rank"] == 1
+    assert "score" in body["comparison"][0]

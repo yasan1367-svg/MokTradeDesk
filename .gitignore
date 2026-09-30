@@ -141,3 +141,6 @@ storage/
 .cache
 coverage/
 *.tmp
+
+*.db-wal
+*.db-shm
