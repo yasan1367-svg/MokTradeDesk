@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import ComparisonBarChart from '../components/charts/ComparisonBarChart';
 import ComparisonRadarChart from '../components/charts/ComparisonRadarChart';
 import EmptyState from '../components/ui/EmptyState';
@@ -11,6 +11,15 @@ import {
   compareVersions,
 } from '../api/client';
 import type { CompareResponse, VersionComparisonItem } from '../api/client';
+// فاز ۴۸c — ماندگاری فیلترها در URL (پروژه react-router ندارد ⇒ History API خام)
+import {
+  COMPARISON_TEST_TYPES,
+  DEFAULT_COMPARISON_TEST_TYPE,
+  MAX_COMPARE_SELECT,
+  buildComparisonPatch,
+  parseComparisonFilters,
+} from '../utils/comparisonUrl';
+import { writeSearch } from '../utils/urlState';
 
 interface Version {
   id: number;
@@ -26,14 +35,23 @@ interface Strategy {
   name: string;
 }
 
-const TEST_TYPES = [
-  { value: 'BACKTEST', label: 'بک‌تست' },
-  { value: 'FORWARD', label: 'فوروارد' },
-  { value: 'REAL_PERSONAL', label: 'واقعی شخصی' },
-  { value: 'REAL_PROP', label: 'واقعی پراپ' },
-];
+const TEST_TYPE_LABELS: Record<string, string> = {
+  BACKTEST: 'بک‌تست',
+  FORWARD: 'فوروارد',
+  REAL_PERSONAL: 'واقعی شخصی',
+  REAL_PROP: 'واقعی پراپ',
+};
 
-const MAX_SELECT = 5;
+// فاز ۴۸c — گزینه‌ها از whitelist مشترک URL می‌آیند (منبع واحد حقیقت)
+const TEST_TYPES = COMPARISON_TEST_TYPES.map((value) => ({
+  value,
+  label: TEST_TYPE_LABELS[value] ?? value,
+}));
+
+const MAX_SELECT = MAX_COMPARE_SELECT;
+
+/** فاز ۴۸c — تأخیر نوشتن فیلترها در URL (ms): هر تایپ/فیلتر یک replaceState نسازد */
+const URL_SYNC_DEBOUNCE_MS = 500;
 
 /**
  * فاز ۴۸a.۶ — صفحه‌ی مقایسه/رتبه‌بندی نسخه‌ها (قرارداد جدید).
@@ -42,23 +60,45 @@ const MAX_SELECT = 5;
 export default function ComparisonPage() {
   const toast = useToast();
 
+  // فاز ۴۸c — مقدار اولیهٔ فیلترها از URL خوانده می‌شود (refresh ⇒ بازیابی فیلترها)
+  const initialFilters = useMemo(
+    () => parseComparisonFilters(typeof window === 'undefined' ? '' : window.location.search),
+    [],
+  );
+
   // ── داده‌های پایه ──
   const [versions, setVersions] = useState<Version[]>([]);
   const [strategies, setStrategies] = useState<Strategy[]>([]);
 
   // ── انتخاب‌ها و فیلترها ──
-  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const [selectedIds, setSelectedIds] = useState<number[]>(initialFilters.versionIds);
   const [filterStrategy, setFilterStrategy] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
-  const [testType, setTestType] = useState<string>('BACKTEST');
-  const [symbol, setSymbol] = useState('');
-  const [dateFrom, setDateFrom] = useState('');
-  const [dateTo, setDateTo] = useState('');
+  const [testType, setTestType] = useState<string>(
+    initialFilters.testType ?? DEFAULT_COMPARISON_TEST_TYPE,
+  );
+  const [symbol, setSymbol] = useState(initialFilters.symbol ?? '');
+  const [dateFrom, setDateFrom] = useState(initialFilters.dateFrom ?? '');
+  const [dateTo, setDateTo] = useState(initialFilters.dateTo ?? '');
 
   // ── نتیجه ──
   const [result, setResult] = useState<CompareResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [drawerVersion, setDrawerVersion] = useState<VersionComparisonItem | null>(null);
+
+  /** فاز ۴۸c — نوشتن فوری فیلترها در URL (بدون debounce) */
+  const updateUrl = () => {
+    writeSearch(
+      buildComparisonPatch({ versionIds: selectedIds, testType, symbol, dateFrom, dateTo }),
+    );
+  };
+
+  // فاز ۴۸c — Sync خودکار فیلترها با URL (debounce تا هر تایپ یک replaceState نسازد)
+  useEffect(() => {
+    const timer = setTimeout(updateUrl, URL_SYNC_DEBOUNCE_MS);
+    return () => clearTimeout(timer);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedIds, testType, symbol, dateFrom, dateTo]);
 
   useEffect(() => {
     loadData();
@@ -104,6 +144,8 @@ export default function ComparisonPage() {
       toast.error('حداقل ۲ نسخه انتخاب کن');
       return;
     }
+    // فاز ۴۸c — فیلترها قبل از فراخوانی API در URL تثبیت می‌شوند (بدون انتظار debounce)
+    updateUrl();
     setLoading(true);
     try {
       const r = await compareVersions({

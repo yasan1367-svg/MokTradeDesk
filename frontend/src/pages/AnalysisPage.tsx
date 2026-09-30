@@ -8,9 +8,12 @@ import {
   exportAnalysisPdf,
   analyzeVersionScoped,
   analyzePropStage,
+  analyzePersonalAccount,     // فاز ۴۸c
   getAnalysisVersion,
   getAnalysisProp,
+  getAnalysisPersonalAccount, // فاز ۴۸c
   getAllPropStages,
+  getPersonalTradingAccounts, // فاز ۴۸c
 } from '../api/client';
 
 import EquityCurveChart from '../components/charts/EquityCurveChart';
@@ -21,17 +24,29 @@ import PnLDistributionChart from '../components/charts/PnLDistributionChart';
 
 // فاز ۳۸.۴ (Clean Break) — تب «بروکر» حذف شد: حساب مالیِ نوع «بروکر» وجود ندارد
 // (حساب‌های معاملاتی → `PersonalTradingAccount` در بک‌اند) و endpointهای تحلیل بروکر هم نیستند.
-type ScopeType = 'backtest' | 'forward' | 'prop_stage_1' | 'prop_stage_2' | 'prop_stage_3';
-const SCOPE_TABS: { key: ScopeType; icon: string; label: string }[] = [
-  { key: 'backtest', icon: '📊', label: 'بک‌تست' },
-  { key: 'forward', icon: '📈', label: 'فوروارد' },
+type ScopeType = 'backtest' | 'forward' | 'real_personal' | 'prop_stage_1' | 'prop_stage_2' | 'prop_stage_3';
+const SCOPE_TABS: { key: ScopeType; icon: string; label: string; testType?: string }[] = [
+  { key: 'backtest', icon: '📊', label: 'بک‌تست', testType: 'BACKTEST' },
+  { key: 'forward', icon: '📈', label: 'فوروارد', testType: 'FORWARD' },
+  // فاز ۴۸c — حساب معاملاتی شخصی (REAL_PERSONAL)؛ مسیر تحلیلش `personal-account` است نه نسخه
+  { key: 'real_personal', icon: '💼', label: 'واقعی شخصی', testType: 'REAL_PERSONAL' },
   { key: 'prop_stage_1', icon: '🏁', label: 'مرحله ۱' },
   { key: 'prop_stage_2', icon: '🔍', label: 'مرحله ۲' },
   { key: 'prop_stage_3', icon: '💰', label: 'مرحله ۳' },
 ];
 
+/** فاز ۴۸c — `test_type` هر دامنه/تب (منبع واحد حقیقت؛ جایگزین ternaryهای پراکنده) */
+const testTypeOfScope = (scope: ScopeType): string | undefined =>
+  SCOPE_TABS.find((t) => t.key === scope)?.testType;
+
 interface Version { id: number; version_name: string; strategy_name: string; }
 interface PropStageOption { id: number; display_name: string; stage_type: string; }
+interface PersonalAccountOption {
+  id: number;
+  account_label?: string | null;
+  account_number?: string | null;
+  broker_name?: string | null;
+}
 
 const SCOPE_KEY = 'analysis_selected_scope';
 const VALID_SCOPES: ScopeType[] = SCOPE_TABS.map((t) => t.key);
@@ -59,6 +74,8 @@ export default function AnalysisPage() {
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [propStages, setPropStages] = useState<PropStageOption[]>([]);
+  // فاز ۴۸c — حساب‌های معاملاتی شخصی (دامنهٔ REAL_PERSONAL)
+  const [personalAccounts, setPersonalAccounts] = useState<PersonalAccountOption[]>([]);
   const [analysis, setAnalysis] = useState<any>(null);
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
@@ -75,17 +92,26 @@ export default function AnalysisPage() {
     getAllPropStages()
       .then((res) => setPropStages(res.data))
       .catch((err) => console.error('خطا در دریافت مراحل پراپ:', err));
+    // فاز ۴۸c — حساب‌های معاملاتی شخصی (منبع: /api/trading/accounts)
+    getPersonalTradingAccounts()
+      .then((res) => setPersonalAccounts(res.data || []))
+      .catch((err) => console.error('خطا در دریافت حساب‌های معاملاتی شخصی:', err));
   }, []);
 
   // ═════════════════════════════════════════════
   // فاز ۲۳ — انتخاب خودکار اولین مرحلهٔ مربوط به تب جاری (۱/۲/۳)
   // ═════════════════════════════════════════════
   useEffect(() => {
+    // فاز ۴۸c — تب «واقعی شخصی»: اولین حساب معاملاتی شخصی خودکار انتخاب می‌شود
+    if (scope === 'real_personal') {
+      setSelectedId(personalAccounts.length > 0 ? personalAccounts[0].id : null);
+      return;
+    }
     if (!scope.startsWith('prop_stage_')) return;
     const stageType = STAGE_TYPE_BY_SCOPE[scope];
     const first = propStages.find((s) => s.stage_type === stageType);
     setSelectedId(first ? first.id : null);
-  }, [scope, propStages]);
+  }, [scope, propStages, personalAccounts]);
 
   // ═════════════════════════════════════════════
   // ۲. بارگذاری تحلیل و معاملات بر اساس scope
@@ -99,11 +125,15 @@ export default function AnalysisPage() {
         let tradesData: any[] = [];
         try {
           const isVersion = scope === 'backtest' || scope === 'forward';
-          const testType = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
-          // فاز ۳۸.۴: تب «بروکر» حذف شد ⇒ فقط نسخه (backtest/forward) و مرحله پراپ
+          // فاز ۴۸c: منبع واحد `test_type` از تب فعال (testTypeOfScope)
+          const testType = testTypeOfScope(scope);
+          // فاز ۳۸.۴: تب «بروکر» حذف شد ⇒ سه دامنه: نسخه / حساب شخصی / مرحله پراپ
+          // فاز ۴۸c: `real_personal` ⇒ ENDPOINT حساب شخصی (scope=PERSONAL_ACCOUNT)
           const res = isVersion
             ? await getAnalysisVersion(selectedId, testType)
-            : await getAnalysisProp(selectedId);
+            : scope === 'real_personal'
+              ? await getAnalysisPersonalAccount(selectedId)
+              : await getAnalysisProp(selectedId);
           analysisData = res.data;
         } catch (e) {
           console.log('تحلیلی یافت نشد');
@@ -111,11 +141,13 @@ export default function AnalysisPage() {
         try {
           // فاز ۲۳ — لیست معاملات بر اساس scope (نسخه/مرحله پراپ)
           // فاز ۳۸.۴: شاخهٔ «بروکر» (با پارامتر نامعتبر `finance_account_id`) حذف شد
+          // فاز ۴۸c: شاخهٔ حساب شخصی ⇒ `personal_trading_account_id`
           const isVersionScope = scope === 'backtest' || scope === 'forward';
-          const tt = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
           const tradesRes = isVersionScope
-            ? await getTrades({ version_id: selectedId, test_type: tt, limit: 500 })
-            : await getTrades({ prop_stage_id: selectedId, limit: 500 });
+            ? await getTrades({ version_id: selectedId, test_type: testTypeOfScope(scope), limit: 500 })
+            : scope === 'real_personal'
+              ? await getTrades({ personal_trading_account_id: selectedId, limit: 500 })
+              : await getTrades({ prop_stage_id: selectedId, limit: 500 });
           tradesData = tradesRes.data.trades || [];
         } catch (e) {
           console.log('معامله‌ای یافت نشد');
@@ -136,10 +168,15 @@ export default function AnalysisPage() {
     setLoading(true); setError(null);
     try {
       const isVersion = scope === 'backtest' || scope === 'forward';
-      const testType = scope === 'forward' ? 'FORWARD' : scope === 'backtest' ? 'BACKTEST' : undefined;
+      const testType = testTypeOfScope(scope);
       if (isVersion) {
         await analyzeVersionScoped(selectedId, testType);
         const res = await getAnalysisVersion(selectedId, testType);
+        setAnalysis(res.data);
+      } else if (scope === 'real_personal') {
+        // فاز ۴۸c — تحلیل دامنهٔ REAL_PERSONAL (scope=PERSONAL_ACCOUNT)
+        await analyzePersonalAccount(selectedId);
+        const res = await getAnalysisPersonalAccount(selectedId);
         setAnalysis(res.data);
       } else {
         // فاز ۳۸.۴: تب «بروکر» حذف شد ⇒ باقی موارد مرحله پراپ است
@@ -187,9 +224,25 @@ export default function AnalysisPage() {
         <div className="flex flex-wrap items-center gap-4">
           <div className="flex-1 min-w-[250px]">
             <label className="text-[var(--text-secondary)] text-sm block mb-2">
-              {scope.startsWith('prop_stage_') ? 'انتخاب مرحله پراپ' : 'انتخاب نسخه'}
+              {scope === 'real_personal'
+                ? 'انتخاب حساب معاملاتی شخصی'
+                : scope.startsWith('prop_stage_')
+                  ? 'انتخاب مرحله پراپ'
+                  : 'انتخاب نسخه'}
             </label>
-            {scope.startsWith('prop_stage_') ? (
+            {scope === 'real_personal' ? (
+              /* فاز ۴۸c — دامنهٔ REAL_PERSONAL: منبع /api/trading/accounts */
+              <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
+                <option value="">— حساب معاملاتی شخصی ثبت نشده است —</option>
+                {personalAccounts.map((a) => (
+                  <option key={a.id} value={a.id}>
+                    {a.account_label || a.account_number || `#${a.id}`}
+                    {a.broker_name ? ` — ${a.broker_name}` : ''}
+                  </option>
+                ))}
+              </select>
+            ) : scope.startsWith('prop_stage_') ? (
               <select value={selectedId || ''} onChange={(e) => setSelectedId(Number(e.target.value) || null)}
                 className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)]">
                 <option value="">— مرحله‌ای از این نوع وجود ندارد —</option>
@@ -432,7 +485,9 @@ export default function AnalysisPage() {
                         <td className="py-2">
                           <span className="text-xs bg-accent/20 text-[var(--accent)] px-2 py-1 rounded">
                             {t.test_type === 'backtest' ? 'بک‌تست' :
-                             t.test_type === 'forward' ? 'فوروارد' : 'رییل'}
+                             t.test_type === 'forward' ? 'فوروارد' :
+                             t.test_type === 'real_personal' ? 'رییل شخصی' :
+                             t.test_type === 'real_prop' ? 'رییل پراپ' : 'رییل'}
                           </span>
                         </td>
                         <td className={`py-2 ${t.direction === 'buy' ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
@@ -460,7 +515,7 @@ export default function AnalysisPage() {
           <GlassCard>
             <div className="text-center py-12 text-[var(--text-secondary)]">
               <div className="text-4xl mb-4">📊</div>
-              <div>برای مشاهده‌ی تحلیل، یک نسخه انتخاب کنید و روی "تحلیل مجدد" کلیک کنید</div>
+              <div>برای مشاهده‌ی تحلیل، یک دامنه (نسخه / حساب شخصی / مرحله پراپ) انتخاب کنید و روی «تحلیل مجدد» کلیک کنید</div>
             </div>
           </GlassCard>
         )

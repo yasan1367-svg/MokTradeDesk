@@ -280,11 +280,17 @@ export const analyzeVersionScoped = (versionId: number, testType?: string) =>
     { params: testType ? { test_type: testType } : {} });
 export const analyzePropStage = (propStageId: number) =>
   api.post(`/api/analytics/analyze/prop/${propStageId}`);
+// فاز ۴۸c — تحلیل حساب معاملاتی شخصی (دامنهٔ REAL_PERSONAL، scope=PERSONAL_ACCOUNT)
+export const analyzePersonalAccount = (personalTradingAccountId: number) =>
+  api.post(`/api/analytics/analyze/personal-account/${personalTradingAccountId}`);
 export const getAnalysisVersion = (versionId: number, testType?: string) =>
   api.get(`/api/analytics/analysis/version/${versionId}`,
     { params: testType ? { test_type: testType } : {} });
 export const getAnalysisProp = (propStageId: number) =>
   api.get(`/api/analytics/analysis/prop/${propStageId}`);
+// فاز ۴۸c — خواندن تحلیل ذخیره‌شدهٔ حساب معاملاتی شخصی
+export const getAnalysisPersonalAccount = (personalTradingAccountId: number) =>
+  api.get(`/api/analytics/analysis/personal-account/${personalTradingAccountId}`);
 // فاز ۳۸.۴ (Clean Break): `analyzeBroker`/`getAnalysisBroker` حذف شدند
 // (مسیرهای `/analyze|analysis/broker/{id}` در بک‌اند وجود ندارند؛ معادل آن‌ها
 //  `/analyze|analysis/personal-account/{personal_trading_account_id}` است).

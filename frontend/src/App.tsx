@@ -4,6 +4,8 @@ import ErrorBoundary from './components/ErrorBoundary';
 import CommandPalette from './components/CommandPalette';
 import type { CommandItem } from './components/CommandPalette';
 import { useToast } from './components/ToastProvider';
+// فاز ۴۸c — صفحهٔ فعال در URL نگه داشته می‌شود (بدون react-router؛ History API خام)
+import { writeSearch } from './utils/urlState';
 
 // ── فاز ۱۵.۴: Code Splitting — هر صفحه یک chunk جداگانه ──
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -40,6 +42,18 @@ const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   payouts: { title: '💸 برداشت‌ها', subtitle: 'تاریخچهٔ برداشت‌های پراپ و بروکر' },
   settings: { title: '⚙️ تنظیمات', subtitle: 'تنظیمات نرم‌افزار' },
 };
+
+const PAGE_KEYS = Object.keys(PAGE_TITLES) as Page[];
+
+/**
+ * فاز ۴۸c — صفحهٔ اولیه از URL (`?page=analysis`) خوانده می‌شود تا refresh
+ * کاربر را به داشبورد پرت نکند و فیلترهای ذخیره‌شدهٔ صفحه‌ها (مثل مقایسه) معنا داشته باشند.
+ */
+function readPageFromUrl(): Page {
+  if (typeof window === 'undefined') return 'dashboard';
+  const raw = new URLSearchParams(window.location.search).get('page');
+  return raw && (PAGE_KEYS as string[]).includes(raw) ? (raw as Page) : 'dashboard';
+}
 
 // ── فاز ۱۵.۴: fallback آگاه از Dark Mode (با CSS Variables) ──
 function PageLoading() {
@@ -90,13 +104,18 @@ function useTheme() {
 }
 
 export default function App() {
-  const [page, setPage] = useState<Page>('dashboard');
+  const [page, setPage] = useState<Page>(readPageFromUrl);
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const toast = useToast();
 
   // ── preload صفحهٔ پیش‌فرض (فاز ۱۵.۴) ──
   useEffect(() => { preloadDashboard(); }, []);
+
+  // فاز ۴۸c — همگام‌سازی صفحهٔ فعال با URL (dashboard = پیش‌فرض ⇒ بدون پارامتر)
+  useEffect(() => {
+    writeSearch({ page: page === 'dashboard' ? null : page });
+  }, [page]);
 
 // ── میانبرهای کیبورد ──
   useEffect(() => {
