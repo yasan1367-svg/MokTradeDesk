@@ -157,7 +157,10 @@ class Trade(Base):
     source = Column(Enum(TradeSource), nullable=False)
     test_type = Column(Enum(TestType), nullable=False, default=TestType.BACKTEST, index=True)
     note = Column(Text, nullable=True)
-    screenshot_path = Column(String, nullable=True)
+    # فاز ۳۹.۳: ستون legacy «مسیر اسکرین‌شات» حذف شد (migration: f39a1b2c3d4e).
+    # تنها منبع حقیقت اسکرین‌شات، جدول `screenshots` است
+    # (`models/personal.py::Screenshot` با `entity_type='trade'` و `entity_id=trade.id`)
+    # — این ستون در کد هیچ‌گاه خوانده/نوشته نمی‌شد (ستون مرده).
     raw_data = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

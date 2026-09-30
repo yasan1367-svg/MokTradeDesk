@@ -14,6 +14,8 @@ from ..models.finance import (
     CategoryType,
     TransactionType,
 )
+# فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
+from ..services.wallet_service import WalletService, WalletError
 
 router = APIRouter()
 
@@ -314,25 +316,53 @@ def get_transactions(
 
 @router.post("/transactions")
 def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
-    """ایجاد تراکنش جدید"""
+    """ایجاد تراکنش جدید (فاز ۳۹: از مسیر WalletService ⇒ موجودی هم به‌روز می‌شود).
+
+    `allow_overdraft=True`: این endpoint یک «دفتر کل دستی» است و پیش از فاز ۳۹ هم
+    موجودی را کنترل نمی‌کرد ⇒ برای حفظ سازگاری، محافظ موجودی روی آن اعمال نمی‌شود.
+    """
     data = tx.model_dump()
-    if data.get("date") is None:
-        data["date"] = datetime.now(timezone.utc)
-    db_tx = FinancialTransaction(**data)
-    db.add(db_tx)
-    db.commit()
-    db.refresh(db_tx)
+    try:
+        db_tx = WalletService.post(
+            db,
+            account_id=data["account_id"],
+            type=data["type"],
+            amount=data["amount"],
+            currency=data.get("currency"),
+            date=data.get("date") or datetime.now(timezone.utc),
+            category_id=data.get("category_id"),
+            from_account_id=data.get("from_account_id"),
+            to_account_id=data.get("to_account_id"),
+            description=data.get("description"),
+            related_trade_id=data.get("related_trade_id"),
+            related_prop_account_id=data.get("related_prop_account_id"),
+            allow_overdraft=True,
+        )
+    except WalletError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"id": db_tx.id, "message": "تراکنش ثبت شد"}
 
 
 @router.patch("/transactions/{transaction_id}")
 def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session = Depends(get_db)):
-    """ویرایش تراکنش"""
+    """ویرایش تراکنش (فاز ۳۹: اثر قبلی برگردانده و اثر جدید اعمال می‌شود)."""
     tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
-    for field, value in data.model_dump(exclude_unset=True).items():
-        setattr(tx, field, value)
+    try:
+        # برگشت اثر مقدارهای قبلی (mutation بعدی اثر جدید را اعمال می‌کند)
+        WalletService.apply_effects(db, tx, sign=-1)
+        for field, value in data.model_dump(exclude_unset=True).items():
+            setattr(tx, field, value)
+        if tx.date is None:
+            tx.date = datetime.now(timezone.utc)
+        # چک مبلغ جدید (وگرنه ویرایش به صفر، اثر قبلی را بی‌صدا حذف می‌کرد)
+        WalletService.validate_amount(tx.type, tx.amount)
+        WalletService.apply_effects(db, tx, sign=+1)
+    except (WalletError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(tx)
     return {"message": "تراکنش به‌روزرسانی شد"}
@@ -340,12 +370,15 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
 
 @router.delete("/transactions/{transaction_id}")
 def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
-    """حذف نرم تراکنش (soft delete)"""
+    """حذف نرم تراکنش + برگشت اثر آن روی موجودی (فاز ۳۹)."""
     tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
-    tx.is_deleted = True
-    db.commit()
+    try:
+        WalletService.reverse(db, tx)
+    except WalletError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"message": "تراکنش حذف شد"}
 
 # ═════════════════════════════════════════════
@@ -584,23 +617,30 @@ def list_withdrawals(
 
 @router.post("/withdrawals")
 def create_withdrawal(data: WithdrawalCreate, db: Session = Depends(get_db)):
-    """ایجاد برداشت جدید (FinancialTransaction با type=withdrawal) — فاز ۱۵.۱۲"""
+    """ایجاد برداشت جدید (FinancialTransaction با type=withdrawal) — فاز ۱۵.۱۲
+
+    فاز ۳۹ (رفع G1): از مسیر `WalletService` ⇒ موجودی کیف‌پول هم به‌روز می‌شود.
+    `allow_overdraft=True` مثل `POST /finance/transactions` (مسیر دستی/انعطاف‌پذیر).
+    """
     account = db.query(FinancialAccount).filter(FinancialAccount.id == data.account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
 
-    w = FinancialTransaction(
-        account_id=data.account_id,
-        category_id=data.category_id,
-        amount=data.amount,
-        currency=data.currency,
-        date=data.date or datetime.now(timezone.utc),
-        description=data.description,
-        type=TransactionType.WITHDRAWAL,
-    )
-    db.add(w)
-    db.commit()
-    db.refresh(w)
+    try:
+        w = WalletService.post(
+            db,
+            account_id=data.account_id,
+            type=TransactionType.WITHDRAWAL,
+            amount=data.amount,
+            currency=data.currency,
+            date=data.date or datetime.now(timezone.utc),
+            category_id=data.category_id,
+            description=data.description,
+            allow_overdraft=True,
+        )
+    except WalletError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"id": w.id, "message": "برداشت ثبت شد"}
 
 
@@ -608,7 +648,7 @@ def create_withdrawal(data: WithdrawalCreate, db: Session = Depends(get_db)):
 @router.put("/withdrawals/{withdrawal_id}")
 @router.patch("/withdrawals/{withdrawal_id}")
 def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = Depends(get_db)):
-    """ویرایش برداشت (فاز ۱۵.۱۲)"""
+    """ویرایش برداشت (فاز ۱۵.۱۲) — فاز ۳۹: اثر قبلی برگردانده و اثر جدید اعمال می‌شود."""
     w = _withdrawal_query(db).filter(FinancialTransaction.id == withdrawal_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
@@ -619,8 +659,17 @@ def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = 
         if not account:
             raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
 
-    for field, value in payload.items():
-        setattr(w, field, value)
+    try:
+        WalletService.apply_effects(db, w, sign=-1)          # برگشت اثر مقدارهای قبلی
+        for field, value in payload.items():
+            setattr(w, field, value)
+        if w.date is None:
+            w.date = datetime.now(timezone.utc)
+        WalletService.validate_amount(w.type, w.amount)      # مبلغ صفر/منفی مجاز نیست
+        WalletService.apply_effects(db, w, sign=+1)          # اعمال اثر مقدارهای جدید
+    except (WalletError, ValueError) as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(w)
     return {"message": "برداشت به‌روزرسانی شد", "withdrawal": _serialize_withdrawal(w)}
@@ -628,12 +677,15 @@ def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = 
 
 @router.delete("/withdrawals/{withdrawal_id}")
 def delete_withdrawal(withdrawal_id: int, db: Session = Depends(get_db)):
-    """حذف نرم برداشت (فاز ۱۵.۱۲)"""
+    """حذف نرم برداشت + برگشت اثر آن روی موجودی (فاز ۱۵.۱۲ / فاز ۳۹)."""
     w = _withdrawal_query(db).filter(FinancialTransaction.id == withdrawal_id).first()
     if not w:
         raise HTTPException(status_code=404, detail="برداشت پیدا نشد")
-    w.is_deleted = True
-    db.commit()
+    try:
+        WalletService.reverse(db, w)
+    except WalletError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
     return {"message": "برداشت حذف شد"}
 
 
@@ -1141,6 +1193,20 @@ def _balance_sum(db: Session, acc_type: AccountType) -> float:
     )
 
 
+def _balance_sum_currency(db: Session, currency: Currency) -> float:
+    """مجموع موجودی همهٔ کیف‌پول‌های یک ارز — فاز ۳۹ (رفع G6).
+
+    پیش از فاز ۳۹، `total.irr` هاردکد روی سبد `bank` بود ⇒ IRR موجود در
+    صرافی/نقد/کارت از جمع IRR **حذف** می‌شد.
+    """
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0))
+        .filter(FinancialAccount.currency == currency)
+        .scalar() or 0.0
+    )
+
+
 def _compute_real_pnl(db: Session) -> dict:
     """سود/زیان Real: مرحلهٔ ۳ پراپ + بروکر (از معاملات، net_pnl)"""
     from sqlalchemy import func
@@ -1202,7 +1268,19 @@ def _expenses_total(db: Session) -> float:
 # ═════════════════════════════════════════════
 @router.get("/spendable-assets")
 def get_spendable_assets(db: Session = Depends(get_db)):
-    """دارایی قابل برداشت: تفکیک مرحلهٔ ۳ پراپ، بروکر، صرافی، Trust Wallet، بانک + مجموع"""
+    """دارایی قابل برداشت: پراپ مرحلهٔ ۳، بروکر، صرافی، Trust Wallet، کیف‌پول دیجیتال،
+    کارت، نقد، بانک + مجموع به تفکیک ارز.
+
+    فاز ۳۹ (رفع G6):
+    - سبد `trust_wallet` از `AccountType.TRUST_WALLET` پر می‌شود. پیش‌تر اشتباهاً
+      `CRYPTO_WALLET` بود (فاز ۳۸ نوع `TRUST_WALLET` را اضافه کرد ولی این endpoint
+      آپدیت نشد) ⇒ هیچ موجودی تراست‌ولت واقعی دیده نمی‌شد.
+    - سبدهای `crypto_wallet` / `card` / `cash` افزوده شدند (پیش‌تر کاملاً غایب بودند).
+    - `total.irr` = Σ موجودی **همهٔ** کیف‌پول‌های IRR (پیش‌تر هاردکد = سبد `bank`).
+
+    کلیدهای قدیمی (`prop_stage_3`, `broker`, `exchange`, `trust_wallet`, `bank`,
+    `total.usd`, `total.irr`) دست‌نخورده حفظ شده‌اند ⇒ سازگاری فرانت‌اند.
+    """
     prop_stage_3 = round(_prop_stage3_tx_net(db), 2)
     # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه FinancialAccount مالی)
     from ..models.trading import PersonalTradingAccount as _PTA
@@ -1211,17 +1289,27 @@ def get_spendable_assets(db: Session = Depends(get_db)):
         db.query(_f.coalesce(_f.sum(_PTA.current_balance), 0.0)).scalar() or 0.0
     ), 2)
     exchange = round(_balance_sum(db, AccountType.EXCHANGE), 2)
-    trust_wallet = round(_balance_sum(db, AccountType.CRYPTO_WALLET), 2)
+    trust_wallet = round(_balance_sum(db, AccountType.TRUST_WALLET), 2)      # فاز ۳۹: رفع G6
+    crypto_wallet = round(_balance_sum(db, AccountType.CRYPTO_WALLET), 2)    # فاز ۳۹: جدید
+    card = round(_balance_sum(db, AccountType.CARD), 2)                      # فاز ۳۹: جدید
+    cash = round(_balance_sum(db, AccountType.CASH), 2)                      # فاز ۳۹: جدید
     bank = round(_balance_sum(db, AccountType.BANK), 2)
 
-    total_usd = round(prop_stage_3 + broker + exchange + trust_wallet, 2)
+    total_usd = round(prop_stage_3 + broker + exchange + trust_wallet + crypto_wallet, 2)
+    total_irr = round(_balance_sum_currency(db, Currency.IRR), 2)            # فاز ۳۹: رفع G6
+
     return {
+        # ── کلیدهای موجود (بدون تغییر) ──
         "prop_stage_3": {"amount": prop_stage_3, "currency": "USD"},
         "broker": {"amount": broker, "currency": "USD"},
         "exchange": {"amount": exchange, "currency": "USD"},
         "trust_wallet": {"amount": trust_wallet, "currency": "USD"},
         "bank": {"amount": bank, "currency": "IRR"},
-        "total": {"usd": total_usd, "irr": bank},
+        "total": {"usd": total_usd, "irr": total_irr},
+        # ── کلیدهای جدید فاز ۳۹ ──
+        "crypto_wallet": {"amount": crypto_wallet, "currency": "USD"},
+        "card": {"amount": card, "currency": "IRR"},
+        "cash": {"amount": cash, "currency": "IRR"},
     }
 
 

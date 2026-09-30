@@ -1,0 +1,495 @@
+"""فاز ۳۹.۱ — سرویس کیف‌پول: **تنها نویسندهٔ** `FinancialAccount.balance`.
+
+چرا این فایل وجود دارد؟
+-----------------------
+پیش از فاز ۳۹، موجودی کیف‌پول‌ها از **۵ نقطهٔ پراکنده** تغییر می‌کرد
+(`payout_service.py` ×۴ و `prop.py` ×۱) در حالی که `POST/PATCH/DELETE /finance/transactions`
+هیچ اثری روی موجودی نداشت ⇒ **دو منبع حقیقت** و drift اجتناب‌ناپذیر (شکاف G1/G11 در
+`PLAN_PHASE39.md`).
+
+قرارداد طلایی این فاز:
+    هر تغییری در `FinancialAccount.balance` **فقط** از مسیر `WalletService` انجام می‌شود.
+
+قرارداد جهت‌دار (direction contract)
+-----------------------------------
+    DEPOSIT / PROFIT                   ⇒ `account_id`  +
+    WITHDRAWAL / LOSS / FEE / PURCHASE ⇒ `account_id`  −
+    TRANSFER                           ⇒ `from_account_id` −  ,  `to_account_id` +
+    ADJUSTMENT                         ⇒ `account_id`  ±  (علامت از خودِ مبلغ)
+
+نکات:
+- برای `TRANSFER` همیشه `account_id == to_account_id` تنظیم می‌شود (مثل قرارداد فاز ۳۳) و
+  اثر روی `account_id` **دوباره** اعمال نمی‌شود (وگرنه مقصد دوبار بستانکار می‌شد).
+- `ADJUSTMENT` از محافظ موجودی مستثناست (اصلاح دستی آگاهانه است).
+- `post()` همیشه `db.flush()` می‌زند تا `tx.id` بلافاصله در دسترس باشد
+  (نیاز `PayoutService._post_income` در فاز ۳۳).
+"""
+from __future__ import annotations
+
+import logging
+from datetime import datetime, timezone
+from typing import Dict, Iterable, List, Optional
+
+from sqlalchemy import or_
+from sqlalchemy.orm import Session, joinedload
+
+from ..models.finance import (
+    Currency,
+    FinancialAccount,
+    FinancialTransaction,
+    TransactionType,
+)
+
+logger = logging.getLogger("moktrade")
+
+
+# ═════════════════════════════════════════════
+# خطای دامنه
+# ═════════════════════════════════════════════
+class WalletError(ValueError):
+    """خطای دامنهٔ کیف‌پول با پیام فارسی.
+
+    زیرکلاس `ValueError` است تا لایه‌های موجودی که `except ValueError` دارند
+    (`api/prop.py`) بدون تغییر، آن را به `HTTPException(400)` تبدیل کنند.
+    """
+
+
+# ═════════════════════════════════════════════
+# قرارداد جهت‌دار
+# ═════════════════════════════════════════════
+BALANCE_DIRECTION: Dict[TransactionType, str] = {
+    TransactionType.DEPOSIT: "+",
+    TransactionType.PROFIT: "+",
+    TransactionType.WITHDRAWAL: "-",
+    TransactionType.LOSS: "-",
+    TransactionType.FEE: "-",
+    TransactionType.PURCHASE: "-",
+    TransactionType.TRANSFER: "move",      # دو طرفه (مبدأ − / مقصد +)
+    TransactionType.ADJUSTMENT: "signed",  # علامت از مبلغ
+}
+
+#: انواعی که موجودی را زیاد می‌کنند (برای گزارش‌ها/تست‌ها).
+INFLOW_TYPES = frozenset({TransactionType.DEPOSIT, TransactionType.PROFIT})
+
+#: انواعی که موجودی را کم می‌کنند.
+OUTFLOW_TYPES = frozenset({
+    TransactionType.WITHDRAWAL,
+    TransactionType.LOSS,
+    TransactionType.FEE,
+    TransactionType.PURCHASE,
+})
+
+#: دقت مقایسه برای آشتی‌دهی (نصف سنت).
+_EPSILON = 0.005
+
+
+# ═════════════════════════════════════════════
+# helpers
+# ═════════════════════════════════════════════
+def _to_currency(value) -> Optional[Currency]:
+    """تبدیل امن مقدار ورودی به `Currency` (None ⇒ None تا default مدل اعمال شود)."""
+    if value is None or isinstance(value, Currency):
+        return value
+    try:
+        return Currency(str(value).upper())
+    except ValueError:
+        logger.warning("Invalid currency %r — falling back to USD", value)
+        return Currency.USD
+
+
+def _direction_of(tx_type) -> str:
+    """جهت اثر یک نوع تراکنش؛ مقدار ناشناخته/None ⇒ `"0"` (بدون اثر، مثل رفتار قدیم)."""
+    if tx_type is None:
+        return "0"
+    try:
+        value = tx_type if isinstance(tx_type, TransactionType) else TransactionType(tx_type)
+    except ValueError:
+        logger.warning("Unknown transaction type %r — no balance effect", tx_type)
+        return "0"
+    return BALANCE_DIRECTION.get(value, "0")
+
+
+def _load_accounts(db: Session, ids: Iterable[Optional[int]]) -> Dict[int, FinancialAccount]:
+    """بارگذاری کیف‌پول‌های خواسته‌شده به‌صورت یک کوئری (`account_id → object`)."""
+    clean = {i for i in ids if i is not None}
+    if not clean:
+        return {}
+    rows = db.query(FinancialAccount).filter(FinancialAccount.id.in_(clean)).all()
+    return {a.id: a for a in rows}
+
+
+def _as_type(tx_type) -> TransactionType:
+    """تبدیل امن ورودی به `TransactionType`."""
+    return tx_type if isinstance(tx_type, TransactionType) else TransactionType(tx_type)
+
+
+def _normalize_amount(
+    tx_type: TransactionType, amount, signed_amount=None
+) -> float:
+    """اعتبارسنجی/نرمال‌سازی مبلغ یک تراکنش.
+
+    - `ADJUSTMENT` ⇒ صفر ممنوع، منفی مجاز (از `amount` یا `signed_amount`).
+    - بقیهٔ انواع ⇒ باید بزرگ‌تر از صفر باشد.
+
+    اولین منبع موجود از `signed_amount` و سپس `amount` استفاده می‌شود.
+    """
+    raw = signed_amount if signed_amount is not None else amount
+    if raw is None:
+        raise WalletError("مبلغ تراکنش الزامی است")
+    value = float(raw)
+    if tx_type == TransactionType.ADJUSTMENT:
+        if value == 0:
+            raise WalletError("مبلغ اصلاح نمی‌تواند صفر باشد")
+    elif value <= 0:
+        raise WalletError("مبلغ تراکنش باید بزرگ‌تر از صفر باشد")
+    return value
+
+
+# ═════════════════════════════════════════════
+# سرویس
+# ═════════════════════════════════════════════
+class WalletService:
+    """تنها نقطهٔ مجاز برای تغییر `FinancialAccount.balance`."""
+
+    # ── محاسبهٔ اثر ──
+    @staticmethod
+    def deltas(tx: FinancialTransaction) -> Dict[int, float]:
+        """نگاشت «شناسهٔ کیف‌پول → تغییر موجودی» برای یک تراکنش (بدون اعمال).
+
+        - `TRANSFER`  : `from` منفی و `to` مثبت (account_id نادیده گرفته می‌شود).
+        - `ADJUSTMENT`: علامت از خودِ `amount` می‌آید (منفی مجاز است).
+        - بقیه        : `account_id` با علامت جهت.
+        """
+        amount = float(tx.amount or 0.0)
+        direction = _direction_of(tx.type)
+
+        out: Dict[int, float] = {}
+
+        def _bump(account_id: Optional[int], delta: float) -> None:
+            if account_id is None or delta == 0.0:
+                return
+            out[account_id] = out.get(account_id, 0.0) + delta
+
+        if direction == "move":
+            # انتقال یک‌طرفه (مبدأ یا مقصد نامشخص) = تبدیل/جابجایی که **بیرون از نرم‌افزار**
+            # رخ داده (قرارداد قدیمی `/finance/transactions` و سناریوی کاربر:
+            # «تبدیل در صرافی انجام می‌شود») ⇒ فقط ثبت می‌شود، بدون اثر روی موجودی.
+            if tx.from_account_id is None or tx.to_account_id is None:
+                return {}
+            _bump(tx.from_account_id, -amount)
+            _bump(tx.to_account_id, +amount)
+        elif direction == "signed":
+            _bump(tx.account_id, amount)
+        elif direction == "+":
+            _bump(tx.account_id, +amount)
+        elif direction == "-":
+            _bump(tx.account_id, -amount)
+
+        return out
+
+    @staticmethod
+    def apply_effects(
+        db: Session, tx: FinancialTransaction, *, sign: int = 1
+    ) -> Dict[int, float]:
+        """اثر تراکنش را روی موجودی کیف‌پول‌ها اعمال می‌کند (`sign=-1` ⇒ برگشت).
+
+        خروجی: نگاشت «شناسهٔ کیف‌پول → تغییر اعمال‌شده».
+        """
+        if sign not in (1, -1):
+            raise WalletError("علامت اعمال اثر باید ۱ یا -۱ باشد")
+
+        effect = WalletService.deltas(tx)
+        if not effect:
+            return {}
+
+        accounts = _load_accounts(db, effect.keys())
+        missing = [aid for aid in effect if aid not in accounts]
+        if missing:
+            raise WalletError(
+                "حساب مالی پیدا نشد: " + ", ".join(str(m) for m in sorted(missing))
+            )
+
+        applied: Dict[int, float] = {}
+        for account_id, delta in effect.items():
+            account = accounts[account_id]
+            applied[account_id] = sign * delta
+            account.balance = float(account.balance or 0.0) + (sign * delta)
+        return applied
+
+    # ── محافظ موجودی ──
+    @staticmethod
+    def _assert_sufficient(
+        db: Session, tx: FinancialTransaction, *, allow_overdraft: bool
+    ) -> None:
+        """جلوگیری از منفی‌شدن موجودی برای انواع برداشتی (به‌جز ADJUSTMENT)."""
+        if allow_overdraft or _direction_of(tx.type) == "signed":
+            return
+
+        debits = {aid: d for aid, d in WalletService.deltas(tx).items() if d < 0}
+        if not debits:
+            return
+
+        accounts = _load_accounts(db, debits.keys())
+        for account_id, delta in debits.items():
+            account = accounts.get(account_id)
+            if account is None:
+                raise WalletError(f"حساب مالی {account_id} پیدا نشد")
+            available = float(account.balance or 0.0)
+            if available + delta < -_EPSILON:
+                raise WalletError(
+                    f"موجودی کیف‌پول «{account.name}» کافی نیست "
+                    f"(موجودی: {available:g}، مورد نیاز: {-delta:g})"
+                )
+
+
+    # ── اعتبارسنجی مبلغ (برای مسیرهای ویرایش) ──
+    @staticmethod
+    def validate_amount(tx_type, amount, signed_amount=None) -> float:
+        """اعتبارسنجی مبلغ یک تراکنش **بدون ثبت** آن.
+
+        برای `PATCH`ها لازم است: بدون این چک، ویرایش مبلغ به صفر اثر قبلی را
+        بی‌صدا حذف می‌کرد (`deltas` برای مبلغ صفر خالی برمی‌گردد).
+        """
+        return _normalize_amount(_as_type(tx_type), amount, signed_amount)
+
+    # ── ثبت تراکنش ──
+    @staticmethod
+    def post(
+        db: Session,
+        *,
+        account_id: int,
+        type: TransactionType,
+        amount: Optional[float] = None,
+        currency=None,
+        date=None,
+        category_id: Optional[int] = None,
+        from_account_id: Optional[int] = None,
+        to_account_id: Optional[int] = None,
+        description: Optional[str] = None,
+        related_trade_id: Optional[int] = None,
+        related_prop_account_id: Optional[int] = None,
+        signed_amount: Optional[float] = None,
+        allow_overdraft: bool = False,
+        commit: bool = True,
+    ) -> FinancialTransaction:
+        """ثبت یک تراکنش مالی + اعمال اثر آن روی موجودی کیف‌پول(ها).
+
+        قوانین:
+        - `amount > 0` برای همهٔ انواع، **به‌جز** `ADJUSTMENT`؛ برای اصلاح دستی
+          می‌توان `amount` منفی داد یا به‌جایش `signed_amount` فرستاد.
+        - `TRANSFER` دو حالت دارد:
+          ۱) **دوطرفه** (`from_account_id` و `to_account_id` هر دو داده شوند) ⇒
+             `from_account_id != to_account_id`، `account_id` روی مقصد تنظیم و
+             اثر دوطرفه اعمال می‌شود.
+          ۲) **یک‌طرفه** (یکی/هر دو نامشخص) ⇒ تبدیل یا جابجایی که **بیرون از نرم‌افزار**
+             رخ داده؛ فقط ثبت می‌شود و **موجودی را تغییر نمی‌دهد** (قرارداد قدیمی
+             `/finance/transactions` — برای ثبت موجودی حاصل از تبدیل بیرونی از
+             `ADJUSTMENT` استفاده کنید).
+        - `allow_overdraft=False` ⇒ برداشت بیش از موجودی با `WalletError` رد می‌شود.
+
+        Raises:
+            WalletError: مبلغ نامعتبر، حساب نامعتبر یا موجودی ناکافی.
+        """
+        tx_type = _as_type(type)
+        direction = _direction_of(tx_type)
+
+        # ── اعتبارسنجی مبلغ ──
+        value = _normalize_amount(tx_type, amount, signed_amount)
+
+        # ── اعتبارسنجی حساب‌ها ──
+        if direction == "move":
+            if from_account_id is not None and to_account_id is not None:
+                if from_account_id == to_account_id:
+                    raise WalletError("حساب مبدأ و مقصد باید متفاوت باشند")
+                account_id = to_account_id
+            else:
+                # انتقال یک‌طرفه: تبدیل/جابجایی بیرون از نرم‌افزار (قرارداد قدیمی)
+                # ⇒ روی `account_id` ثبت می‌شود و موجودی را تغییر نمی‌دهد.
+                from_account_id = None
+                to_account_id = None
+                if account_id is None:
+                    raise WalletError("حساب تراکنش الزامی است")
+        elif account_id is None:
+            raise WalletError("حساب تراکنش الزامی است")
+
+        present = _load_accounts(db, (account_id, from_account_id, to_account_id))
+        if direction == "move" and from_account_id is not None:
+            if from_account_id not in present or to_account_id not in present:
+                raise WalletError("حساب مبدأ یا مقصد معتبر نیست")
+        elif account_id not in present:
+            raise WalletError("حساب مالی پیدا نشد")
+
+        tx = FinancialTransaction(
+            account_id=account_id,
+            category_id=category_id,
+            amount=value,
+            currency=_to_currency(currency),
+            date=date or datetime.now(timezone.utc),
+            description=description,
+            type=tx_type,
+            from_account_id=from_account_id,
+            to_account_id=to_account_id,
+            related_trade_id=related_trade_id,
+            related_prop_account_id=related_prop_account_id,
+        )
+
+        WalletService._assert_sufficient(db, tx, allow_overdraft=allow_overdraft)
+
+        db.add(tx)
+        db.flush()                       # ⇒ tx.id بلافاصله در دسترس است
+        WalletService.apply_effects(db, tx)
+
+        if commit:
+            db.commit()
+            db.refresh(tx)
+        else:
+            db.flush()
+        return tx
+
+    # ── برگشت ──
+    @staticmethod
+    def reverse(db: Session, tx: FinancialTransaction, *, commit: bool = True) -> bool:
+        """اثر تراکنش را برمی‌گرداند و آن را نرم‌حذف می‌کند.
+
+        idempotent است: اگر تراکنش از قبل حذف‌شده باشد، هیچ کاری نمی‌کند و `False`
+        برمی‌گرداند.
+        """
+        if tx is None or tx.is_deleted:
+            return False
+        WalletService.apply_effects(db, tx, sign=-1)
+        tx.is_deleted = True
+        if commit:
+            db.commit()
+        else:
+            db.flush()
+        return True
+
+
+    # ── گزارش‌ها ──
+    @staticmethod
+    def reconcile(db: Session, account_id: int) -> dict:
+        """آشتی‌دهی: موجودی ذخیره‌شده در برابر مجموع اثرهای دفتر.
+
+        خروجی: `{account_id, account_name, type, currency, stored, ledger, delta,
+        is_balanced, entry_count}`
+
+        `delta = stored − ledger`:
+        - `delta == 0` ⇒ کل موجودی با تراکنش‌ها توضیح داده می‌شود (`is_balanced=True`).
+        - `delta != 0` ⇒ بخشی از موجودی «موجودی اولیهٔ ضمنی» است و تراکنش متناظر ندارد
+          (همان شکاف G1 — مثلاً کیف‌پولی که با `balance=1000` مستقیم ساخته شده).
+        """
+        account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
+        if not account:
+            raise WalletError("حساب مالی پیدا نشد")
+
+        ledger_total = 0.0
+        entry_count = 0
+        for tx in WalletService._account_transactions(db, account_id):
+            delta = WalletService.deltas(tx).get(account_id, 0.0)
+            if delta == 0.0:
+                continue
+            ledger_total += delta
+            entry_count += 1
+
+        stored = round(float(account.balance or 0.0), 2)
+        ledger_total = round(ledger_total, 2)
+        difference = round(stored - ledger_total, 2)
+
+        return {
+            "account_id": account.id,
+            "account_name": account.name,
+            "type": account.type.value if account.type else None,
+            "currency": account.currency.value if account.currency else None,
+            "stored": stored,
+            "ledger": ledger_total,
+            "delta": difference,
+            "is_balanced": abs(difference) < _EPSILON,
+            "entry_count": entry_count,
+        }
+
+    @staticmethod
+    def ledger(
+        db: Session,
+        account_id: int,
+        *,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        date_from=None,
+        date_to=None,
+    ) -> List[dict]:
+        """صورت‌حساب کیف‌پول: اثر هر تراکنش + موجودی تجمعی (running balance)."""
+        account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
+        if not account:
+            raise WalletError("حساب مالی پیدا نشد")
+
+        rows = WalletService._account_transactions(
+            db, account_id, limit=limit, offset=offset, date_from=date_from, date_to=date_to
+        )
+
+        running = 0.0
+        entries: List[dict] = []
+        for tx in rows:
+            delta = WalletService.deltas(tx).get(account_id, 0.0)
+            running += delta
+            peer_from = tx.from_account_id
+            peer_to = tx.to_account_id
+            peer_id = next(
+                (c for c in (peer_from, peer_to) if c is not None and c != account_id),
+                None,
+            )
+            peer = tx.from_account if peer_id == peer_from else tx.to_account
+            entries.append({
+                "id": tx.id,
+                "date": tx.date.isoformat() if tx.date else None,
+                "type": tx.type.value if tx.type else None,
+                "direction": "in" if delta > 0 else ("out" if delta < 0 else "none"),
+                "amount": tx.amount,
+                "signed_amount": round(delta, 2),
+                "currency": tx.currency.value if tx.currency else None,
+                "description": tx.description,
+                "category_name": tx.category.name if tx.category else None,
+                "peer_account_id": peer_id,
+                "peer_account_name": peer.name if (peer_id and peer) else None,
+                "running_balance": round(running, 2),
+            })
+        return entries
+
+    # ── کوئری مشترک ──
+    @staticmethod
+    def _account_transactions(
+        db: Session,
+        account_id: int,
+        *,
+        limit: Optional[int] = None,
+        offset: int = 0,
+        date_from=None,
+        date_to=None,
+    ) -> List[FinancialTransaction]:
+        """همهٔ تراکنش‌های غیرحذف‌شده‌ای که بر این کیف‌پول اثر دارند (یک کوئری، سه رابطه)."""
+        q = (
+            db.query(FinancialTransaction)
+            .options(
+                joinedload(FinancialTransaction.category),
+                joinedload(FinancialTransaction.from_account),
+                joinedload(FinancialTransaction.to_account),
+            )
+            .filter(
+                FinancialTransaction.is_deleted == False,  # noqa: E712
+                or_(
+                    FinancialTransaction.account_id == account_id,
+                    FinancialTransaction.from_account_id == account_id,
+                    FinancialTransaction.to_account_id == account_id,
+                ),
+            )
+            .order_by(FinancialTransaction.date.asc(), FinancialTransaction.id.asc())
+        )
+        if date_from:
+            q = q.filter(FinancialTransaction.date >= date_from)
+        if date_to:
+            q = q.filter(FinancialTransaction.date <= date_to)
+        if offset:
+            q = q.offset(offset)
+        if limit:
+            q = q.limit(limit)
+        return q.all()
+

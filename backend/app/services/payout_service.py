@@ -30,6 +30,8 @@ from ..models.finance import (
     FinancialTransaction,
     TransactionType,
 )
+# فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
+from .wallet_service import WalletService
 
 logger = logging.getLogger("moktrade")
 
@@ -182,28 +184,25 @@ class PayoutService:
         if withdrawal.note:
             description += f" - {withdrawal.note}"
 
-        tx = FinancialTransaction(
+        tx = WalletService.post(
+            db,
             account_id=dest.id,
-            category_id=cat.id,
+            type=TransactionType.PROFIT,  # ← درآمد واقعی (نه withdrawal)
             amount=withdrawal.amount,
             currency=withdrawal.currency or Currency.USD,
             date=withdrawal.withdrawal_date,
-            description=description,
-            type=TransactionType.PROFIT,  # ← درآمد واقعی (نه withdrawal)
-            from_account_id=None,
+            category_id=cat.id,
             to_account_id=dest.id,
+            description=description,
             related_prop_account_id=stage.prop_account_id if stage else None,
+            commit=False,                 # commit در set_status
         )
-        db.add(tx)
-        db.flush()
-
-        dest.balance = (dest.balance or 0.0) + (withdrawal.amount or 0.0)
         withdrawal.transaction_id = tx.id
         if stage:
             stage.total_withdrawn = (stage.total_withdrawn or 0.0) + (withdrawal.amount or 0.0)
         return tx
 
-    # ── انتقال بین حسابFinancial (درآمد نیست) ──
+    # ── انتقال بین حساب‌های مالی (درآمد نیست) ──
     @staticmethod
     def record_transfer(
         db: Session,
@@ -215,12 +214,16 @@ class PayoutService:
         note: Optional[str] = None,
         related_prop_account_id: Optional[int] = None,
         date=None,
+        allow_overdraft: bool = False,
         commit: bool = True,
     ) -> FinancialTransaction:
         """یک پرش انتقال (مثلاً Trust Wallet → Exchange) را ثبت می‌کند.
 
         نوع تراکنش `TRANSFER` است (فاز ۳۸.۴: جانشین `EXCHANGE` حذف‌شده) ⇒ در
         `finance/summary` به‌عنوان **انتقال** شمرده می‌شود، نه درآمد. موجودی مبدأ کم و مقصد زیاد می‌شود.
+
+        فاز ۳۹: موجودی **فقط** از مسیر `WalletService` تغییر می‌کند و
+        `allow_overdraft=False` (پیش‌فرض) مانع منفی‌شدن موجودی مبدأ می‌شود.
         """
         if amount <= 0:
             raise ValueError("مبلغ انتقال باید مثبت باشد")
@@ -240,30 +243,21 @@ class PayoutService:
         cat = PayoutService._get_or_create_category(
             db, TRANSFER_CATEGORY_NAME, CategoryType.TRANSFER, "#6366f1", "🔄"
         )
-        tx = FinancialTransaction(
-            account_id=dst.id,
-            category_id=cat.id,
+        return WalletService.post(
+            db,
+            account_id=dst.id,               # ← مقصد (قرارداد فاز ۳۳)
+            type=TransactionType.TRANSFER,   # ← انتقال، نه درآمد
             amount=amount,
             currency=PayoutService._to_currency(currency if currency else dst.currency),
             date=when,
-            description=note or f"انتقال از {src.name} به {dst.name}",
-            type=TransactionType.TRANSFER,  # ← انتقال، نه درآمد (فاز ۳۸.۴: جانشین EXCHANGE)
+            category_id=cat.id,
             from_account_id=src.id,
             to_account_id=dst.id,
+            description=note or f"انتقال از {src.name} به {dst.name}",
             related_prop_account_id=related_prop_account_id,
+            allow_overdraft=allow_overdraft,
+            commit=commit,
         )
-        db.add(tx)
-        db.flush()
-
-        src.balance = (src.balance or 0.0) - amount
-        dst.balance = (dst.balance or 0.0) + amount
-
-        if commit:
-            db.commit()
-            db.refresh(tx)
-        else:
-            db.flush()
-        return tx
 
     # ── update ──
     @staticmethod
@@ -305,12 +299,15 @@ class PayoutService:
             old_amount = float(withdrawal.amount or 0.0)
             delta = new_amount - old_amount
             if delta != 0 and withdrawal.transaction_id:
-                tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == withdrawal.transaction_id).first()
+                tx = db.query(FinancialTransaction).filter(
+                    FinancialTransaction.id == withdrawal.transaction_id
+                ).first()
                 if tx and not tx.is_deleted:
+                    # فاز ۳۹: برگشت اثر مبلغ قدیم ⇒ تغییر مبلغ ⇒ اعمال اثر جدید
+                    # (بدون ساخت ردیف ADJUSTMENT اضافه تا گزارش‌ها/شمارش‌ها دست‌نخورده بمانند)
+                    WalletService.apply_effects(db, tx, sign=-1)
                     tx.amount = new_amount
-                    dest = db.query(FinancialAccount).filter(FinancialAccount.id == tx.account_id).first()
-                    if dest:
-                        dest.balance = (dest.balance or 0.0) + delta
+                    WalletService.apply_effects(db, tx, sign=+1)
                     stage = db.query(PropStage).filter(PropStage.id == withdrawal.prop_stage_id).first()
                     if stage:
                         stage.total_withdrawn = max((stage.total_withdrawn or 0.0) + delta, 0.0)
@@ -329,19 +326,18 @@ class PayoutService:
     # ── delete + reverse ──
     @staticmethod
     def delete_and_reverse(db: Session, withdrawal: PropWithdrawal, *, commit: bool = True) -> None:
-        """حذف برداشت + برگشت اثر مالی آن (اگر دریافت شده بود)."""
+        """حذف برداشت + برگشت اثر مالی آن (اگر دریافت شده بود) — فاز ۳۹: از مسیر WalletService."""
         if withdrawal.transaction_id:
-            tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == withdrawal.transaction_id).first()
+            tx = db.query(FinancialTransaction).filter(
+                FinancialTransaction.id == withdrawal.transaction_id
+            ).first()
             if tx and not tx.is_deleted:
-                dest = db.query(FinancialAccount).filter(FinancialAccount.id == tx.account_id).first()
-                if dest:
-                    dest.balance = (dest.balance or 0.0) - (tx.amount or 0.0)
+                WalletService.reverse(db, tx, commit=False)
                 stage = db.query(PropStage).filter(PropStage.id == withdrawal.prop_stage_id).first()
                 if stage:
                     stage.total_withdrawn = max(
                         (stage.total_withdrawn or 0.0) - (withdrawal.amount or 0.0), 0.0
                     )
-                tx.is_deleted = True
 
         db.delete(withdrawal)
         if commit:

@@ -251,7 +251,10 @@ def test_spendable_assets(client, db_session):
     assert body["prop_stage_3"]["amount"] == 500
     assert body["broker"]["amount"] == 3000
     assert body["exchange"]["amount"] == 200
-    assert body["trust_wallet"]["amount"] == 100
+    # فاز ۳۹ (رفع G6): سبد trust_wallet از TRUST_WALLET پر می‌شود و کیف‌پول دیجیتال
+    # سبد مستقل خودش را دارد. پیش از فاز ۳۹ این مقدار اشتباهاً ۱۰۰ بود (باگ G6).
+    assert body["trust_wallet"]["amount"] == 0
+    assert body["crypto_wallet"]["amount"] == 100
     assert body["bank"]["amount"] == 100000000
     assert body["total"]["usd"] == 3800
     assert body["total"]["irr"] == 100000000
@@ -352,7 +355,12 @@ def test_money_cycle(client):
     assert body["total_withdrawals"] == 2000
     assert body["total_exchanges"] == 7000
     assert body["total_transfers"] == 4000
-    assert body["current_balance"] == 3000
+    # فاز ۳۹ (رفع G1): تراکنش‌ها دیگر بی‌اثر نیستند ⇒ موجودی واقعی کیف‌پول‌ها:
+    #   bank = 3000 + 5000 (deposit) − 2000 (withdrawal) − 4000 (transfer out) = 2000
+    #   exch = 0 + 4000 (transfer in)                                          = 4000
+    #   (انتقال یک‌طرفهٔ ۳۰۰۰ موجودی را تغییر نمی‌دهد — تبدیل بیرون از نرم‌افزار)
+    # پیش از فاز ۳۹ این مقدار ۳۰۰۰ بود چون هیچ تراکنشی موجودی را تغییر نمی‌داد.
+    assert body["current_balance"] == 6000
 
 
 def test_financial_calendar(client, db_session):

@@ -17,6 +17,8 @@ from ..models.finance import (
     FinancialAccount, Category, CategoryType, Currency, FinancialTransaction, TransactionType
 )
 from ..utils.enums import enum_value
+# فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
+from ..services.wallet_service import WalletService, WalletError
 
 logger = logging.getLogger("moktrade")
 
@@ -1145,22 +1147,26 @@ def create_cost(cost: PropCostCreate, db: Session = Depends(get_db)):
     if payer:
         cat = _get_or_create_category(db, "خرید پراپ", CategoryType.EXPENSE, "#E74C3C", "🛒")
 
-        tx = FinancialTransaction(
-            account_id=payer.id,
-            category_id=cat.id,
-            amount=cost.amount,
-            currency=_to_currency(cost.currency),
-            date=datetime.now(timezone.utc),
-            description=cost.description or (
-                f"خرید پراپ {prop_acc.account_label}" if prop_acc else "خرید پراپ"
-            ),
-            type=TransactionType.PURCHASE,
-            from_account_id=payer.id,
-            related_prop_account_id=cost.prop_account_id,
-        )
-        db.add(tx)
-        payer.balance = (payer.balance or 0.0) - cost.amount
-        db.flush()
+        # فاز ۳۹: از مسیر WalletService (تنها نویسندهٔ موجودی) — با محافظ موجودی
+        try:
+            tx = WalletService.post(
+                db,
+                account_id=payer.id,
+                type=TransactionType.PURCHASE,
+                amount=cost.amount,
+                currency=_to_currency(cost.currency),
+                date=datetime.now(timezone.utc),
+                category_id=cat.id,
+                from_account_id=payer.id,
+                description=cost.description or (
+                    f"خرید پراپ {prop_acc.account_label}" if prop_acc else "خرید پراپ"
+                ),
+                related_prop_account_id=cost.prop_account_id,
+                commit=False,
+            )
+        except WalletError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc))
         transaction_id = tx.id
 
     db.commit()
