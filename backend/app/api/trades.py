@@ -480,6 +480,10 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
             trade.sl,
         )
 
+    # فاز ۴۰.۵: تغییرات باید persist شوند.
+    # پیش‌تر `db.commit()` گم شده بود و `db.refresh()` زیر، تغییرات commit‌نشده را
+    # دور می‌ریخت ⇒ PATCH هیچ‌وقت ذخیره نمی‌شد (باگ کشف‌شده در رگرسیون فاز ۴۰).
+    db.commit()
     db.refresh(trade)
 
     # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
