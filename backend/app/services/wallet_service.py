@@ -39,6 +39,7 @@ from ..models.finance import (
     FinancialTransaction,
     TransactionType,
 )
+from ..utils.currency import to_currency
 
 logger = logging.getLogger("moktrade")
 
@@ -87,14 +88,11 @@ _EPSILON = 0.005
 # helpers
 # ═════════════════════════════════════════════
 def _to_currency(value) -> Optional[Currency]:
-    """تبدیل امن مقدار ورودی به `Currency` (None ⇒ None تا default مدل اعمال شود)."""
-    if value is None or isinstance(value, Currency):
-        return value
-    try:
-        return Currency(str(value).upper())
-    except ValueError:
-        logger.warning("Invalid currency %r — falling back to USD", value)
-        return Currency.USD
+    """تبدیل امن مقدار ورودی به `Currency` (فاز ۴۵.۶: ابزار مشترک).
+
+    `None` ⇒ `None` تا default مدل اعمال شود.
+    """
+    return to_currency(value)
 
 
 def _direction_of(tx_type) -> str:
@@ -270,6 +268,7 @@ class WalletService:
         related_prop_account_id: Optional[int] = None,
         signed_amount: Optional[float] = None,
         allow_overdraft: bool = False,
+        allow_cross_currency: bool = False,
         commit: bool = True,
     ) -> FinancialTransaction:
         """ثبت یک تراکنش مالی + اعمال اثر آن روی موجودی کیف‌پول(ها).
@@ -319,6 +318,29 @@ class WalletService:
         elif account_id not in present:
             raise WalletError("حساب مالی پیدا نشد")
 
+        # ── فاز ۴۵.۵: اعتبارسنجی ارز ──
+        target_currency = _to_currency(currency)
+        if direction == "move":
+            # انتقال دوطرفه: طرفین باید هم‌ارز باشند (مگر cross-currency مجاز شود)
+            if from_account_id is not None and to_account_id is not None:
+                src_acc = present[from_account_id]
+                dst_acc = present[to_account_id]
+                if src_acc.currency != dst_acc.currency and not allow_cross_currency:
+                    raise WalletError(
+                        "انتقال بین حساب‌های با ارز متفاوت مجاز نیست (از convert استفاده کن)"
+                    )
+        else:
+            account_obj = present[account_id]
+            if (
+                target_currency is not None
+                and account_obj.currency is not None
+                and target_currency != account_obj.currency
+            ):
+                raise WalletError(
+                    f"ارز تراکنش ({target_currency.value}) با ارز حساب "
+                    f"({account_obj.currency.value}) هم‌خوان نیست"
+                )
+
         tx = FinancialTransaction(
             account_id=account_id,
             category_id=category_id,
@@ -348,14 +370,40 @@ class WalletService:
 
     # ── برگشت ──
     @staticmethod
-    def reverse(db: Session, tx: FinancialTransaction, *, commit: bool = True) -> bool:
+    def reverse(
+        db: Session,
+        tx: FinancialTransaction,
+        *,
+        commit: bool = True,
+        allow_overdraft: bool = False,
+    ) -> bool:
         """اثر تراکنش را برمی‌گرداند و آن را نرم‌حذف می‌کند.
 
         idempotent است: اگر تراکنش از قبل حذف‌شده باشد، هیچ کاری نمی‌کند و `False`
         برمی‌گرداند.
+
+        فاز ۴۵.۷: اگر برگشت باعث منفی‌شدن موجودی یک حساب شود (مثلاً حذف یک واریز
+        که پولش قبلاً خرج شده)، با `WalletError` رد می‌شود.
         """
         if tx is None or tx.is_deleted:
             return False
+
+        if not allow_overdraft:
+            # برگشت، منفیِ دلتای اصلی است ⇒ حساب‌هایی که دلتای مثبت داشته‌اند
+            # در برگشت بدهکار می‌شوند و باید موجودی کافی داشته باشند.
+            reversal_debits = {
+                aid: -delta
+                for aid, delta in WalletService.deltas(tx).items()
+                if delta > 0
+            }
+            accounts = _load_accounts(db, reversal_debits.keys())
+            for account_id, delta in reversal_debits.items():
+                account = accounts.get(account_id)
+                if account is None:
+                    continue
+                if float(account.balance or 0.0) + delta < -_EPSILON:
+                    raise WalletError("حذف این تراکنش موجودی را منفی می‌کند")
+
         WalletService.apply_effects(db, tx, sign=-1)
         tx.is_deleted = True
         if commit:
@@ -422,12 +470,15 @@ class WalletService:
         if not account:
             raise WalletError("حساب مالی پیدا نشد")
 
+        # فاز ۴۵.۸: موجودی آغازین = مجموع اثر تراکنش‌های مؤثر **قبل از** بازه
+        opening = WalletService._opening_balance(db, account_id, before=date_from)
+
         rows = WalletService._account_transactions(
-            db, account_id, limit=limit, offset=offset, date_from=date_from, date_to=date_to
+            db, account_id, date_from=date_from, date_to=date_to
         )
 
-        running = 0.0
-        entries: List[dict] = []
+        running = opening
+        all_entries: List[dict] = []
         for tx in rows:
             delta = WalletService.deltas(tx).get(account_id, 0.0)
             running += delta
@@ -438,7 +489,7 @@ class WalletService:
                 None,
             )
             peer = tx.from_account if peer_id == peer_from else tx.to_account
-            entries.append({
+            all_entries.append({
                 "id": tx.id,
                 "date": tx.date.isoformat() if tx.date else None,
                 "type": tx.type.value if tx.type else None,
@@ -452,7 +503,34 @@ class WalletService:
                 "peer_account_name": peer.name if (peer_id and peer) else None,
                 "running_balance": round(running, 2),
             })
-        return entries
+
+        # فاز ۴۵.۸: offset/limit فقط پنجرهٔ نمایش را می‌بُرد؛ running از ابتدا محاسبه شده
+        start = max(int(offset or 0), 0)
+        end = start + int(limit) if limit else None
+        return all_entries[start:end]
+
+    # ── موجودی آغازین (برای running_balance) ──
+    @staticmethod
+    def _opening_balance(db: Session, account_id: int, *, before=None) -> float:
+        """مجموع اثر تراکنش‌های مؤثر روی حساب، **قبل از** تاریخ داده‌شده."""
+        if before is None:
+            return 0.0
+        q = (
+            db.query(FinancialTransaction)
+            .filter(
+                FinancialTransaction.is_deleted == False,  # noqa: E712
+                or_(
+                    FinancialTransaction.account_id == account_id,
+                    FinancialTransaction.from_account_id == account_id,
+                    FinancialTransaction.to_account_id == account_id,
+                ),
+                FinancialTransaction.date < before,
+            )
+        )
+        total = 0.0
+        for tx in q.all():
+            total += WalletService.deltas(tx).get(account_id, 0.0)
+        return total
 
     # ── کوئری مشترک ──
     @staticmethod

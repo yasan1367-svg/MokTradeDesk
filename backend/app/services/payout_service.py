@@ -31,6 +31,7 @@ from ..models.finance import (
 )
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from .wallet_service import WalletService
+from ..utils.currency import to_currency
 
 logger = logging.getLogger("moktrade")
 
@@ -44,12 +45,8 @@ class PayoutService:
     # ── helpers ──
     @staticmethod
     def _to_currency(value) -> Currency:
-        raw = (str(value) if value is not None else "USD").upper()
-        try:
-            return Currency(raw)
-        except ValueError:
-            logger.warning("Invalid currency %r — falling back to USD", value)
-            return Currency.USD
+        """فاز ۴۵.۶: ابزار مشترک (invalid ⇒ USD با حفظ سازگاری قدیم)."""
+        return to_currency(value, default=Currency.USD)
 
     @staticmethod
     def _get_or_create_category(

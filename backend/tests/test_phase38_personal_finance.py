@@ -122,8 +122,11 @@ def test_purchase_cost_creates_typed_transaction(client, db_session):
     assert cost.currency == Currency.USD
 
     # تراکنش مالی ثبت شد
+    # فاز ۴۵.۱: ساخت حساب با موجودی اولیه حالا یک ADJUSTMENT هم می‌سازد ⇒
+    # فقط تراکنش purchase را می‌سنجیم.
     txs = client.get("/api/finance/transactions").json()
-    assert len(txs) == 1 and txs[0]["type"] == "purchase"
+    purchases = [t for t in txs if t["type"] == "purchase"]
+    assert len(purchases) == 1
 
 
 # ═════════════════════════════════════════════

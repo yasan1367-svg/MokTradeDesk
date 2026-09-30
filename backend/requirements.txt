@@ -18,3 +18,5 @@ python-bidi
 pytest
 pytest-cov
 httpx
+# فاز ۴۵.۱۰ — تست مبتنی بر Property برای یکپارچگی دفتر کل
+hypothesis

@@ -74,26 +74,27 @@ class FinancialAccount(Base):
     currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
     balance = Column(Float, default=0.0)
     card_number = Column(String, nullable=True)
+    # فاز ۴۵.۳: حذف نرم حساب — حساب‌های آرشیوشده از لیست‌ها پنهان می‌شوند
+    is_archived = Column(Boolean, default=False, nullable=False, server_default="0", index=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # relationships
+    # فاز ۴۵.۳: `cascade="all, delete-orphan"` حذف شد تا حذف یک حساب،
+    # تراکنش‌های طرف مقابلِ انتقال‌ها (که به این حساب فقط ارجاع دارند) را پاک نکند.
     transactions_out = relationship(
         "FinancialTransaction",
         foreign_keys="FinancialTransaction.from_account_id",
         back_populates="from_account",
-        cascade="all, delete-orphan",
     )
     transactions_in = relationship(
         "FinancialTransaction",
         foreign_keys="FinancialTransaction.to_account_id",
         back_populates="to_account",
-        cascade="all, delete-orphan",
     )
     entries = relationship(
         "FinancialTransaction",
         foreign_keys="FinancialTransaction.account_id",
         back_populates="account",
-        cascade="all, delete-orphan",
     )
 
 

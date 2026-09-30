@@ -57,7 +57,8 @@ class AccountUpdate(BaseModel):
     name: Optional[str] = None
     type: Optional[AccountType] = None
     currency: Optional[Currency] = None
-    balance: Optional[float] = None
+    # فاز ۴۵.۱: `balance` از این schema حذف شد — تغییر موجودی فقط از مسیر
+    # WalletService (تراکنش) مجاز است تا «تنها نویسنده» نقض نشود.
     card_number: Optional[str] = None
 
 
@@ -102,6 +103,17 @@ class TransactionUpdate(BaseModel):
     related_prop_account_id: Optional[int] = None
 
 
+class ConvertRequest(BaseModel):
+    """فاز ۴۵.۵ — تبدیل ارز بین دو حساب با ارز متفاوت."""
+    from_account_id: int
+    to_account_id: int
+    amount: float
+    to_amount: Optional[float] = None
+    rate: Optional[float] = None
+    date: Optional[datetime] = None
+    description: Optional[str] = None
+
+
 # ── فاز ۱۵.۱۲: Schemas برداشت (Withdrawal) ──
 class WithdrawalCreate(BaseModel):
     account_id: int
@@ -130,8 +142,12 @@ def get_accounts(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """لیست همه حساب‌های مالی"""
-    q = db.query(FinancialAccount).order_by(FinancialAccount.created_at.desc())
+    """لیست همه حساب‌های مالی (حساب‌های آرشیوشده پنهان می‌شوند — فاز ۴۵.۳)"""
+    q = (
+        db.query(FinancialAccount)
+        .filter(FinancialAccount.is_archived == False)  # noqa: E712
+        .order_by(FinancialAccount.created_at.desc())
+    )
     if type:
         q = q.filter(FinancialAccount.type == type)
     if currency:
@@ -153,9 +169,32 @@ def get_accounts(
 
 @router.post("/accounts")
 def create_account(account: AccountCreate, db: Session = Depends(get_db)):
-    """ایجاد حساب مالی جدید"""
-    db_account = FinancialAccount(**account.model_dump())
+    """ایجاد حساب مالی جدید.
+
+    فاز ۴۵.۱: موجودی اولیه دیگر مستقیم روی ستون نوشته نمی‌شود؛ از مسیر
+    `WalletService` به‌صورت یک تراکنش `ADJUSTMENT` («موجودی اولیه») ثبت می‌گردد
+    تا دفتر کل و موجودی هم‌یشه هم‌خوان بمانند (reconcile.delta == 0).
+    """
+    data = account.model_dump()
+    initial_balance = data.pop("balance", 0.0) or 0.0
+    db_account = FinancialAccount(balance=0.0, **data)
     db.add(db_account)
+    db.flush()
+    if initial_balance != 0:
+        try:
+            WalletService.post(
+                db,
+                account_id=db_account.id,
+                type=TransactionType.ADJUSTMENT,
+                amount=abs(initial_balance),
+                signed_amount=initial_balance,
+                currency=db_account.currency,
+                description="موجودی اولیه",
+                commit=False,
+            )
+        except WalletError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc))
     db.commit()
     db.refresh(db_account)
     return {
@@ -167,11 +206,35 @@ def create_account(account: AccountCreate, db: Session = Depends(get_db)):
 
 @router.patch("/accounts/{account_id}")
 def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(get_db)):
-    """ویرایش حساب مالی"""
+    """ویرایش حساب مالی.
+
+    فاز ۴۵.۲: اگر حساب حتی یک تراکنش (به‌عنوان account/from/to) داشته باشد،
+    تغییر ارز مجاز نیست چون همهٔ تراکنش‌های قدیمی ناسازگار می‌شوند.
+    """
     account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
-    for field, value in data.model_dump(exclude_unset=True).items():
+
+    payload = data.model_dump(exclude_unset=True)
+    new_currency = payload.get("currency")
+    if new_currency and new_currency != account.currency:
+        tx_count = (
+            db.query(FinancialTransaction)
+            .filter(
+                (FinancialTransaction.account_id == account.id)
+                | (FinancialTransaction.from_account_id == account.id)
+                | (FinancialTransaction.to_account_id == account.id),
+                FinancialTransaction.is_deleted == False,  # noqa: E712
+            )
+            .count()
+        )
+        if tx_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail="تغییر ارز حساب دارای تراکنش مجاز نیست",
+            )
+
+    for field, value in payload.items():
         # از ذخیرهٔ مقدار ماسک‌شده (مثل «****4455») جلوگیری کن تا شمارهٔ واقعی کارت خراب نشود
         if field == "card_number" and _is_masked(value):
             continue
@@ -183,13 +246,34 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
 
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)):
-    """حذف حساب مالی"""
-    account = db.query(FinancialAccount).filter(FinancialAccount.id == account_id).first()
+    """حذف نرم (آرشیو) حساب مالی — فاز ۴۵.۳.
+
+    فقط حسابِ **بدون تراکنش و با موجودی صفر** قابل آرشیو است؛ در غیر این صورت
+    `409` برمی‌گردد تا دفتر کل هرگز ناتراز/ناقص نشود. حذف سخت و cascade حذف شدند
+    تا تراکنش‌های طرف مقابلِ انتقال‌ها از بین نروند.
+    """
+    account = db.get(FinancialAccount, account_id)
     if not account:
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
-    db.delete(account)
+
+    tx_count = (
+        db.query(FinancialTransaction)
+        .filter(
+            (FinancialTransaction.account_id == account.id)
+            | (FinancialTransaction.from_account_id == account.id)
+            | (FinancialTransaction.to_account_id == account.id),
+        )
+        .count()
+    )
+    if tx_count > 0 or abs(float(account.balance or 0.0)) > 0.0049:
+        raise HTTPException(
+            status_code=409,
+            detail="حساب دارای تراکنش یا موجودی غیرصفر است",
+        )
+
+    account.is_archived = True
     db.commit()
-    return {"message": "حساب مالی حذف شد"}
+    return {"ok": True, "message": "حساب مالی آرشیو شد"}
 
 
 # ═════════════════════════════════════════════
@@ -347,8 +431,20 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
 
 @router.patch("/transactions/{transaction_id}")
 def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session = Depends(get_db)):
-    """ویرایش تراکنش (فاز ۳۹: اثر قبلی برگردانده و اثر جدید اعمال می‌شود)."""
-    tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
+    """ویرایش تراکنش (فاز ۳۹: اثر قبلی برگردانده و اثر جدید اعمال می‌شود).
+
+    فاز ۴۵.۴: فقط تراکنش‌های غیرحذف‌شده قابل ویرایش‌اند (وگرنه اثر یک تراکنش
+    حذف‌شده دوباره برگردانده و سپس اعمال می‌شد) و برای `TRANSFER` مقدار
+    `account_id` با `to_account_id` هم‌گام می‌شود.
+    """
+    tx = (
+        db.query(FinancialTransaction)
+        .filter(
+            FinancialTransaction.id == transaction_id,
+            FinancialTransaction.is_deleted == False,  # noqa: E712  ← فاز ۴۵.۴
+        )
+        .first()
+    )
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
     try:
@@ -358,6 +454,11 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
             setattr(tx, field, value)
         if tx.date is None:
             tx.date = datetime.now(timezone.utc)
+        # فاز ۴۵.۴: قرارداد فاز ۳۳ — برای TRANSFER، account_id همان مقصد است
+        if tx.type == TransactionType.TRANSFER and tx.to_account_id is not None:
+            if tx.from_account_id == tx.to_account_id:
+                raise WalletError("حساب مبدأ و مقصد نباید یکی باشد")
+            tx.account_id = tx.to_account_id
         # چک مبلغ جدید (وگرنه ویرایش به صفر، اثر قبلی را بی‌صدا حذف می‌کرد)
         WalletService.validate_amount(tx.type, tx.amount)
         WalletService.apply_effects(db, tx, sign=+1)
@@ -381,6 +482,81 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
     return {"message": "تراکنش حذف شد"}
+
+
+@router.post("/wallets/convert")
+def convert_currency(data: ConvertRequest, db: Session = Depends(get_db)):
+    """تبدیل ارز بین دو حساب با ارز متفاوت (فاز ۴۵.۵).
+
+    دو تراکنش `ADJUSTMENT` ثبت می‌شود: خروج از مبدأ و ورود به مقصد. چون انواع
+    برداشت/واریز در گزارش‌های درآمد/هزینه شمرده می‌شوند، از `ADJUSTMENT` استفاده
+    می‌کنیم تا تبدیل ارز، سود/هزینهٔ کاذب نسازد. موجودی مبدأ دستی کنترل می‌شود.
+    """
+    src = db.get(FinancialAccount, data.from_account_id)
+    dst = db.get(FinancialAccount, data.to_account_id)
+    if not src or not dst:
+        raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
+    if src.id == dst.id:
+        raise HTTPException(status_code=400, detail="حساب مبدأ و مقصد نباید یکی باشد")
+    if src.currency == dst.currency:
+        raise HTTPException(status_code=400, detail="ارز دو حساب یکسان است؛ از transfer استفاده کن")
+
+    amount = float(data.amount or 0)
+    if amount <= 0:
+        raise HTTPException(status_code=400, detail="مبلغ تبدیل باید بزرگ‌تر از صفر باشد")
+
+    if data.to_amount is not None:
+        to_amount = float(data.to_amount)
+    elif data.rate:
+        to_amount = amount * float(data.rate)
+    else:
+        raise HTTPException(status_code=400, detail="to_amount یا rate الزامی است")
+    if to_amount <= 0:
+        raise HTTPException(status_code=400, detail="مبلغ مقصد باید بزرگ‌تر از صفر باشد")
+
+    if float(src.balance or 0.0) + 0.0049 < amount:
+        raise HTTPException(status_code=400, detail="موجودی حساب مبدأ کافی نیست")
+
+    when = data.date or datetime.now(timezone.utc)
+    desc = data.description or f"تبدیل ارز {src.currency.value}→{dst.currency.value}"
+    try:
+        out_tx = WalletService.post(
+            db, account_id=src.id, type=TransactionType.ADJUSTMENT,
+            amount=amount, signed_amount=-amount, currency=src.currency,
+            date=when, description=desc, commit=False,
+        )
+        in_tx = WalletService.post(
+            db, account_id=dst.id, type=TransactionType.ADJUSTMENT,
+            amount=to_amount, signed_amount=to_amount, currency=dst.currency,
+            date=when, description=desc, commit=False,
+        )
+    except WalletError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc))
+    db.commit()
+    db.refresh(out_tx)
+    db.refresh(in_tx)
+    return {
+        "ok": True,
+        "out_transaction_id": out_tx.id,
+        "in_transaction_id": in_tx.id,
+        "amount": amount,
+        "to_amount": round(to_amount, 2),
+        "effective_rate": round(to_amount / amount, 6) if amount else None,
+    }
+
+@router.get("/accounts/{account_id}/reconcile")
+def reconcile_account(account_id: int, db: Session = Depends(get_db)):
+    """مغایرت‌یابی حساب مالی (فاز ۴۵.۹): `balance` ذخیره‌شده vs دفتر کل محاسبه‌شده.
+
+    `delta == 0` ⇒ تراز است. `delta != 0` ⇒ بخشی از موجودی «موجودی اولیهٔ ضمنی»
+    است و تراکنش متناظر ندارد (باید اصلاح شود).
+    """
+    try:
+        return WalletService.reconcile(db, account_id)
+    except WalletError as exc:
+        raise HTTPException(status_code=404, detail=str(exc))
+
 
 # ═════════════════════════════════════════════
 # Reports

@@ -308,7 +308,8 @@ def test_net_profit(client, db_session):
 
 def test_money_flow(client):
     bank_id = client.post("/api/finance/accounts", json={"name": "Bank", "type": "bank", "currency": "IRR"}).json()["id"]
-    exch_id = client.post("/api/finance/accounts", json={"name": "Ex", "type": "exchange"}).json()["id"]
+    # فاز ۴۵.۵: ارز حساب باید با ارز تراکنش هم‌خوان باشد ⇒ exchange هم IRR است
+    exch_id = client.post("/api/finance/accounts", json={"name": "Ex", "type": "exchange", "currency": "IRR"}).json()["id"]
     client.post("/api/finance/transactions", json={
         "account_id": exch_id, "amount": 100000000, "currency": "IRR", "type": "withdrawal",
         "from_account_id": bank_id, "to_account_id": exch_id,

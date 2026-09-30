@@ -20,6 +20,7 @@ import {
   seedFinanceCategories,
   getFinanceSummary,
   getFinanceAccountStats,
+  getAccountReconcile,
   getFinanceWithdrawalStats,
   getFinanceCashflow,
   getFinanceDistribution,
@@ -118,6 +119,8 @@ export default function FinancePage() {
 
   // Accounts state
   const [accounts, setAccounts] = useState<Account[]>([]);
+  // فاز ۴۵.۹ — نتیجهٔ مغایرت‌یابی هر حساب (delta != 0 ⇒ هشدار)
+  const [reconcileMap, setReconcileMap] = useState<Record<number, any>>({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editAccount, setEditAccount] = useState<Account | null>(null);
 
@@ -205,6 +208,16 @@ export default function FinancePage() {
   const loadAccounts = async () => {
     const { data } = await getFinanceAccounts();
     setAccounts(data);
+    // فاز ۴۵.۹ — مغایرت‌یابی هر حساب
+    try {
+      const pairs = await Promise.all(
+        (data as any[]).map(async (a) => {
+          try { return [a.id, (await getAccountReconcile(a.id)).data]; }
+          catch { return [a.id, null]; }
+        }),
+      );
+      setReconcileMap(Object.fromEntries(pairs.filter(([, v]) => v)) as Record<number, any>);
+    } catch { /* silent */ }
   };
   const loadCategories = async () => {
     const { data } = await getFinanceCategories();
@@ -451,13 +464,28 @@ export default function FinancePage() {
                           className="w-8 h-8 rounded-lg bg-[var(--bg-base)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all flex items-center justify-center text-sm">✏️</button>
                       </InfoTooltip>
                       <InfoTooltip content="حذف حساب">
-                        <button onClick={() => setPendingDelete({ message: `حساب «${a.name}» حذف شود؟`, onConfirm: async () => { await deleteFinanceAccount(a.id); showSuccess('حساب حذف شد'); await loadAccounts(); } })}
+                        <button onClick={() => setPendingDelete({ message: `حساب «${a.name}» حذف شود؟`, onConfirm: async () => {
+                          try {
+                            await deleteFinanceAccount(a.id);
+                            showSuccess('حساب آرشیو شد');
+                            await loadAccounts();
+                          } catch (err: any) {
+                            // فاز ۴۵.۳: حساب دارای تراکنش/موجودی صفر نیست ⇒ 409
+                            toast.toast(err?.response?.data?.detail || 'حذف حساب ممکن نشد', 'error');
+                          }
+                        } })}
                           className="w-8 h-8 rounded-lg bg-[var(--bg-base)] text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center text-sm">🗑️</button>
                       </InfoTooltip>
                     </div>
                   </div>
-                  <div className="text-2xl font-black text-[var(--text-primary)]">
+                  <div className="text-2xl font-black text-[var(--text-primary)] flex items-center gap-2">
                     {a.balance?.toLocaleString() ?? '0'} <span className="text-xs font-bold text-[var(--text-secondary)]">{a.currency}</span>
+                    {/* فاز ۴۵.۹: هشدار مغایرت دفتر کل */}
+                    {reconcileMap[a.id] && !reconcileMap[a.id].is_balanced && (
+                      <InfoTooltip content={`مغایرت دفتر کل: ${reconcileMap[a.id].delta} (باید صفر باشد)`}>
+                        <span className="text-base cursor-help" style={{ color: 'var(--warning, #D99B25)' }}>🟠</span>
+                      </InfoTooltip>
+                    )}
                   </div>
                   {a.card_number && <div className="text-xs text-[var(--text-secondary)] mt-2 font-mono">💳 {a.card_number}</div>}
                 </div>

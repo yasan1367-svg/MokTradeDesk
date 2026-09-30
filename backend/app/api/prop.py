@@ -17,6 +17,7 @@ from ..models.finance import (
     FinancialAccount, Category, CategoryType, Currency, TransactionType
 )
 from ..utils.enums import enum_value
+from ..utils.currency import to_currency
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
 from ..services import metrics
@@ -30,14 +31,8 @@ router = APIRouter()
 # Helpers — Prop ↔ Finance (فاز ۵)
 # ═════════════════════════════════════════════
 def _to_currency(value: Optional[str]) -> Currency:
-    """تبدیل ارز رشته‌ای پراپ به Enum مالی (IRR|USD) با fallback امن + لاگ (فاز ۱۵.۱۰)"""
-    raw = (value or "USD").upper()
-    try:
-        return Currency(raw)
-    except ValueError:
-        # پیش‌تر این fallback بی‌صدا بود؛ حالا هشدار لاگ می‌شود تا تبدیل ناخواسته دیده شود.
-        logger.warning("Invalid currency %r — falling back to USD", value)
-        return Currency.USD
+    """تبدیل ارز رشته‌ای پراپ به Enum مالی — فاز ۴۵.۶: ابزار مشترک (invalid ⇒ USD)."""
+    return to_currency(value, default=Currency.USD)
 
 
 def _get_or_create_category(

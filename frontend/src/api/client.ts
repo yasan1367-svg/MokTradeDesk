@@ -612,6 +612,15 @@ export const getFinanceSummary = (params?: { currency?: CurrencyCode }) =>
 export const getFinanceAccountStats = (accountId: number) =>
   api.get(`/api/finance/accounts/${accountId}/stats`);
 
+// فاز ۴۵.۹ — مغایرت‌یابی حساب (balance ذخیره‌شده vs دفتر کل)
+export type AccountReconcile = {
+  account_id: number; account_name: string; currency: string | null;
+  stored: number; ledger: number; delta: number;
+  is_balanced: boolean; entry_count: number;
+};
+export const getAccountReconcile = (accountId: number) =>
+  api.get<AccountReconcile>(`/api/finance/accounts/${accountId}/reconcile`);
+
 export const getFinanceWithdrawalStats = (params?: { currency?: CurrencyCode }) =>
   api.get('/api/finance/withdrawals/stats', { params });
 
