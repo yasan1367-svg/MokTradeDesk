@@ -28,9 +28,50 @@ export const getAnalysis = (versionId: number) =>
   api.get(`/api/analytics/${versionId}`);
 export const getIntervals = (symbol?: string) =>
   api.get('/api/analytics/intervals/', { params: symbol ? { symbol } : {} });
-// فاز ۱۵.۸: تابع تکراری compareVersions حذف شد — این نسخهٔ واحد استفاده می‌شود
-export const compareVersionsWithDetails = (versionIds: number[], minTrades: number = 0) =>
-  api.post('/api/analytics/compare', { version_ids: versionIds, min_trades: minTrades });
+// فاز ۴۸a: قرارداد جدید مقایسه/رتبه‌بندی Versionها
+export interface CompareRequest {
+  version_ids: number[];
+  test_type?: string;
+  symbol?: string;
+  date_from?: string;
+  date_to?: string;
+}
+
+export interface Reason {
+  icon: string; // ✅ / ⚠️ / 📊
+  text: string;
+}
+
+export interface VersionComparisonItem {
+  version_id: number;
+  rank?: number;
+  score?: number;
+  metrics?: Record<string, any>;
+  reasons?: Reason[];
+  error?: string;
+}
+
+export interface CompareResponse {
+  comparison: VersionComparisonItem[];
+  test_type: string;
+  filters: {
+    symbol?: string;
+    date_from?: string;
+    date_to?: string;
+  };
+  best: VersionComparisonItem | null;
+}
+
+export interface RankResponse {
+  ranking: VersionComparisonItem[];
+  best: VersionComparisonItem | null;
+}
+
+export const compareVersions = (data: CompareRequest) =>
+  api.post<CompareResponse>('/api/analytics/compare', data);
+
+export const rankVersions = (data: CompareRequest) =>
+  api.post<RankResponse>('/api/analytics/rank', data);
 export const getPropAnalytics = () => api.get('/api/prop/analytics');
 
 export const getFirmDefaultRules = (firmId: number) =>
