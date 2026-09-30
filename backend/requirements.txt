@@ -13,6 +13,8 @@ reportlab
 jdatetime
 arabic-reshaper
 python-bidi
+# فاز ۴۶.۴ — دادهٔ منطقهٔ زمانی IANA (Asia/Tehran) برای ویندوز
+tzdata
 
 # Testing (فاز ۱۲)
 pytest

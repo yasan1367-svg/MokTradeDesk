@@ -148,6 +148,8 @@ class PropAccount(Base):
     # فاز ۳۸: String → Enum(Currency) (NAME='USD'/'IRR' ⇒ سازگار با دادهٔ قدیمی)
     currency = Column(Enum(Currency), default=Currency.USD)
     is_active = Column(Integer, default=1)
+    # فاز ۴۶.۱: اختلاف ساعت سرور پراپ با UTC (دقیقه).
+    server_utc_offset_minutes = Column(Integer, default=0, nullable=False, server_default="0")
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     firm = relationship("PropFirm", back_populates="accounts")

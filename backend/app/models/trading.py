@@ -28,6 +28,8 @@ class Broker(Base):
     website = Column(String, nullable=True)
     notes = Column(Text, nullable=True)
     is_active = Column(Boolean, default=True, nullable=False)
+    # فاز ۴۶.۱: اختلاف ساعت سرور بروکر با UTC (دقیقه). MT4 طبق تصمیم D3 = 0.
+    server_utc_offset_minutes = Column(Integer, default=0, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     accounts = relationship(
@@ -49,6 +51,8 @@ class PersonalTradingAccount(Base):
     initial_balance = Column(Float, nullable=False, default=0.0)
     current_balance = Column(Float, nullable=False, default=0.0)
     is_active = Column(Boolean, default=True, nullable=False)
+    # فاز ۴۶.۱: اختلاف ساعت سرور بروکر با UTC (دقیقه).
+    server_utc_offset_minutes = Column(Integer, default=0, nullable=False, server_default="0")
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     broker = relationship("Broker", back_populates="accounts")

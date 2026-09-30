@@ -18,6 +18,8 @@ from ..models.finance import (
 )
 from ..utils.enums import enum_value
 from ..utils.currency import to_currency
+from ..utils.time_utils import to_tehran
+from ..utils.date_range import filter_by_range
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
 from ..services import metrics
@@ -743,10 +745,8 @@ def _payout_filter_query(
             q = q.filter(PropAccount.prop_firm_id == firm_id)
         if currency:
             q = q.filter(PropAccount.currency == currency)
-    if date_from:
-        q = q.filter(PropWithdrawal.withdrawal_date >= date_from)
-    if date_to:
-        q = q.filter(PropWithdrawal.withdrawal_date <= date_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است
+    q = filter_by_range(q, PropWithdrawal.withdrawal_date, date_from, date_to)
     return q
 
 
@@ -803,15 +803,17 @@ def get_payout_stats(
     total = float(agg[1] or 0.0)
     largest = float(agg[2] or 0.0)
 
-    monthly_rows = (
-        q.with_entities(
-            func.strftime("%Y-%m", PropWithdrawal.withdrawal_date).label("ym"),
-            func.sum(PropWithdrawal.amount),
-        )
-        .group_by("ym")
-        .order_by("ym")
-        .all()
-    )
+    # فاز ۴۶.۴: گروه‌بندی ماهانه بر پایهٔ وقت تهران (نه UTC)
+    monthly_map: dict[str, float] = {}
+    for w in q.all():
+        if not w.withdrawal_date:
+            continue
+        key = to_tehran(w.withdrawal_date).strftime("%Y-%m")
+        monthly_map[key] = monthly_map.get(key, 0.0) + float(w.amount or 0.0)
+    monthly = [
+        {"month": k, "amount": round(v, 2)}
+        for k, v in sorted(monthly_map.items())
+    ]
 
     by_firm_rows = (
         db.query(PropFirm.name, func.sum(PropWithdrawal.amount), func.count(PropWithdrawal.id))
@@ -827,7 +829,7 @@ def get_payout_stats(
         "count": count,
         "average": round((total / count) if count else 0.0, 2),
         "largest": round(largest, 2),
-        "monthly": [{"month": m, "amount": round(float(a or 0), 2)} for m, a in monthly_rows],
+        "monthly": monthly,
         "by_firm": [
             {"name": n, "amount": round(float(a or 0), 2), "count": int(c or 0)}
             for n, a, c in by_firm_rows

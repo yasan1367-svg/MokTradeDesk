@@ -16,8 +16,10 @@
 from __future__ import annotations
 
 import hashlib
-from datetime import datetime, timezone
+from datetime import datetime
 from typing import Any, Dict, Optional
+
+from .time_utils import to_utc
 
 
 # ═════════════════════════════════════════════
@@ -26,12 +28,13 @@ from typing import Any, Dict, Optional
 _DATETIME_FORMATS = ("%Y-%m-%d %H:%M:%S.%f", "%Y-%m-%d %H:%M:%S")
 
 
-def normalize_utc(value: Any) -> Optional[datetime]:
+def normalize_utc(value: Any, offset_minutes: int = 0) -> Optional[datetime]:
     """تبدیل هر ورودی زمانی به datetime آگاه از timezone (UTC).
 
     - `None` → `None`
     - رشته‌ی ISO یا «YYYY-MM-DD HH:MM:SS[.ffffff]» → datetime
-    - datetime بدون tz → UTC فرض می‌شود (هم‌قرارداد `api/trades.py`)
+    - datetime بدون tz → **ساعت سرور** با `offset_minutes` تفسیر و به UTC تبدیل می‌شود
+      (فاز ۴۶.۲؛ پیش‌تر بی‌قید UTC فرض می‌شد).
     """
     if value is None or value == "":
         return None
@@ -52,9 +55,7 @@ def normalize_utc(value: Any) -> Optional[datetime]:
                     continue
             if dt is None:
                 return None
-    if dt.tzinfo is None:
-        return dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+    return to_utc(dt, offset_minutes)
 
 
 def iso_utc(value: Any) -> str:

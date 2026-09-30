@@ -102,6 +102,8 @@ class ImportContext:
     symbol: Optional[str] = None
     source_format: Optional[ImportSourceFormat] = None
     profile_id: Optional[int] = None
+    # فاز ۴۶.۲: اختلاف ساعت سرور مقصد با UTC (دقیقه) برای تفسیر زمان‌های بدون tz
+    server_utc_offset_minutes: int = 0
     column_mapping: Dict[str, Any] = field(default_factory=dict)
     symbol_mapping: Dict[str, str] = field(default_factory=dict)
 
@@ -118,6 +120,7 @@ class ImportContext:
             "symbol": self.symbol,
             "source_format": self.source_format.value if self.source_format else None,
             "profile_id": self.profile_id,
+            "server_utc_offset_minutes": self.server_utc_offset_minutes,
             "column_mapping": self.column_mapping or {},
             "symbol_mapping": self.symbol_mapping or {},
         }
@@ -135,6 +138,7 @@ class ImportContext:
             symbol=data.get("symbol"),
             source_format=ImportSourceFormat(fmt) if fmt else None,
             profile_id=data.get("profile_id"),
+            server_utc_offset_minutes=int(data.get("server_utc_offset_minutes") or 0),
             column_mapping=data.get("column_mapping") or {},
             symbol_mapping=data.get("symbol_mapping") or {},
         )
@@ -321,8 +325,10 @@ def normalize_trade(raw: Dict[str, Any], ctx: ImportContext) -> Dict[str, Any]:
     raw_data = json_safe(raw.get("raw_data") or {})
     source = raw.get("source") or ctx.expected_source
     direction = _normalize_direction(raw.get("direction"))
-    open_time = normalize_utc(raw.get("open_time"))
-    close_time = normalize_utc(raw.get("close_time"))
+    # فاز ۴۶.۲: زمان‌های بدون tz به‌عنوان ساعت سرور مقصد تفسیر می‌شوند
+    offset = ctx.server_utc_offset_minutes or 0
+    open_time = normalize_utc(raw.get("open_time"), offset)
+    close_time = normalize_utc(raw.get("close_time"), offset)
     open_price = _to_float(raw.get("open_price"))
     close_price = _to_float(raw.get("close_price"))
     size = _to_float(raw.get("size"))
@@ -480,6 +486,31 @@ def parse_source(
 # ═════════════════════════════════════════════
 # Context — ساخت و اعتبارسنجی
 # ═════════════════════════════════════════════
+def _resolve_server_offset(
+    db: Session, prop_stage_id, personal_trading_account_id
+) -> int:
+    """فاز ۴۶.۲ — اختلاف ساعت سرور مقصد با UTC (دقیقه).
+
+    - مرحله پراپ ⇒ `PropAccount.server_utc_offset_minutes`
+    - حساب معاملاتی شخصی ⇒ `Broker.server_utc_offset_minutes`
+    """
+    if prop_stage_id:
+        stage = db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
+        account = stage.account if stage else None
+        if account is not None:
+            return int(account.server_utc_offset_minutes or 0)
+    if personal_trading_account_id:
+        acc = (
+            db.query(PersonalTradingAccount)
+            .filter(PersonalTradingAccount.id == personal_trading_account_id)
+            .first()
+        )
+        broker = acc.broker if acc else None
+        if broker is not None:
+            return int(broker.server_utc_offset_minutes or 0)
+    return 0
+
+
 def build_context(
     db: Session,
     *,
@@ -541,6 +572,9 @@ def build_context(
         symbol=resolved_symbol,
         source_format=fmt,
         profile_id=profile.id if profile else None,
+        server_utc_offset_minutes=_resolve_server_offset(
+            db, _to_int(resolved_stage), _to_int(resolved_account)
+        ),
         column_mapping=merged_columns,
         symbol_mapping=merged_symbols,
     )

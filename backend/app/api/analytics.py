@@ -10,6 +10,8 @@ from ..services.analysis_service import AnalysisService
 from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
 from ..utils.trade_scope import analysis_trades_filter
+from ..utils import jalali
+from ..utils.time_utils import to_tehran, TEHRAN
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
     CustomTimeIntervalResponse,
@@ -757,13 +759,14 @@ def get_calendar_data(
 
     # ── اگر سال و ماه شمسی داده شده ──
     if year is not None and month is not None:
-        gy_start, gm_start, gd_start = _jalali_to_gregorian(year, month, 1)
+        gy_start, gm_start, gd_start = jalali.jalali_to_gregorian_parts(year, month, 1)
         if month < 12:
-            gy_end, gm_end, gd_end = _jalali_to_gregorian(year, month + 1, 1)
+            gy_end, gm_end, gd_end = jalali.jalali_to_gregorian_parts(year, month + 1, 1)
         else:
-            gy_end, gm_end, gd_end = _jalali_to_gregorian(year + 1, 1, 1)
-        dt_from = datetime(gy_start, gm_start, gd_start, tzinfo=timezone.utc)
-        dt_to = datetime(gy_end, gm_end, gd_end, tzinfo=timezone.utc)
+            gy_end, gm_end, gd_end = jalali.jalali_to_gregorian_parts(year + 1, 1, 1)
+        # فاز ۴۶.۴: مرزهای ماه شمسی بر پایهٔ نیمه‌شب تهران
+        dt_from = datetime(gy_start, gm_start, gd_start, tzinfo=TEHRAN).astimezone(timezone.utc)
+        dt_to = datetime(gy_end, gm_end, gd_end, tzinfo=TEHRAN).astimezone(timezone.utc)
         query = query.filter(Trade.close_time >= dt_from, Trade.close_time < dt_to)
 
     # فاز ۱۵.۳: واکشی فقط ستون‌های لازم (بدون لود ORM)
@@ -779,7 +782,9 @@ def get_calendar_data(
 
     days = defaultdict(list)
     for _id, _sym, _dir, _size, _pnl, _ct, _netv in trades:
-        days[_ct.strftime("%Y-%m-%d")].append((_id, _sym, _dir, _size, _pnl, _ct, float(_netv or 0.0)))
+        # فاز ۴۶.۴: روز بر پایهٔ وقت تهران (نه UTC)
+        day_key = to_tehran(_ct).strftime("%Y-%m-%d") if _ct else None
+        days[day_key].append((_id, _sym, _dir, _size, _pnl, _ct, float(_netv or 0.0)))
 
     result = []
     for day_key, day_trades in sorted(days.items()):
@@ -811,34 +816,8 @@ def get_calendar_data(
 # تبدیل شمسی به میلادی (برای Calendar)
 # ─────────────────────────────────────────────
 def _jalali_to_gregorian(jy: int, jm: int, jd: int):
-    """تبدیل تاریخ شمسی به میلادی (بازگشت: (year, month, day))"""
-    jy += 1595
-    days = -355668 + (365 * jy) + (jy // 33) * 8 + ((jy % 33 + 3) // 4) + jd
-    if jm < 7:
-        days += (jm - 1) * 31
-    else:
-        days += (jm - 7) * 30 + 186
-
-    gy = 400 * (days // 146097)
-    days %= 146097
-    if days > 36524:
-        gy += 100 * ((days - 1) // 36524)
-        days = (days - 1) % 36524
-        if days >= 365:
-            days += 1
-    gy += 4 * (days // 1461)
-    days %= 1461
-    if days > 365:
-        gy += (days - 1) // 365
-        days = (days - 1) % 365
-    gd = days + 1
-    sal_a = [0, 31, 29 if (gy % 4 == 0 and gy % 100 != 0) or gy % 400 == 0 else 28,
-             31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    for gm in range(13):
-        if gd <= sal_a[gm]:
-            break
-        gd -= sal_a[gm]
-    return gy, gm, gd
+    """تبدیل تاریخ شمسی به میلادی (بازگشت: (year, month, day)) — فاز ۴۶.۳: ابزار مشترک."""
+    return jalali.jalali_to_gregorian_parts(jy, jm, jd)
 # ═════════════════════════════════════════════
 # فاز ۲۰.۳ — تحلیل ۶گانه (GET) + گارد سازگاری
 # ═════════════════════════════════════════════

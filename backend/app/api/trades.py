@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func
 from typing import List, Optional
-from datetime import datetime, timezone
+from datetime import datetime
 from pydantic import BaseModel
 import os
 import hashlib
@@ -10,9 +10,13 @@ import hashlib
 from ..core.database import get_db
 from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion
 from ..models.personal import Screenshot
+from ..models.prop import PropStage
+from ..models.trading import PersonalTradingAccount
 from ..utils.trade_metrics import calculate_r_multiple
 from ..utils.trade_validator import TradeValidator
 from ..utils.uploads import read_upload_limited
+from ..utils.time_utils import to_utc
+from ..utils.date_range import filter_by_range
 
 router = APIRouter()
 
@@ -90,18 +94,42 @@ class BatchDeleteRequest(BaseModel):
 # ═════════════════════════════════════════════
 # Helpers
 # ═════════════════════════════════════════════
-def _parse_iso_datetime(value: Optional[str], field_name: str = "تاریخ") -> Optional[datetime]:
-    """تبدیل رشته‌ی ISO به datetime با timezone-aware (UTC اگه بدون tz بود)"""
+def _parse_iso_datetime(
+    value: Optional[str], field_name: str = "تاریخ", offset_minutes: int = 0
+) -> Optional[datetime]:
+    """تبدیل رشته‌ی ISO به datetime آگاه از UTC.
+
+    فاز ۴۶.۲: اگر رشته بدون tz باشد، به‌عنوان **ساعت سرور** با `offset_minutes`
+    تفسیر و به UTC تبدیل می‌شود (پیش‌تر بی‌قید UTC فرض می‌شد).
+    """
     if not value:
         return None
     try:
         dt = datetime.fromisoformat(value)
-        # اگه naive بود، UTC فرض کن
-        if dt.tzinfo is None:
-            dt = dt.replace(tzinfo=timezone.utc)
-        return dt
+        return to_utc(dt, offset_minutes)
     except Exception:
         raise HTTPException(status_code=400, detail=f"فرمت {field_name} نامعتبر است")
+
+
+def _resolve_trade_server_offset(
+    db: Session, prop_stage_id: Optional[int], personal_trading_account_id: Optional[int]
+) -> int:
+    """فاز ۴۶.۲ — اختلاف ساعت سرور مقصد با UTC (دقیقه) برای ثبت دستی."""
+    if prop_stage_id:
+        stage = db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
+        account = stage.account if stage else None
+        if account is not None:
+            return int(account.server_utc_offset_minutes or 0)
+    if personal_trading_account_id:
+        acc = (
+            db.query(PersonalTradingAccount)
+            .filter(PersonalTradingAccount.id == personal_trading_account_id)
+            .first()
+        )
+        broker = acc.broker if acc else None
+        if broker is not None:
+            return int(broker.server_utc_offset_minutes or 0)
+    return 0
 
 
 def _get_screenshots_count_map(db: Session, trade_ids: List[int]) -> dict:
@@ -259,14 +287,8 @@ def get_trades(
         query = query.filter(Trade.close_time != None)
     if search:
         query = query.filter(Trade.note.like(f"%{search}%"))
-    if date_from:
-        dt_from = _parse_iso_datetime(date_from, "تاریخ شروع")
-        if dt_from:
-            query = query.filter(Trade.open_time >= dt_from)
-    if date_to:
-        dt_to = _parse_iso_datetime(date_to, "تاریخ پایان")
-        if dt_to:
-            query = query.filter(Trade.open_time <= dt_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
+    query = filter_by_range(query, Trade.open_time, date_from, date_to)
     if pnl_min is not None:
         query = query.filter(Trade.pnl >= pnl_min)
     if pnl_max is not None:
@@ -600,11 +622,15 @@ def batch_delete_trades(data: BatchDeleteRequest, db: Session = Depends(get_db))
 @router.post("/manual")
 def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     """افزودن معامله‌ی دستی"""
-    open_time = _parse_iso_datetime(data.open_time, "زمان باز شدن")
+    # فاز ۴۶.۲: زمان‌های بدون tz بر اساس ساعت سرور مقصد تفسیر می‌شوند
+    offset = _resolve_trade_server_offset(
+        db, data.prop_stage_id, data.personal_trading_account_id
+    )
+    open_time = _parse_iso_datetime(data.open_time, "زمان باز شدن", offset)
     if not open_time:
         raise HTTPException(status_code=400, detail="زمان باز شدن الزامی است")
 
-    close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن")
+    close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن", offset)
 
     direction = data.direction.lower()
     if direction not in ["buy", "sell"]:

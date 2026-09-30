@@ -17,6 +17,9 @@ from ..models.finance import (
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
 from ..services import metrics, finance_metrics
+from ..utils import jalali
+from ..utils.time_utils import to_tehran, TEHRAN
+from ..utils.date_range import filter_by_range
 
 router = APIRouter()
 
@@ -360,10 +363,8 @@ def get_transactions(
         .filter(FinancialTransaction.is_deleted == False)
         .order_by(FinancialTransaction.date.desc(), FinancialTransaction.id.desc())
     )
-    if date_from:
-        q = q.filter(FinancialTransaction.date >= date_from)
-    if date_to:
-        q = q.filter(FinancialTransaction.date <= date_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
+    q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
     if account_id:
         q = q.filter(FinancialTransaction.account_id == account_id)
     if type:
@@ -789,10 +790,8 @@ def list_withdrawals(
     q = _withdrawal_query(db).order_by(FinancialTransaction.date.desc())
     if account_id:
         q = q.filter(FinancialTransaction.account_id == account_id)
-    if date_from:
-        q = q.filter(FinancialTransaction.date >= date_from)
-    if date_to:
-        q = q.filter(FinancialTransaction.date <= date_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
+    q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
     return [_serialize_withdrawal(w) for w in q.all()]
 
 
@@ -957,10 +956,8 @@ def get_distribution_chart(
         sa_func.sum(FinancialTransaction.amount).label("total_amount"),
     ).filter(FinancialTransaction.is_deleted == False)
 
-    if date_from:
-        q = q.filter(FinancialTransaction.date >= date_from)
-    if date_to:
-        q = q.filter(FinancialTransaction.date <= date_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
+    q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
 
     rows = q.group_by(FinancialTransaction.type).order_by(FinancialTransaction.type).all()
 
@@ -985,65 +982,18 @@ EXPENSE_TYPES = [
     TransactionType.PURCHASE,
 ]
 
-JALALI_MONTHS = [
-    "فروردین", "اردیبهشت", "خرداد", "تیر", "مرداد", "شهریور",
-    "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند",
-]
+# فاز ۴۶.۳: تنها مرجع تبدیل، `utils/jalali.py` است (نام برای سازگاری حفظ شده).
+JALALI_MONTHS = jalali.JALALI_MONTHS
 
 
 def _jalali_to_gregorian(jy: int, jm: int, jd: int):
-    """تبدیل تاریخ شمسی به میلادی (بازگشت: (year, month, day))"""
-    jy += 1595
-    days = -355668 + (365 * jy) + (jy // 33) * 8 + ((jy % 33 + 3) // 4) + jd
-    if jm < 7:
-        days += (jm - 1) * 31
-    else:
-        days += (jm - 7) * 30 + 186
-
-    gy = 400 * (days // 146097)
-    days %= 146097
-    if days > 36524:
-        gy += 100 * ((days - 1) // 36524)
-        days = (days - 1) % 36524
-        if days >= 365:
-            days += 1
-    gy += 4 * (days // 1461)
-    days %= 1461
-    if days > 365:
-        gy += (days - 1) // 365
-        days = (days - 1) % 365
-    gd = days + 1
-    sal_a = [0, 31, 29 if (gy % 4 == 0 and gy % 100 != 0) or gy % 400 == 0 else 28,
-             31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
-    for gm in range(13):
-        if gd <= sal_a[gm]:
-            break
-        gd -= sal_a[gm]
-    return gy, gm, gd
+    """تبدیل تاریخ شمسی به میلادی (بازگشت: (year, month, day)) — فاز ۴۶.۳: ابزار مشترک."""
+    return jalali.jalali_to_gregorian_parts(jy, jm, jd)
 
 
 def _gregorian_to_jalali(gy: int, gm: int, gd: int):
-    """تبدیل تاریخ میلادی به شمسی (بازگشت: (year, month, day))"""
-    g_d_m = [0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334]
-    jy = 0 if gy <= 1600 else 979
-    gy -= 621 if gy <= 1600 else 1600
-    gy2 = gy + 1 if gm > 2 else gy
-    days = ((365 * gy) + ((gy2 + 3) // 4) - ((gy2 + 99) // 100)
-            + ((gy2 + 399) // 400) - 80 + gd + g_d_m[gm - 1])
-    jy += 33 * (days // 12053)
-    days %= 12053
-    jy += 4 * (days // 1461)
-    days %= 1461
-    if days > 365:
-        jy += (days - 1) // 365
-        days = (days - 1) % 365
-    if days < 186:
-        jm = 1 + (days // 31)
-        jd = 1 + (days % 31)
-    else:
-        jm = 7 + ((days - 186) // 30)
-        jd = 1 + ((days - 186) % 30)
-    return jy, jm, jd
+    """تبدیل تاریخ میلادی به شمسی (بازگشت: (year, month, day)) — فاز ۴۶.۳: ابزار مشترک."""
+    return jalali.gregorian_to_jalali_parts(gy, gm, gd)
 
 
 def _jalali_range(year: int, month: Optional[int] = None):
@@ -1057,8 +1007,8 @@ def _jalali_range(year: int, month: Optional[int] = None):
     else:
         gy1, gm1, gd1 = _jalali_to_gregorian(year, 1, 1)
         gy2, gm2, gd2 = _jalali_to_gregorian(year + 1, 1, 1)
-    start = datetime(gy1, gm1, gd1, tzinfo=timezone.utc)
-    end = datetime(gy2, gm2, gd2, tzinfo=timezone.utc)
+    start = datetime(gy1, gm1, gd1, tzinfo=TEHRAN).astimezone(timezone.utc)
+    end = datetime(gy2, gm2, gd2, tzinfo=TEHRAN).astimezone(timezone.utc)
     return start, end
 
 
@@ -1386,9 +1336,10 @@ EXPENSE_TYPES_F = [
 
 
 def _jalali_date_str(dt) -> Optional[str]:
-    """تاریخ شمسی به قالب YYYY/MM/DD (بر پایهٔ UTC مثل بقیهٔ گزارش‌ها)"""
+    """تاریخ شمسی به قالب YYYY/MM/DD — فاز ۴۶.۴: بر پایهٔ وقت تهران"""
     if not dt:
         return None
+    dt = to_tehran(dt)
     try:
         jy, jm, jd = _gregorian_to_jalali(dt.year, dt.month, dt.day)
     except Exception:
@@ -1776,10 +1727,8 @@ def get_asset_trend(
     }
 
     q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
-    if date_from:
-        q = q.filter(FinancialTransaction.date >= date_from)
-    if date_to:
-        q = q.filter(FinancialTransaction.date <= date_to)
+    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
+    q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
 
     per_day: dict = defaultdict(lambda: {"USD": 0.0, "IRR": 0.0})
     for t in q.order_by(FinancialTransaction.date).all():
