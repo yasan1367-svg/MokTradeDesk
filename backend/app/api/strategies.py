@@ -9,17 +9,14 @@ from ..core.database import get_db
 from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus
 from ..utils.enums import enum_value
 from ..utils.trade_scope import analysis_trades_filter
+from ..services import metrics
 
 router = APIRouter()
 
 
 def _net_expr():
-    """عبارت SQL سود/زیان خالص: pnl + commission + swap (فاز ۱۵.۳)"""
-    return (
-        func.coalesce(Trade.pnl, 0.0)
-        + func.coalesce(Trade.commission, 0.0)
-        + func.coalesce(Trade.swap, 0.0)
-    )
+    """عبارت SQL سود/زیان خالص — فاز ۴۳: از تعریف واحد `metrics.net_pnl_sql()`"""
+    return metrics.net_pnl_sql()
 
 
 def _trades_count_by_version(db: Session, version_ids: List[int]) -> dict:

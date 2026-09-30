@@ -19,6 +19,7 @@ from ..models.finance import (
 from ..utils.enums import enum_value
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
+from ..services import metrics
 
 logger = logging.getLogger("moktrade")
 
@@ -406,10 +407,7 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     trades = db.query(Trade).filter(
         Trade.prop_stage_id == stage_id, Trade.is_deleted == False
     ).all()
-    total_pnl = sum(
-        (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-        for t in trades
-    )
+    total_pnl = sum(metrics.net_pnl(t) for t in trades)
     final_balance = (stage.initial_balance or 0) + total_pnl
 
     # به‌روزرسانی مرحله‌ی فعلی

@@ -7,6 +7,7 @@ from collections import defaultdict
 
 from ..core.database import get_db
 from ..services.analysis_service import AnalysisService
+from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope
 from ..utils.trade_scope import analysis_trades_filter
 from ..schemas.analytics import (
@@ -23,12 +24,8 @@ router = APIRouter()
 # Helpers — فاز ۱۵.۳ (SQL Aggregation)
 # ═════════════════════════════════════════════
 def _net_expr():
-    """عبارت SQL سود/زیان خالص: pnl + commission + swap (با COALESCE)"""
-    return (
-        func.coalesce(Trade.pnl, 0.0)
-        + func.coalesce(Trade.commission, 0.0)
-        + func.coalesce(Trade.swap, 0.0)
-    )
+    """عبارت SQL سود/زیان خالص — فاز ۴۳: از تعریف واحد `metrics.net_pnl_sql()`"""
+    return metrics.net_pnl_sql()
 
 
 def _parse_bound(value: Optional[str], end: bool = False):
@@ -278,10 +275,10 @@ def get_dashboard_data(
     broker_balance = float(sum(a.current_balance or 0.0 for a in personal_accts))
     init_capital = float(sum(a.initial_balance or 0.0 for a in personal_accts))
 
-    # سود مرحله ۳ پراپ از معاملات REAL_PROP (بدون پل مالی)
+    # سود مرحله ۳ پراپ از معاملات REAL_PROP (بدون پل مالی) — فاز ۴۳: net_pnl
     from ..models.strategy import TestType as _TestType
     funded_pnl = float(
-        db.query(func.coalesce(func.sum(Trade.pnl), 0.0))
+        db.query(func.coalesce(func.sum(_net_expr()), 0.0))
         .filter(
             Trade.prop_stage_id.isnot(None),
             Trade.test_type == _TestType.REAL_PROP,
@@ -371,9 +368,6 @@ def get_yesterday_data(db: Session = Depends(get_db)):
             return dt.replace(tzinfo=timezone.utc)
         return dt
 
-    def net_pnl(t):
-        return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-
     now = datetime.now(timezone.utc)
     today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     y_start = today_start - timedelta(days=1)
@@ -407,7 +401,7 @@ def get_yesterday_data(db: Session = Depends(get_db)):
     winning = losing = 0
     net_total = 0.0
     for t in yt:
-        p = net_pnl(t)
+        p = metrics.net_pnl(t)
         net_total += p
         src = classify(t)
         by_source[src]["trades"] += 1
@@ -496,7 +490,7 @@ def get_risk_metrics(db: Session = Depends(get_db)):
     else: ror = 0.5
     rv = [c["r_multiple"] for c in closed_trades if c["r_multiple"] and c["r_multiple"] != 0]
     arm = sum(rv) / len(rv) if rv else 0
-    oe = float(db.query(func.sum(func.abs(func.coalesce(Trade.pnl, 0.0))))
+    oe = float(db.query(func.sum(func.abs(_net_expr())))
                .filter(Trade.close_time.is_(None), Trade.is_deleted == False).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
     streak = 0; ms = 0

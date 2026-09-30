@@ -6,6 +6,8 @@ matplotlib.use("Agg")  # non-interactive backend
 import matplotlib.pyplot as plt
 import matplotlib.font_manager as fm
 
+from ..services import metrics
+
 # ═════════════════════════════════════════════
 # Font Registration — Vazirmatn
 # ═════════════════════════════════════════════
@@ -41,7 +43,7 @@ def draw_equity_chart(trades) -> io.BytesIO:
     equity = []
     cum = 0.0
     for t in sorted_trades:
-        cum += (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
+        cum += metrics.net_pnl(t)
         equity.append(cum)
 
     if not equity:
@@ -77,8 +79,8 @@ def draw_equity_chart(trades) -> io.BytesIO:
 def draw_win_loss_pie(trades) -> io.BytesIO:
     """نمودار دایره‌ای نسبت برد به باخت"""
     closed = [t for t in trades if t.close_time is not None]
-    wins = sum(1 for t in closed if (t.pnl or 0) + (t.commission or 0) + (t.swap or 0) > 0)
-    losses = sum(1 for t in closed if (t.pnl or 0) + (t.commission or 0) + (t.swap or 0) < 0)
+    wins = sum(1 for t in closed if metrics.net_pnl(t) > 0)
+    losses = sum(1 for t in closed if metrics.net_pnl(t) < 0)
     neutral = len(closed) - wins - losses
 
     labels = []

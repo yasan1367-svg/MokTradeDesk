@@ -11,6 +11,7 @@ from ..core.database import get_db
 from ..core.rate_limit import limiter, EXPORT_RATE_LIMIT
 from ..models.strategy import Trade, StrategyVersion
 from ..services.analysis_service import AnalysisService
+from ..services import metrics
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
 from ..utils.trade_scope import analysis_trades_filter
 
@@ -292,12 +293,14 @@ def export_trades_pdf(
     styles["Heading2"].fontName = _PERSIAN_FONT
     closed = [t for t in trades if t.close_time]
     if closed:
-        net = sum((t.pnl or 0) + (t.commission or 0) + (t.swap or 0) for t in closed)
-        wins = [t for t in closed if (t.pnl or 0) + (t.commission or 0) + (t.swap or 0) > 0]
-        losses = [t for t in closed if (t.pnl or 0) + (t.commission or 0) + (t.swap or 0) < 0]
+        # فاز ۴۳: خلاصهٔ آماری از تعریف واحد net_pnl
+        nets = [metrics.net_pnl(t) for t in closed]
+        net = sum(nets)
+        wins = [n for n in nets if n > 0]
+        losses = [n for n in nets if n < 0]
         wr = len(wins) / len(closed) * 100
-        gp = sum((t.pnl or 0) + (t.commission or 0) + (t.swap or 0) for t in wins) if wins else 0
-        gl = abs(sum((t.pnl or 0) + (t.commission or 0) + (t.swap or 0) for t in losses)) if losses else 0
+        gp = sum(wins)
+        gl = abs(sum(losses))
         pf = gp / gl if gl > 0 else (100.0 if gp > 0 else 0.0)
     else:
         net = wr = pf = 0

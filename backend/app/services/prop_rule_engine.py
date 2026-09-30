@@ -13,6 +13,7 @@ from ..models.prop import (
     RuleViolation,
 )
 from ..models.strategy import Trade
+from . import metrics
 
 
 class PropRuleEngine:
@@ -96,8 +97,9 @@ class PropRuleEngine:
     ) -> Dict[str, Any]:
         """محاسبهٔ کامل ارزیابی با معاملات از پیش بارگذاری‌شده (فاز ۳۶)."""
         # ── مبالغ پایه (دلار) ──
+        # فاز ۴۳: کل محاسبات PnL روی net_pnl (= pnl + commission + swap) انجام می‌شود.
         initial = stage.initial_balance or 10000.0
-        total_pnl = sum(t.pnl or 0 for t in trades)
+        total_pnl = sum(metrics.net_pnl(t) for t in trades)
         equity = initial + total_pnl
 
         # ── Daily DD: بدترین روز (دلار) ──
@@ -198,7 +200,7 @@ class PropRuleEngine:
         # ── فاز ۳۲: Rule Evaluation ساختاریافته (Pipeline) ──
         # هر قاعده یک نتیجه‌ی {rule_type, actual_value, limit_value, severity, message}
         # تولید می‌کند؛ severity ∈ {PASS, WARNING, VIOLATION}.
-        floating_pnl = sum((t.pnl or 0.0) for t in trades if t.close_time is None)
+        floating_pnl = sum(metrics.net_pnl(t) for t in trades if t.close_time is None)
         rule_checks = PropRuleEngine._build_rule_checks(
             stage=stage,
             initial=initial,
@@ -473,22 +475,11 @@ class PropRuleEngine:
             if not t.close_time:
                 continue
             day_key = t.close_time.strftime("%Y-%m-%d")
-            daily[day_key] = daily.get(day_key, 0.0) + (t.pnl or 0.0)
+            daily[day_key] = daily.get(day_key, 0.0) + metrics.net_pnl(t)
         return daily
 
     @staticmethod
     def _calculate_max_drawdown(trades: List[Trade], initial: float) -> float:
-        sorted_trades = sorted(
-            trades, key=lambda t: t.close_time or t.open_time
-        )
-        equity = initial
-        peak = initial
-        max_dd = 0.0
-        for trade in sorted_trades:
-            equity += trade.pnl or 0
-            if equity > peak:
-                peak = equity
-            dd = peak - equity
-            if dd > max_dd:
-                max_dd = dd
-        return max_dd
+        # فاز ۴۳: محاسبه در `metrics` متمرکز شده است (با ترتیب زمانی معاملات).
+        ordered = sorted(trades, key=lambda t: t.close_time or t.open_time)
+        return metrics.calculate_max_drawdown(ordered, initial)

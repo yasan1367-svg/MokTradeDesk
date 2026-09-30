@@ -7,6 +7,13 @@ from ..models.strategy import (
     AnalysisScopeRecord, AnalysisStatus,
 )
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
+from . import metrics
+
+
+def _chronological(trades: List[Trade]) -> List[Trade]:
+    """ترتیب زمانی معاملات (مبنای محاسبهٔ drawdown/streak)."""
+    return sorted(trades, key=lambda t: t.close_time or t.open_time)
+
 
 
 class AnalysisService:
@@ -511,31 +518,27 @@ class AnalysisService:
         (چون commission معمولاً منفی ذخیره می‌شه، جمعش یعنی کم شدن)
         """
 
-        def _net_pnl(t: Trade) -> float:
-            """PnL خالص یک معامله"""
-            return (t.pnl or 0) + (t.commission or 0) + (t.swap or 0)
-
         total = len(trades)
-        wins = [t for t in trades if _net_pnl(t) > 0]
-        losses = [t for t in trades if _net_pnl(t) < 0]
+        wins = [t for t in trades if metrics.net_pnl(t) > 0]
+        losses = [t for t in trades if metrics.net_pnl(t) < 0]
 
-        gross_profit = sum(_net_pnl(t) for t in wins) if wins else 0
-        gross_loss = abs(sum(_net_pnl(t) for t in losses)) if losses else 0
+        gross_profit = sum(metrics.net_pnl(t) for t in wins) if wins else 0
+        gross_loss = abs(sum(metrics.net_pnl(t) for t in losses)) if losses else 0
 
-        net_pnl = sum(_net_pnl(t) for t in trades)
+        net_pnl = sum(metrics.net_pnl(t) for t in trades)
         win_rate = (len(wins) / total * 100) if total > 0 else 0
         profit_factor = self._profit_factor(gross_profit, gross_loss)
 
         r_multiples = [t.r_multiple for t in trades if t.r_multiple is not None]
         net_r = sum(r_multiples) if r_multiples else 0
 
-        max_dd = self._calculate_max_drawdown(trades)
+        max_dd = metrics.calculate_max_drawdown(_chronological(trades))
 
         # اکسپکتنسی، میانگین/بزرگ‌ترین برد و باخت
         avg_win = (gross_profit / len(wins)) if wins else 0
         avg_loss = (gross_loss / len(losses)) if losses else 0  # مقدار مثبت
-        largest_win = max((_net_pnl(t) for t in wins), default=0)
-        largest_loss = abs(min((_net_pnl(t) for t in losses), default=0))  # مقدار مثبت
+        largest_win = max((metrics.net_pnl(t) for t in wins), default=0)
+        largest_loss = abs(min((metrics.net_pnl(t) for t in losses), default=0))  # مقدار مثبت
 
         win_rate_ratio = (len(wins) / total) if total > 0 else 0
         loss_rate_ratio = (len(losses) / total) if total > 0 else 0
@@ -575,11 +578,11 @@ class AnalysisService:
         return 0.0
 
     def _calculate_max_consecutive_losses(self, trades: List[Trade]) -> int:
-        sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
+        sorted_trades = _chronological(trades)
         streak = 0
         max_streak = 0
         for t in sorted_trades:
-            npnl = self._net_pnl(t)
+            npnl = metrics.net_pnl(t)
             if npnl < 0:
                 streak += 1
                 max_streak = max(max_streak, streak)
@@ -596,9 +599,9 @@ class AnalysisService:
           (وابستگی به معاملات بزرگ)
         - avg_win_avg_loss_ratio: نسبت میانگین برد به میانگین باخت
         """
-        wins = [t for t in trades if self._net_pnl(t) > 0]
-        losses = [t for t in trades if self._net_pnl(t) < 0]
-        pnl_values = [self._net_pnl(t) for t in trades]
+        wins = [t for t in trades if metrics.net_pnl(t) > 0]
+        losses = [t for t in trades if metrics.net_pnl(t) < 0]
+        pnl_values = [metrics.net_pnl(t) for t in trades]
 
         if not pnl_values:
             return {
@@ -611,12 +614,12 @@ class AnalysisService:
         variance = sum((p - mean_pnl) ** 2 for p in pnl_values) / len(pnl_values)
         pnl_std_dev = variance ** 0.5
 
-        gross_profit = sum(self._net_pnl(t) for t in wins) if wins else 0
-        top_n = sorted((self._net_pnl(t) for t in wins), reverse=True)[:3]
+        gross_profit = sum(metrics.net_pnl(t) for t in wins) if wins else 0
+        top_n = sorted((metrics.net_pnl(t) for t in wins), reverse=True)[:3]
         top_trades_contribution = (sum(top_n) / gross_profit * 100) if gross_profit > 0 else 0
 
         avg_win = (gross_profit / len(wins)) if wins else 0
-        gross_loss = abs(sum(self._net_pnl(t) for t in losses)) if losses else 0
+        gross_loss = abs(sum(metrics.net_pnl(t) for t in losses)) if losses else 0
         avg_loss = (gross_loss / len(losses)) if losses else 0
         avg_win_avg_loss_ratio = (avg_win / avg_loss) if avg_loss > 0 else 0
 
@@ -625,26 +628,6 @@ class AnalysisService:
             "top_trades_contribution_percent": round(top_trades_contribution, 1),
             "avg_win_avg_loss_ratio": round(avg_win_avg_loss_ratio, 2),
         }
-
-    def _calculate_max_drawdown(self, trades: List[Trade]) -> float:
-        """
-        محاسبه‌ی حداکثر افت سرمایه (peak-to-valley).
-        از net_pnl استفاده می‌کند (pnl + commission + swap)
-        """
-        sorted_trades = sorted(trades, key=lambda t: t.close_time or t.open_time)
-        equity = 0
-        peak = 0
-        max_dd = 0
-
-        for t in sorted_trades:
-            equity += self._net_pnl(t)
-            if equity > peak:
-                peak = equity
-            dd = peak - equity
-            if dd > max_dd:
-                max_dd = dd
-
-        return max_dd
 
     def _analyze_by_session(self, trades: List[Trade]) -> Dict[str, Any]:
         sessions = {"Asia": [], "Europe": [], "America": [], "Other": []}
@@ -716,20 +699,15 @@ class AnalysisService:
 
         return result
 
-    @staticmethod
-    def _net_pnl(trade: Trade) -> float:
-        """محاسبه net_pnl با در نظر گرفتن کمیسیون و swap"""
-        return (trade.pnl or 0) + (trade.commission or 0) + (trade.swap or 0)
-
     def _summarize(self, trades: List[Trade]) -> Dict[str, Any]:
         total = len(trades)
-        wins = [t for t in trades if self._net_pnl(t) > 0]
-        losses = [t for t in trades if self._net_pnl(t) < 0]
+        wins = [t for t in trades if metrics.net_pnl(t) > 0]
+        losses = [t for t in trades if metrics.net_pnl(t) < 0]
 
-        gross_profit = sum(self._net_pnl(t) for t in wins) if wins else 0
-        gross_loss = abs(sum(self._net_pnl(t) for t in losses)) if losses else 0
+        gross_profit = sum(metrics.net_pnl(t) for t in wins) if wins else 0
+        gross_loss = abs(sum(metrics.net_pnl(t) for t in losses)) if losses else 0
 
-        net_pnl = sum(self._net_pnl(t) for t in trades) or 0
+        net_pnl = sum(metrics.net_pnl(t) for t in trades) or 0
         win_rate = (len(wins) / total * 100) if total > 0 else 0
         profit_factor = self._profit_factor(gross_profit, gross_loss)
 

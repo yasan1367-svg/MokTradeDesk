@@ -16,6 +16,7 @@ from ..models.finance import (
 )
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
+from ..services import metrics
 
 router = APIRouter()
 
@@ -1146,14 +1147,8 @@ def get_profit_loss(
 # فاز ۲۲ — گزارش‌های مالی (توابع کمکی)
 # ═════════════════════════════════════════════
 def _trade_net_expr():
-    """net_pnl معامله = pnl + commission + swap (با COALESCE)"""
-    from sqlalchemy import func
-    from ..models.strategy import Trade
-    return (
-        func.coalesce(Trade.pnl, 0.0)
-        + func.coalesce(Trade.commission, 0.0)
-        + func.coalesce(Trade.swap, 0.0)
-    )
+    """net_pnl معامله — فاز ۴۳: از تعریف واحد `metrics.net_pnl_sql()`"""
+    return metrics.net_pnl_sql()
 
 
 def _jalali_date_str(dt) -> Optional[str]:
@@ -1479,7 +1474,7 @@ def get_financial_calendar(db: Session = Depends(get_db)):
         d = _jalali_date_str(t.close_time)
         if not d:
             continue
-        days[d]["pnl"] += (t.pnl or 0.0) + (t.commission or 0.0) + (t.swap or 0.0)
+        days[d]["pnl"] += metrics.net_pnl(t)
         days[d]["trades"] += 1
 
     txs = (
