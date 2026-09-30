@@ -24,8 +24,10 @@ export const createVersion = (strategyId: number, data: { version_name: string; 
 // ─────────────────────────────────────────────
 export const analyzeVersion = (versionId: number) =>
   api.post(`/api/analytics/analyze/${versionId}`);
-export const getAnalysis = (versionId: number) =>
-  api.get(`/api/analytics/${versionId}`);
+// فاز ۴۸b: `test_type` صریح (پیش‌فرض BACKTEST — همان پیش‌فرض بک‌اند در فاز 48a.2).
+// بدون آن، برای نسخه‌ای که هم تحلیل Backtest و هم Forward دارد، پاسخ نامعین/کهنه می‌شد.
+export const getAnalysis = (versionId: number, testType: string = 'BACKTEST') =>
+  api.get(`/api/analytics/${versionId}?test_type=${testType}`);
 export const getIntervals = (symbol?: string) =>
   api.get('/api/analytics/intervals/', { params: symbol ? { symbol } : {} });
 // فاز ۴۸a: قرارداد جدید مقایسه/رتبه‌بندی Versionها
@@ -263,8 +265,9 @@ export const deleteImportProfile = (profileId: number) =>
 export const getVersionTrades = (versionId: number) =>
   api.get(`/api/strategies/versions/${versionId}/trades`);
 
-export const getVersionAnalysis = (versionId: number) =>
-  api.get(`/api/analytics/${versionId}`);
+// فاز ۴۸b: همان endpoint بالا ⇒ همان باگ `test_type` (رفع شد برای هم‌خوانی کامل)
+export const getVersionAnalysis = (versionId: number, testType: string = 'BACKTEST') =>
+  api.get(`/api/analytics/${versionId}?test_type=${testType}`);
 
 export const getVersionAnalysisHistory = (versionId: number) =>
   api.get(`/api/analytics/${versionId}/history`);
