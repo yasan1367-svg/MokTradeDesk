@@ -102,16 +102,25 @@ class PropRuleEngine:
         total_pnl = sum(metrics.net_pnl(t) for t in trades)
         equity = initial + total_pnl
 
+        # ── فاز 47a: DD فقط «static + balance» (همه محاسبات روی تریدهای بسته) ──
+        day_offset = int(stage.day_boundary_utc_offset or 0)
+        closed_trades = [t for t in trades if t.close_time is not None]
+        ordered_closed = sorted(
+            closed_trades, key=lambda t: t.close_time or t.open_time
+        )
+
         # ── Daily DD: بدترین روز (دلار) ──
-        daily_pnl = PropRuleEngine._group_daily_pnl(trades)
+        daily_pnl = PropRuleEngine._group_daily_pnl(closed_trades, day_offset)
         # فاز ۳۲: فقط روزهای منفی به‌عنوان زیان شمرده می‌شوند.
         # پیش‌تر `abs(min(...))` حتی روز پرسود را «زیان» می‌شمرد (باگ).
         max_daily_loss = (
             max(0.0, -min(daily_pnl.values())) if daily_pnl else 0.0
         )  # مقدار مثبت
 
-        # ── Total DD: بر اساس equity curve (دلار) ──
-        max_total_dd = PropRuleEngine._calculate_max_drawdown(trades, initial)
+        # ── Total DD: Static — افت از کف ثابت (initial − max_total_dd) ──
+        max_total_dd, equity_floor, total_dd_violated = PropRuleEngine._total_drawdown(
+            ordered_closed, initial, stage.max_total_dd or 0.0
+        )
 
         # ── روزهای معاملاتی ──
         trading_days = len(daily_pnl)
@@ -122,15 +131,23 @@ class PropRuleEngine:
         max_total_dd_limit = stage.max_total_dd or 0.0
         min_days = stage.min_trading_days or 0
 
+        # ── فاز 47a.2: Fail-closed — نبودِ حد ⇒ unconfigured (نه «آماده پاس») ──
+        violations: List[str] = []
+        unconfigured = False
+        if max_daily_dd_limit <= 0:
+            violations.append("قانون Daily DD تنظیم نشده")
+            unconfigured = True
+        if max_total_dd_limit <= 0:
+            violations.append("قانون Max DD تنظیم نشده")
+            unconfigured = True
+        if profit_target <= 0:
+            violations.append("هدف سود تنظیم نشده")
+            unconfigured = True
+
         # ── بررسی نقض قوانین (مقایسه‌ی دلار با دلار) ──
         daily_dd_violated = (
             max_daily_loss > max_daily_dd_limit
             if max_daily_dd_limit > 0
-            else False
-        )
-        total_dd_violated = (
-            max_total_dd > max_total_dd_limit
-            if max_total_dd_limit > 0
             else False
         )
         target_reached = (
@@ -138,8 +155,7 @@ class PropRuleEngine:
         )
         min_days_met = trading_days >= min_days if min_days > 0 else True
 
-        # ── violations: فقط نقض واقعی ──
-        violations: List[str] = []
+        # ── violations: نقض واقعی ──
         if daily_dd_violated:
             violations.append(
                 f"حد Daily DD نقض شده ({max_daily_loss:.2f}$ > {max_daily_dd_limit}$)"
@@ -150,7 +166,9 @@ class PropRuleEngine:
             )
 
         # ── وضعیت پیشنهادی ──
-        if daily_dd_violated:
+        if unconfigured:
+            suggested_status = "unconfigured"
+        elif daily_dd_violated:
             suggested_status = "failed_daily_dd"
         elif total_dd_violated:
             suggested_status = "failed_total_dd"
@@ -171,7 +189,8 @@ class PropRuleEngine:
             ready_to_pass = False
         else:
             ready_to_pass = (
-                (not daily_dd_violated)
+                (not unconfigured)
+                and (not daily_dd_violated)
                 and (not total_dd_violated)
                 and target_reached
                 and min_days_met
@@ -210,6 +229,7 @@ class PropRuleEngine:
             max_daily_dd_limit=max_daily_dd_limit,
             max_total_dd=max_total_dd,
             max_total_dd_limit=max_total_dd_limit,
+            equity_floor=equity_floor,
             profit_target=profit_target,
             trading_days=trading_days,
             min_days=min_days,
@@ -243,6 +263,9 @@ class PropRuleEngine:
             "max_total_dd_limit": max_total_dd_limit,
             "total_dd_progress_percent": total_dd_progress_percent,
             "total_dd_violated": total_dd_violated,
+            # فاز 47a — کف مجاز (static) و وضعیت پیکربندی
+            "equity_floor": round(equity_floor, 2),
+            "unconfigured": unconfigured,
 
             # روزهای معاملاتی
             "trading_days": trading_days,
@@ -368,6 +391,7 @@ class PropRuleEngine:
         max_daily_dd_limit: float,
         max_total_dd: float,
         max_total_dd_limit: float,
+        equity_floor: float,
         profit_target: float,
         trading_days: int,
         min_days: int,
@@ -414,8 +438,7 @@ class PropRuleEngine:
             Severity.PASS if (min_days <= 0 or trading_days >= min_days) else Severity.WARNING,
             f"روزهای معاملاتی: {trading_days} از حداقل {min_days}",
         )
-        # ۵) Equity Balance — کف مجاز = initial - max_total_dd
-        equity_floor = initial - max_total_dd_limit if max_total_dd_limit > 0 else initial
+        # ۵) Equity Balance — کف مجاز (فاز ۴۷.۲: mode-aware از `_total_drawdown`)
         if equity < equity_floor:
             eq_sev = Severity.VIOLATION
         elif equity < initial:
@@ -469,14 +492,63 @@ class PropRuleEngine:
     # Internal helpers
     # ═════════════════════════════════════════════
     @staticmethod
-    def _group_daily_pnl(trades: List[Trade]) -> Dict[str, float]:
+    def _group_daily_pnl(
+        trades: List[Trade], day_boundary_offset_minutes: int = 0
+    ) -> Dict[str, float]:
+        """گروه‌بندی PnL روزانه با مرز روز مشخص (فاز ۴۷.۲).
+
+        `day_boundary_offset_minutes` مرز روز را نسبت به UTC جابه‌جا می‌کند
+        (پیش‌فرض 0 = 00:00 UTC مطابق تصمیم D2 کاربر). زمان naive به‌عنوان UTC
+        تفسیر می‌شود.
+        """
+        from datetime import timedelta, timezone
+
         daily: Dict[str, float] = {}
         for t in trades:
             if not t.close_time:
                 continue
-            day_key = t.close_time.strftime("%Y-%m-%d")
+            dt = t.close_time
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            local = dt + timedelta(minutes=day_boundary_offset_minutes or 0)
+            day_key = local.date().isoformat()
             daily[day_key] = daily.get(day_key, 0.0) + metrics.net_pnl(t)
         return daily
+
+    @staticmethod
+    def _total_drawdown(
+        ordered_trades: List[Trade],
+        initial: float,
+        max_dd_limit: float,
+    ) -> Tuple[float, float, bool]:
+        """Static Drawdown — افت از **کف ثابت** (فاز 47a).
+
+        Args:
+            ordered_trades: فقط تریدهای بسته، مرتب‌شده به ترتیب زمانی.
+            initial: موجودی اولیه.
+            max_dd_limit: سقف DD (0 ⇒ تنظیم‌نشده ⇒ بدون نقض).
+
+        Returns:
+            `(total_dd, equity_floor, violated)`
+            - `equity_floor = initial − max_dd_limit`
+            - `total_dd     = max(0, initial − min_equity)`
+            - `violated     = min_equity < equity_floor`
+        """
+        equity = initial
+        min_equity = initial
+        for trade in ordered_trades:
+            equity += metrics.net_pnl(trade)
+            if equity < min_equity:
+                min_equity = equity
+
+        total_dd = max(0.0, initial - min_equity)
+        if max_dd_limit and max_dd_limit > 0:
+            equity_floor = initial - max_dd_limit
+            violated = min_equity < equity_floor
+        else:  # تنظیم‌نشده ⇒ بدون نقض (fail-closed در لایهٔ unconfigured)
+            equity_floor = initial
+            violated = False
+        return total_dd, equity_floor, violated
 
     @staticmethod
     def _calculate_max_drawdown(trades: List[Trade], initial: float) -> float:

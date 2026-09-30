@@ -146,13 +146,34 @@ def test_commission_affects_prop_decision(db_session):
 # سازگاری max_drawdown
 # ═════════════════════════════════════════════
 def test_max_drawdown_consistent(db_session):
+    """موتور (static) و تحلیل (trailing) هرکدام تعریف خودشان را رعایت می‌کنند."""
     stage, _ = _seed(db_session, stage_type=StageType.STAGE_1)
     trades = _stage_trades(db_session, stage.id)
 
-    engine_dd = PropRuleEngine.evaluate_stage(db_session, stage.id)["max_total_dd"]
-    expected_engine_dd = metrics.calculate_max_drawdown(trades, initial=stage.initial_balance)
-    assert engine_dd == pytest.approx(expected_engine_dd, abs=0.01)
+    res = PropRuleEngine.evaluate_stage(db_session, stage.id)
 
+    # فاز 47a: موتور DD «استاتیک» (افت از موجودی اولیه) را گزارش می‌کند
+    nets = [metrics.net_pnl(t) for t in trades]
+    curve = metrics.equity_curve(nets, stage.initial_balance)
+    expected_static_dd = max(0.0, stage.initial_balance - min(curve))
+    assert res["max_total_dd"] == pytest.approx(expected_static_dd, abs=0.01)
+
+    # AnalysisService همچنان افت از سقف (trailing) را گزارش می‌کند (متریک نمایشی)
     analysis_dd = AnalysisService(db_session).analyze_prop_stage(stage.id)["result"].max_dd
     expected_analysis_dd = metrics.calculate_max_drawdown(trades)
     assert analysis_dd == pytest.approx(expected_analysis_dd, abs=0.01)
+
+
+# ═════════════════════════════════════════════
+# فاز ۴۷.۲ — Total DD mode-aware (static)
+# ═════════════════════════════════════════════
+def test_max_total_dd_static(db_session):
+    """در حالت static، DD از موجودی اولیه سنجیده می‌شود (کف ثابت = initial − limit)."""
+    stage, _ = _seed(db_session, stage_type=StageType.STAGE_1)
+
+    res = PropRuleEngine.evaluate_stage(db_session, stage.id)
+
+    # این معاملات هرگز زیر موجودی اولیه نرفته‌اند ⇒ DD استاتیک صفر است
+    assert res["equity_floor"] == pytest.approx(9000.0)
+    assert res["max_total_dd"] == pytest.approx(0.0)
+    assert res["total_dd_violated"] is False
