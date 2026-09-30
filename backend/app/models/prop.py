@@ -175,6 +175,13 @@ class PropStage(Base):
     profit_share_percentage = Column(Float, nullable=True)
     total_withdrawn = Column(Float, default=0.0)
     current_profit = Column(Float, default=0.0)
+    # ── فاز ۴۷.۱: مدل DD و مرز روز ──
+    # dd_mode: static (کف ثابت initial − max_total_dd) | trailing (از peak)
+    dd_mode = Column(String(20), default="static", nullable=False, server_default="static")
+    # dd_basis: balance | equity (ترازنامه در برابر اکوییتی)
+    dd_basis = Column(String(20), default="balance", nullable=False, server_default="balance")
+    # مرز روز برای Daily DD (دقیقه نسبت به UTC؛ پیش‌فرض 0 = 00:00 UTC)
+    day_boundary_utc_offset = Column(Integer, default=0, nullable=False, server_default="0")
     failure_reason = Column(Enum(FailureReason), nullable=True)
     failure_details = Column(Text, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
