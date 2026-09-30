@@ -8,7 +8,6 @@
 """
 from datetime import datetime, timezone
 
-import pytest
 
 from app.models.prop import (
     PropFirm, PropAccount, PropStage, StageType, StageStatus,

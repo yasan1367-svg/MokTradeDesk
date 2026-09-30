@@ -9,7 +9,7 @@
 """
 from sqlalchemy import text
 
-from app.models.finance import AccountType, Currency, FinancialAccount
+from app.models.finance import AccountType, Currency
 from app.models.prop import CostType, PropAccount, PropAlert, PropCost
 
 
@@ -137,7 +137,7 @@ def test_prop_alert_is_read_is_boolean(db_session):
 
 def test_prop_alert_mark_read_flow(client, db_session):
     firm = client.post("/api/prop/firms", json={"name": "FTMO"}).json()
-    acc = client.post("/api/prop/accounts", json={
+    _ = client.post("/api/prop/accounts", json={
         "prop_firm_id": firm["id"], "account_label": "A1",
     }).json()
     stage_id = client.get("/api/prop/stages/all").json()[0]["id"]

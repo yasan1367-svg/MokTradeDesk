@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session, selectinload, joinedload
 from sqlalchemy import func
-from typing import List, Optional
+from typing import Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
 import logging
@@ -10,11 +10,11 @@ from ..core.database import get_db
 from ..models.prop import (
     PropFirm, PropFirmDefaultRules, PropAccount, PropStage, PropWithdrawal, PropCost,
     PropAlert, StageType, StageStatus, FailureReason,
-    WithdrawalStatus, WITHDRAWAL_TRANSITIONS,
+    WITHDRAWAL_TRANSITIONS,
     CostType,
 )
 from ..models.finance import (
-    FinancialAccount, Category, CategoryType, Currency, FinancialTransaction, TransactionType
+    FinancialAccount, Category, CategoryType, Currency, TransactionType
 )
 from ..utils.enums import enum_value
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
@@ -1192,7 +1192,7 @@ def get_costs(account_id: int, db: Session = Depends(get_db)):
 @router.get("/analytics")
 def get_prop_analytics(db: Session = Depends(get_db)):
     """گزارش تحلیلی پراپ"""
-    from ..models.prop import PropStage, StageType, StageStatus, FailureReason
+    from ..models.prop import PropStage, StageType, StageStatus
 
     all_stages = db.query(PropStage).all()
 

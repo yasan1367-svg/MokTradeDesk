@@ -8,7 +8,6 @@ Domain: TRADING — حساب‌های معاملاتی شخصی (فاز ۲۸)
 قانون: `FinancialAccount` (models/finance.py) ≠ `TradingAccount` (این فایل).
 یک حساب معاملاتی «حساب مالی» نیست؛ موجودی آن برای تحلیل معاملات است، نه دفتر پول.
 """
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     Column, Integer, String, Float, DateTime, Text, Enum, ForeignKey, Boolean,

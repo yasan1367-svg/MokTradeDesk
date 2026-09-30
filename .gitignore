@@ -75,6 +75,8 @@ frontend/node_modules/
 *.pre8
 *.backup
 backups/
+# فاز ۴۱.۲: قاعدهٔ «*.pre*» فایل pre-commit را ignore می‌کرد ⇒ استثنا
+!backend/.pre-commit-config.yaml
 
 # ═════════════════════════════════════════════
 # IDE / Editor

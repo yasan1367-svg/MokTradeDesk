@@ -186,7 +186,7 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
 @router.get("/prop-accounts-list")
 def get_prop_accounts_for_ledger(db: Session = Depends(get_db)):
     """لیست اکانت‌های پراپ (برای انتخاب در دفتر کل)"""
-    from ..models.prop import PropAccount, PropFirm
+    from ..models.prop import PropAccount
     # selectinload: firm در یک کوئری (رفع N+1 — فاز ۱۵.۲)
     accounts = db.query(PropAccount).options(selectinload(PropAccount.firm)).all()
     result = []

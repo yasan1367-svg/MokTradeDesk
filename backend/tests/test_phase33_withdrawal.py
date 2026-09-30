@@ -9,11 +9,10 @@
 """
 from datetime import datetime, timezone
 
-import pytest
 
 from app.models.prop import (
     PropFirm, PropAccount, PropStage, StageType, StageStatus,
-    PropWithdrawal, WithdrawalStatus,
+    WithdrawalStatus,
 )
 from app.models.finance import FinancialAccount, AccountType, Currency, FinancialTransaction, TransactionType
 from app.models.strategy import Trade, TradeSource, TestType, Strategy, StrategyVersion

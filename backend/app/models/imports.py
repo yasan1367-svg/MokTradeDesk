@@ -16,7 +16,6 @@ Pipeline:
 2. Commit اتمیک است: خطای یک رکورد ⇒ هیچ رکوردی ذخیره نمی‌شود.
 """
 import enum
-from datetime import datetime, timezone
 
 from sqlalchemy import (
     Boolean, Column, DateTime, Enum, ForeignKey, Integer, JSON, String, Text,

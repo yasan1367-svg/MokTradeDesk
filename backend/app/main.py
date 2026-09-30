@@ -8,7 +8,6 @@ import logging
 import threading
 from datetime import datetime, timezone
 
-from .core.database import engine, Base
 from .core.rate_limit import limiter
 from .api import strategies, prop, personal, imports, analytics, trades, symbol_mappings, export, finance, broker, trading
 from .api import import_engine as import_engine_api

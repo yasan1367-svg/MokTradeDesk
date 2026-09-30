@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func, and_
+from sqlalchemy import func
 from typing import List, Optional
 from datetime import datetime, timezone
 from pydantic import BaseModel
@@ -8,9 +8,8 @@ import os
 import hashlib
 
 from ..core.database import get_db
-from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion, Strategy
+from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion
 from ..models.personal import Screenshot
-from ..models.prop import PropStage
 from ..utils.trade_metrics import calculate_r_multiple
 from ..utils.trade_validator import TradeValidator
 from ..utils.uploads import read_upload_limited

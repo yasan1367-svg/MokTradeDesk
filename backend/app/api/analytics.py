@@ -1,5 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session, joinedload
+from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
@@ -267,8 +267,6 @@ def get_dashboard_data(
     win_loss = {"wins": wins_n, "losses": losses_n}
 
     # ── فاز ۲۱: پول قابل خرج (از FinancialTransactionها) ──
-    from ..models.finance import FinancialAccount as FinAccount, AccountType, FinancialTransaction, TransactionType
-    from ..models.prop import PropStage as PS, StageType
 
     # ── فاز ۲۸: محاسبه بر پایهٔ حساب‌های معاملاتی شخصی (پل مالی حذف شد) ──
     from ..models.trading import PersonalTradingAccount
@@ -366,7 +364,6 @@ _WEEKDAYS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج�
 def get_yesterday_data(db: Session = Depends(get_db)):
     """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC)"""
     from ..models.strategy import Trade
-    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
     from .finance import _gregorian_to_jalali
 
     def _ensure_utc(dt):
@@ -449,7 +446,6 @@ def get_yesterday_data(db: Session = Depends(get_db)):
 def get_risk_metrics(db: Session = Depends(get_db)):
     """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی"""
     import math
-    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
 
     # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
@@ -555,7 +551,6 @@ def get_risk_advanced(
 ):
     """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...)"""
     import math
-    from ..models.finance import FinancialAccount as FinanceAccount, AccountType
 
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
@@ -725,7 +720,6 @@ def get_calendar_data(
     db: Session = Depends(get_db),
 ):
     """Get trades grouped by day for calendar view (supports Jalali year/month or Gregorian range)"""
-    now = datetime.now(timezone.utc)
     query = db.query(Trade).filter(
         Trade.close_time.isnot(None), Trade.is_deleted == False
     )
@@ -1024,9 +1018,10 @@ def compare_versions(request: VersionComparisonRequest, db: Session = Depends(ge
     """مقایسه‌ی چند نسخه و پیشنهاد بهترین"""
     try:
         service = AnalysisService(db)
-        service = AnalysisService(db)
         result = service.compare_versions(request.version_ids, min_trades=request.min_trades or 0)
         return result
+    except ValueError as e:
+        # فاز ۴۱.۳: نبود/کمبود نسخهٔ قابل‌مقایسه ⇒ 404 (قبلاً به‌اشتباه 500 می‌شد)
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"خطا در مقایسه: {str(e)}")

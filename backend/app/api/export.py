@@ -9,7 +9,7 @@ from sqlalchemy.orm import Session, joinedload
 
 from ..core.database import get_db
 from ..core.rate_limit import limiter, EXPORT_RATE_LIMIT
-from ..models.strategy import Trade, StrategyVersion, Strategy
+from ..models.strategy import Trade, StrategyVersion
 from ..services.analysis_service import AnalysisService
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
 from ..utils.trade_scope import analysis_trades_filter
@@ -210,7 +210,7 @@ def export_trades_pdf(
     """Export trades as PDF report"""
     from reportlab.lib.pagesizes import landscape, A4
     from reportlab.lib.units import inch
-    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
+    from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table
     from reportlab.lib.styles import getSampleStyleSheet
 
     query = db.query(Trade).options(joinedload(Trade.version).joinedload(StrategyVersion.strategy))

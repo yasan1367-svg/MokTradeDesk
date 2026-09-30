@@ -1,0 +1,20 @@
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = [
+    "F821",   # undefined name
+    "F401",   # unused import
+    "F841",   # unused variable
+]
+ignore = []
+
+[tool.ruff.lint.per-file-ignores]
+# فاز ۴۱.۲: importهای پکیج `app/api/__init__.py` برای ثبت routerها لازم‌اند
+# (re-export عمدی) ⇒ F401 نباید گزارش شود.
+"app/api/__init__.py" = ["F401"]
+# ⚠️ importهای مدل‌ها در `migrations/env.py` فقط برای side-effect ثبت آن‌ها در
+# `Base.metadata` هستند و برای `alembic revision --autogenerate` حیاتی‌اند.
+# حذف آن‌ها باعث می‌شود autogenerate همهٔ جدول‌ها را «حذف‌شده» ببیند ⇒ هرگز حذف نشوند.
+"migrations/env.py" = ["F401"]

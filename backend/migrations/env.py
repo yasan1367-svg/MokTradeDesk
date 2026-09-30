@@ -6,6 +6,9 @@ from alembic import context
 # ═════════════════════════════════════════════
 # Import Base و همه‌ی مدل‌ها
 # ═════════════════════════════════════════════
+# ⚠️ این importها «استفاده‌نشده» به‌نظر می‌رسند ولی عمدی‌اند: صرفاً برای
+# side-effect ثبت جدول‌ها در `Base.metadata` (لازم برای alembic autogenerate).
+# در `pyproject.toml` با per-file-ignores از F401 مستثنا شده‌اند — حذف نشوند.
 from app.core.database import Base
 
 # Strategy Models

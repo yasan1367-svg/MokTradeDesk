@@ -1,6 +1,5 @@
 import io
 import os
-from datetime import datetime, timezone
 
 import matplotlib
 matplotlib.use("Agg")  # non-interactive backend

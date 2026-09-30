@@ -18,7 +18,6 @@ from sqlalchemy.orm import Session
 from ..models.prop import (
     PropStage,
     PropWithdrawal,
-    StageType,
     WithdrawalStatus,
     WITHDRAWAL_TRANSITIONS,
 )
