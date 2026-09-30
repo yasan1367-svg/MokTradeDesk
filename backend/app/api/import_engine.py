@@ -24,7 +24,7 @@ from sqlalchemy.orm import Session
 
 from ..core.database import get_db
 from ..core.rate_limit import IMPORT_RATE_LIMIT, limiter
-from ..models.imports import ImportProfile, ImportSourceFormat, ImportStatus
+from ..models.imports import ImportBatch, ImportProfile, ImportSourceFormat, ImportStatus
 from ..models.trading import Broker
 from ..services import import_engine as engine_service
 from ..services.import_engine import (
@@ -444,6 +444,11 @@ def delete_import_profile(profile_id: int, db: Session = Depends(get_db)):
     profile = db.query(ImportProfile).filter(ImportProfile.id == profile_id).first()
     if not profile:
         raise HTTPException(status_code=404, detail="پروفایل ایمپورت پیدا نشد")
+    # فاز ۴۲.۸: اکنون FK روشن است؛ ارجاع ImportBatch به این پروفایل باید آزاد شود.
+    # تاریخچهٔ ایمپورت حذف نمی‌شود — فقط ارجاع پروفایل NULL می‌شود.
+    db.query(ImportBatch).filter(ImportBatch.profile_id == profile_id).update(
+        {ImportBatch.profile_id: None}, synchronize_session=False
+    )
     db.delete(profile)
     db.commit()
     return {"message": "پروفایل ایمپورت حذف شد"}

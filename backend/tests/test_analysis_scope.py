@@ -14,6 +14,7 @@ from app.models.strategy import (
     TestType, TradeSource,
 )
 from app.models.trading import Broker, PersonalTradingAccount
+from app.models.prop import PropAccount, PropFirm, PropStage, StageType
 from app.models.finance import Currency
 from app.services.analysis_service import AnalysisService
 from app.utils.trade_scope import analysis_trades_filter
@@ -307,16 +308,32 @@ def test_analysis_result_scope_key_is_unique(db_session):
     db_session.rollback()
 
 
+def _make_stage(db):
+    """یک PropStage واقعی می‌سازد (فاز ۴۲.۸: با FK روشن، id جعلی مجاز نیست)."""
+    firm = PropFirm(name="Firm-T")
+    db.add(firm)
+    db.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label="PA-T")
+    db.add(account)
+    db.flush()
+    stage = PropStage(prop_account_id=account.id, stage_type=StageType.STAGE_1)
+    db.add(stage)
+    db.commit()
+    db.refresh(stage)
+    return stage
+
+
 def test_analysis_result_allows_same_key_across_scopes(db_session):
     """کلید یکسان در دو scope مختلف مجاز است (مثلاً version_id=1 و prop_stage_id=1)"""
     _, v = _make_version(db_session)
+    stage = _make_stage(db_session)
 
     version_row = AnalysisResult(
         scope=AnalysisScope.VERSION, scope_key="1", version_id=v.id,
         total_trades=1, win_rate=100.0, net_pnl=10.0,
     )
     prop_row = AnalysisResult(
-        scope=AnalysisScope.PROP_STAGE, scope_key="1", prop_stage_id=1,
+        scope=AnalysisScope.PROP_STAGE, scope_key="1", prop_stage_id=stage.id,
         total_trades=2, win_rate=50.0, net_pnl=-5.0,
     )
     db_session.add_all([version_row, prop_row])

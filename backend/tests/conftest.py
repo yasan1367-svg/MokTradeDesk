@@ -21,7 +21,7 @@ from sqlalchemy.orm import sessionmaker  # noqa: E402
 from sqlalchemy.pool import StaticPool  # noqa: E402
 from fastapi.testclient import TestClient  # noqa: E402
 
-from app.core.database import Base, get_db  # noqa: E402
+from app.core.database import Base, enable_sqlite_pragmas, get_db  # noqa: E402
 from app.main import app  # noqa: E402  (همه‌ی مدل‌ها/روترها را لود می‌کند)
 
 # ═════════════════════════════════════════════
@@ -40,12 +40,17 @@ app.router.on_shutdown.clear()
 
 @pytest.fixture(scope="function")
 def db_session():
-    """دیتابیس درون‌حافظه‌ی SQLite برای هر تست"""
+    """دیتابیس درون‌حافظه‌ی SQLite برای هر تست.
+
+    فاز ۴۲.۸: PRAGMAهای فاز ۴۲ (foreign_keys=ON / busy_timeout) روی engine تستی
+    هم اعمال می‌شوند تا تست‌ها دقیقاً رفتار DB واقعی را بازتاب دهند.
+    """
     engine = create_engine(
         "sqlite://",
         connect_args={"check_same_thread": False},
         poolclass=StaticPool,
     )
+    enable_sqlite_pragmas(engine)
     Base.metadata.create_all(bind=engine)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     db = TestingSessionLocal()

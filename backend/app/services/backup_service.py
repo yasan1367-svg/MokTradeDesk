@@ -18,6 +18,7 @@ from ..core.config import settings
 BACKUP_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "backups"))
 CONFIG_PATH = os.path.join(BACKUP_DIR, ".backup_config.json")
 PREFIX = "trading_desk_"
+PREMIGRATE_PREFIX = "premigrate_"
 SUFFIX = ".db"
 
 DEFAULT_CONFIG = {
@@ -25,6 +26,12 @@ DEFAULT_CONFIG = {
     "interval_hours": 24,
     "keep": 30,
 }
+
+
+def is_premigrate(name: str) -> bool:
+    """آیا این Backup پیش از migration است؟ (هرگز خودکار حذف نمی‌شود)"""
+    return os.path.basename(name).startswith(f"{PREFIX}{PREMIGRATE_PREFIX}")
+
 
 
 def _db_path() -> str:
@@ -76,16 +83,24 @@ def safe_name(filename: str) -> str:
     return name
 
 
-def create_backup() -> dict:
-    """ساخت Backup جدید (آنلاین و ایمن) — نام: trading_desk_YYYYMMDD_HHMMSS.db"""
+def create_backup(prefix: str = "") -> dict:
+    """ساخت Backup جدید (آنلاین و ایمن) — نام: trading_desk_[<prefix>]YYYYMMDD_HHMMSS.db
+
+    ``prefix`` برای Backupهای خاص مثل ``premigrate_`` استفاده می‌شود.
+    """
     ensure_backup_dir()
     src = _db_path()
     if not os.path.exists(src):
         raise FileNotFoundError("فایل دیتابیس پیدا نشد")
 
     ts = datetime.now().strftime("%Y%m%d_%H%M%S")
-    name = f"{PREFIX}{ts}{SUFFIX}"
-    dest = os.path.join(BACKUP_DIR, name)
+    base = f"{PREFIX}{prefix}{ts}"
+    dest = os.path.join(BACKUP_DIR, f"{base}{SUFFIX}")
+    # جلوگیری از بازنویسی Backup قبلی در همان ثانیه
+    counter = 1
+    while os.path.exists(dest):
+        dest = os.path.join(BACKUP_DIR, f"{base}_{counter}{SUFFIX}")
+        counter += 1
 
     src_conn = sqlite3.connect(src)
     try:
@@ -99,10 +114,30 @@ def create_backup() -> dict:
 
     st = os.stat(dest)
     return {
-        "filename": name,
+        "filename": os.path.basename(dest),
         "size": st.st_size,
         "created_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(sep=" "),
     }
+
+
+def verify_backup(path: str, filename: str = "") -> bool:
+    """بررسی سلامت فایل Backup با ``PRAGMA integrity_check``.
+
+    فایل باید SQLite معتبر باشد و integrity_check مقدار ``ok`` برگرداند.
+    """
+    if not os.path.exists(path):
+        return False
+    conn = None
+    try:
+        conn = sqlite3.connect(path)
+        row = conn.execute("PRAGMA integrity_check").fetchone()
+    except sqlite3.Error:
+        return False
+    finally:
+        if conn is not None:
+            conn.close()
+    return bool(row) and str(row[0]).strip().lower() == "ok"
+
 
 
 def list_backups() -> list:
@@ -129,14 +164,22 @@ def list_backups() -> list:
 def restore_backup(filename: str) -> dict:
     """بازیابی از یک Backup.
 
-    مراحل ایمنی: (۱) یک Backup خودکار از وضعیت فعلی گرفته می‌شود،
-    (۲) اتصال‌های SQLAlchemy بسته می‌شوند، (۳) فایل دیتابیس جایگزین می‌شود.
+    مراحل ایمنی:
+    (۰) ``PRAGMA integrity_check`` روی فایل Backup — در صورت خرابی ValueError.
+    (۱) یک Backup خودکار از وضعیت فعلی گرفته می‌شود.
+    (۲) اتصال‌های SQLAlchemy بسته می‌شوند (``engine.dispose()``).
+    (۳) فایل‌های جانبی ``-wal``/``-shm`` حذف می‌شوند تا فایل جایگزین معتبر بماند.
+    (۴) فایل دیتابیس جایگزین می‌شود.
     """
     ensure_backup_dir()
     name = safe_name(filename)
     path = os.path.join(BACKUP_DIR, name)
     if not os.path.exists(path):
         raise FileNotFoundError("فایل Backup پیدا نشد")
+
+    # ۰) بررسی سلامت فایل Backup پیش از هر تغییری
+    if not verify_backup(path, name):
+        raise ValueError("فایل Backup سالم نیست (integrity_check ناموفق)")
 
     db_path = _db_path()
 
@@ -147,14 +190,25 @@ def restore_backup(filename: str) -> dict:
     from ..core.database import engine
     engine.dispose()
 
-    # ۳) جایگزینی فایل دیتابیس
+    # ۳) حذف فایل‌های جانبی WAL/SHM نسخهٔ فعلی
+    for side_suffix in ("-wal", "-shm"):
+        side = db_path + side_suffix
+        if os.path.exists(side):
+            try:
+                os.remove(side)
+            except OSError:
+                pass
+
+    # ۴) جایگزینی فایل دیتابیس
     shutil.copy2(path, db_path)
 
     return {
-        "message": "بازیابی با موفقیت انجام شد",
+        "message": "بازیابی با موفقیت انجام شد — برنامه را ری‌استارت کن",
         "restored_from": name,
         "safety_backup": safety["filename"],
+        "restart_required": True,
     }
+
 
 
 def delete_backup(filename: str) -> dict:
@@ -168,48 +222,123 @@ def delete_backup(filename: str) -> dict:
     return {"message": "Backup حذف شد", "filename": name}
 
 
-def cleanup_old_backups(keep: int = 30) -> dict:
-    """نگه‌داشتن فقط `keep` Backup جدید و حذف بقیه"""
-    items = list_backups()
+def cleanup_old_backups(keep: Optional[int] = None) -> dict:
+    """Rotation طبقه‌بندی‌شدهٔ Backupها (فاز ۴۲.۶).
+
+    - ۲۴ ساعت آخر  → یک Backup در هر ساعت (ساعتی)
+    - ۱ تا ۷ روز   → یک Backup در هر روز (روزانه)
+    - ۷ تا ۲۸ روز  → یک Backup در هر هفته (هفتگی)
+    - قدیمی‌تر از ۲۸ روز → حذف
+    - ``premigrate_*`` هرگز خودکار حذف نمی‌شود
+
+    اگر ``keep`` به‌صراحت داده شود، رفتار قدیمی (نگه‌داشتن فقط ``keep`` مورد
+    جدید) برای سازگاری عقب‌رو اعمال می‌شود.
+    """
+    ensure_backup_dir()
+
+    if keep is not None:
+        # رفتار قدیمی (سازگاری عقب‌رو): نگه‌داشتن فقط `keep` مورد جدید
+        items = list_backups()
+        removed = []
+        for item in items[keep:]:
+            if is_premigrate(item["filename"]):
+                continue
+            try:
+                os.remove(os.path.join(BACKUP_DIR, item["filename"]))
+                removed.append(item["filename"])
+            except OSError:
+                pass
+        return {"removed": removed, "removed_count": len(removed), "kept": min(len(items), keep)}
+
+    now = datetime.now(timezone.utc)
+    seen_buckets = set()
     removed = []
-    for item in items[keep:]:
+    kept = 0
+
+    for item in list_backups():  # جدیدترین اول
+        name = item["filename"]
+        if is_premigrate(name):
+            kept += 1
+            continue
+
         try:
-            os.remove(os.path.join(BACKUP_DIR, item["filename"]))
-            removed.append(item["filename"])
+            created = datetime.fromisoformat(item["created_at"])
+        except ValueError:
+            kept += 1
+            continue
+        if created.tzinfo is None:
+            created = created.replace(tzinfo=timezone.utc)
+
+        age = (now - created).total_seconds()
+        if age < 86400:  # ۲۴ ساعت
+            key = ("hour", created.strftime("%Y%m%d%H"))
+        elif age < 7 * 86400:  # ۷ روز
+            key = ("day", created.strftime("%Y%m%d"))
+        elif age < 28 * 86400:  # ۴ هفته
+            key = ("week", created.strftime("%Y%W"))
+        else:
+            key = None  # خیلی قدیمی → حذف
+
+        if key is not None and key not in seen_buckets:
+            seen_buckets.add(key)
+            kept += 1
+            continue
+
+        try:
+            os.remove(os.path.join(BACKUP_DIR, name))
+            removed.append(name)
         except OSError:
-            pass
-    return {"removed": removed, "removed_count": len(removed), "kept": min(len(items), keep)}
+            kept += 1
+
+    return {"removed": removed, "removed_count": len(removed), "kept": kept}
+
 
 
 # ═════════════════════════════════════════════
 # Backup خودکار
 # ═════════════════════════════════════════════
+def _last_backup_age_hours() -> Optional[float]:
+    """سن آخرین Backup غیر-premigrate به ساعت (None اگر Backupی نباشد)."""
+    items = [i for i in list_backups() if not is_premigrate(i["filename"])]
+    if not items:
+        return None
+    try:
+        last = datetime.fromisoformat(items[0]["created_at"])
+    except ValueError:
+        return None
+    if last.tzinfo is None:
+        last = last.replace(tzinfo=timezone.utc)
+    return (datetime.now(timezone.utc) - last).total_seconds() / 3600
+
+
+def should_backup(interval_hours: Optional[float] = None) -> bool:
+    """آیا با توجه به سن آخرین Backup باید Backup جدید ساخته شود؟ (فاز ۴۲.۵)
+
+    اگر آخرین Backup کمتر از ``interval_hours`` ساعت پیش ساخته شده باشد → False.
+    اگر هیچ Backupی وجود نداشته باشد → True.
+    """
+    if interval_hours is None:
+        interval_hours = float(load_config().get("interval_hours", 24))
+    age = _last_backup_age_hours()
+    if age is None:
+        return True
+    return age >= float(interval_hours)
+
+
 def should_auto_backup() -> bool:
     """آیا با توجه به تنظیمات و آخرین Backup، الان باید Backup خودکار ساخته شود؟"""
     cfg = load_config()
     if not cfg.get("auto_enabled"):
         return False
-
-    items = list_backups()
-    if not items:
-        return True
-
-    try:
-        last = datetime.fromisoformat(items[0]["created_at"])
-    except ValueError:
-        return True
-    if last.tzinfo is None:
-        last = last.replace(tzinfo=timezone.utc)
-
-    age_hours = (datetime.now(timezone.utc) - last).total_seconds() / 3600
-    return age_hours >= float(cfg.get("interval_hours", 24))
+    return should_backup(float(cfg.get("interval_hours", 24)))
 
 
 def run_auto_backup() -> Optional[dict]:
-    """اگر بازه سپری شده باشد، Backup می‌سازد و قدیمی‌ها را پاک می‌کند. در غیر این صورت None."""
+    """اگر بازه سپری شده باشد، Backup می‌سازد و Rotation طبقه‌بندی‌شده اعمال می‌کند."""
     if not should_auto_backup():
         return None
     info = create_backup()
-    cleanup_old_backups(keep=int(load_config().get("keep", 30)))
+    cleanup_old_backups()
     return info
+
 

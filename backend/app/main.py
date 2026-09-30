@@ -85,53 +85,82 @@ async def log_requests(request: Request, call_next):
     return response
 
 
+def _needs_migration(alembic_cfg, db_url: str) -> bool:
+    """آیا revision فعلی DB با head تفاوت دارد؟ (یعنی migration جدیدی هست) — فاز ۴۲.۴"""
+    from alembic.runtime.migration import MigrationContext
+    from alembic.script import ScriptDirectory
+    from sqlalchemy import create_engine
+
+    script = ScriptDirectory.from_config(alembic_cfg)
+    head = script.get_current_head()
+
+    engine = create_engine(db_url)
+    try:
+        with engine.connect() as conn:
+            current = MigrationContext.configure(conn).get_current_revision()
+    finally:
+        engine.dispose()
+    return current != head
+
+
 @app.on_event("startup")
 def startup():
     logger.info("🚀 MokTradeDesk API started")
 
+    from alembic.config import Config as AlembicConfig
+    from alembic import command as alembic_command
+    from .core.config import settings
+    from .services import backup_service as svc
+
     # ── فاز ۱۸: اطمینان از ساخت/به‌روزرسانی جداول دیتابیس ──
-    # اگر فایل DB حذف/خالی شود، جداول به‌صورت خودکار ساخته می‌شوند تا داشبورد ۵۰۰ ندهد.
+    base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+    alembic_cfg = AlembicConfig(os.path.join(base_dir, "alembic.ini"))
+    alembic_cfg.set_main_option("script_location", os.path.join(base_dir, "migrations"))
+    alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
+
+    # ── فاز ۴۲.۴: Snapshot پیش از migration (قبل از هر تغییر schema) ──
     try:
-        from alembic.config import Config as AlembicConfig
-        from alembic import command as alembic_command
-        from .core.config import settings
+        if _needs_migration(alembic_cfg, settings.DATABASE_URL):
+            svc.create_backup(prefix=svc.PREMIGRATE_PREFIX)
+            logger.info("💾 pre-migration backup created")
+    except Exception:
+        logger.exception("pre-migration backup failed")
 
-        base_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
-        alembic_cfg = AlembicConfig(os.path.join(base_dir, "alembic.ini"))
-        alembic_cfg.set_main_option(
-            "script_location", os.path.join(base_dir, "migrations")
-        )
-        alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
-
-        # alembic در env.py با fileConfig تنظیمات لاگ را بازنویسی می‌کند؛
-        # برای حفظ لاگ اپلیکیشن (فایل + کنسول)، هندلرها و سطح لاگ ذخیره/بازگردانی می‌شوند.
-        root = logging.getLogger()
-        saved_handlers = root.handlers[:]
-        saved_level = root.level
+    # alembic در env.py با fileConfig تنظیمات لاگ را بازنویسی می‌کند؛
+    # برای حفظ لاگ اپلیکیشن (فایل + کنسول)، هندلرها و سطح لاگ ذخیره/بازگردانی می‌شوند.
+    root = logging.getLogger()
+    saved_handlers = root.handlers[:]
+    saved_level = root.level
+    try:
         try:
             alembic_command.upgrade(alembic_cfg, "head")
         finally:
             root.handlers[:] = saved_handlers
             root.setLevel(saved_level)
-
-        logger.info("✅ Database migrations applied")
     except Exception:
-        logger.exception("migration check failed")
+        # فاز ۴۲.۳: خطای migration باید برنامه را متوقف کند تا روی schema قدیمی بالا نیاید.
+        logger.exception("❌ migration failed — startup aborted")
+        raise
 
-    # ── فاز ۱۷: Backup اولیه + شروع حلقهٔ Backup خودکار ──
+    logger.info("✅ Database migrations applied")
+
+    # ── فاز ۴۲.۵: Backup هوشمند — فقط اگر آخرین Backup قدیمی‌تر از interval باشد ──
     try:
-        from .services import backup_service as svc
-        svc.create_backup()
-        svc.cleanup_old_backups(keep=int(svc.load_config().get("keep", 30)))
-        logger.info("💾 initial backup created")
+        if svc.should_backup():
+            svc.create_backup()
+            svc.cleanup_old_backups()
+            logger.info("💾 backup created (interval elapsed)")
+        else:
+            logger.info("💾 backup skipped (recent backup exists)")
     except Exception:
-        logger.exception("initial backup failed")
+        logger.exception("backup failed")
 
     global _backup_thread
     if _backup_thread is None or not _backup_thread.is_alive():
         _backup_thread = threading.Thread(target=_backup_loop, name="auto-backup", daemon=True)
         _backup_thread.start()
         logger.info("⏱️ auto-backup loop started")
+
 
 @app.on_event("shutdown")
 def shutdown():
