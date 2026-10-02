@@ -48,6 +48,10 @@ export interface VersionComparisonItem {
   version_id: number;
   rank?: number;
   score?: number;
+  // فاز ۵۲ — وضعیت نمونه + هشدارها + اجزای امتیاز
+  sample_status?: string;
+  warnings?: string[];
+  components?: Record<string, number>;
   metrics?: Record<string, any>;
   reasons?: Reason[];
   error?: string;

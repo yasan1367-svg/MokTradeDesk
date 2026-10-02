@@ -200,6 +200,17 @@ export default function ComparisonPage() {
     return 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
   };
 
+  // فاز ۵۲ — رنگ نشان وضعیت نمونه
+  const sampleStatusClass = (status?: string) => {
+    if (status === 'کافی')
+      return 'bg-[var(--profit-soft)] text-[var(--profit)] border-[var(--profit-border)]';
+    if (status === 'ناکافی')
+      return 'bg-[var(--warning-soft)] text-[var(--warning-strong)] border-[var(--warning-border)]';
+    if (status === 'خیلی کم')
+      return 'bg-[var(--loss-soft)] text-[var(--loss)] border-[var(--loss-border)]';
+    return 'bg-[var(--bg-input)] text-[var(--text-secondary)] border-[var(--border-subtle)]';
+  };
+
   return (
     <div dir="rtl" className="p-7">
       {/* Header */}
@@ -418,7 +429,7 @@ export default function ComparisonPage() {
                 <table className="w-full text-sm">
                   <thead>
                     <tr className="bg-[var(--bg-elevated)]">
-                      {['رتبه', 'نسخه', 'Score', 'نرخ برد', 'فاکتور سود', 'سود خالص', 'حداکثر DD', 'دلایل'].map((h) => (
+                      {['رتبه', 'نسخه', 'Score', 'نرخ برد', 'فاکتور سود', 'سود خالص', 'حداکثر DD', 'وضعیت نمونه', 'دلایل'].map((h) => (
                         <th key={h} className="text-right py-4 px-4 text-[12px] text-[var(--text-secondary)] font-extrabold uppercase tracking-wider whitespace-nowrap">
                           {h}
                         </th>
@@ -441,7 +452,7 @@ export default function ComparisonPage() {
                             <div className="text-[11px] text-[var(--text-secondary)] mt-0.5">{strategyOf(item.version_id)}</div>
                           </td>
                           {item.error ? (
-                            <td colSpan={6} className="py-4 px-4 text-[12px] font-bold text-[var(--warning-strong)]">
+                            <td colSpan={7} className="py-4 px-4 text-[12px] font-bold text-[var(--warning-strong)]">
                               ⚠️ {item.error}
                             </td>
                           ) : (
@@ -460,6 +471,24 @@ export default function ComparisonPage() {
                               </td>
                               <td className="py-4 px-4 text-[13px] font-bold text-[var(--loss)]">
                                 -{(m.max_dd ?? 0).toFixed(0)} USDT
+                              </td>
+                              {/* فاز ۵۲ — وضعیت نمونه + هشدارها */}
+                              <td className="py-4 px-4">
+                                <div className="flex items-center gap-2">
+                                  <span
+                                    className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] font-extrabold whitespace-nowrap ${sampleStatusClass(item.sample_status)}`}
+                                  >
+                                    {item.sample_status ?? '—'}
+                                  </span>
+                                  {(item.warnings ?? []).length > 0 && (
+                                    <span
+                                      className="text-[var(--warning-strong)] text-[13px] cursor-help"
+                                      title={(item.warnings ?? []).join('\n')}
+                                    >
+                                      ⚠️
+                                    </span>
+                                  )}
+                                </div>
                               </td>
                               <td className="py-4 px-4">
                                 <div className="space-y-1">
@@ -546,6 +575,45 @@ export default function ComparisonPage() {
               >
                 ✕
               </button>
+            </div>
+            {/* فاز ۵۲ — وضعیت نمونه، هشدارها و اجزای امتیاز */}
+            <div className="mb-5">
+              <div className="flex items-center gap-2 mb-3">
+                <span
+                  className={`inline-flex items-center px-2.5 py-1 rounded-full border text-[11px] font-extrabold ${sampleStatusClass(drawerVersion.sample_status)}`}
+                >
+                  وضعیت نمونه: {drawerVersion.sample_status ?? '—'}
+                </span>
+              </div>
+              {(drawerVersion.warnings ?? []).length > 0 && (
+                <div className="space-y-2 mb-4">
+                  {(drawerVersion.warnings ?? []).map((w, i) => (
+                    <div
+                      key={i}
+                      className="flex items-center gap-2 bg-[var(--warning-soft)] border border-[var(--warning-border)] rounded-[12px] px-3 py-2 text-[12px] font-bold text-[var(--warning-strong)]"
+                    >
+                      <span>⚠️</span>
+                      <span>{w}</span>
+                    </div>
+                  ))}
+                </div>
+              )}
+              {drawerVersion.components && (
+                <div className="grid grid-cols-2 gap-2">
+                  {([
+                    ['Expectancy (R)', drawerVersion.components.expectancy_score],
+                    ['نرخ برد', drawerVersion.components.win_rate_score],
+                    ['فاکتور سود', drawerVersion.components.pf_score],
+                    ['Drawdown', drawerVersion.components.dd_score],
+                    ['جریمهٔ نمونه', drawerVersion.components.sample_penalty],
+                  ] as const).map(([label, value]) => (
+                    <div key={label} className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] px-3 py-2">
+                      <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-0.5">{label}</div>
+                      <div className="text-[13px] font-extrabold text-[var(--text-primary)]">{value ?? '—'}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
             <div className="space-y-3">
               {(drawerVersion.reasons ?? []).map((r, i) => (

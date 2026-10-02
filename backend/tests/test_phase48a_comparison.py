@@ -114,7 +114,10 @@ def test_compare_score_calculation(client, db_session):
 
     body = _cmp(client, [v1, v2])
     item = _item(body, v1)
-    assert item["score"] == calculate_version_score(item["metrics"])
+    assert item["score"] == calculate_version_score(item["metrics"])["score"]
+    assert "sample_status" in item
+    assert "warnings" in item
+    assert "components" in item
 
 
 def test_compare_reasons(client, db_session):

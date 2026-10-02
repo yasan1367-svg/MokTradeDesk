@@ -145,10 +145,14 @@ def compare_versions(
         else:
             metrics_d = _extract_metrics(analysis)
 
+        score_result = calculate_version_score(metrics_d)
         results.append({
             "version_id": vid,
             "metrics": metrics_d,
-            "score": calculate_version_score(metrics_d),
+            "score": score_result["score"],
+            "sample_status": score_result["sample_status"],
+            "warnings": score_result["warnings"],
+            "components": score_result["components"],
         })
 
     # مرتب‌سازی بر پایهٔ Score (نسخه‌های تحلیل‌نشده با امتیاز ۰ در انتها)
