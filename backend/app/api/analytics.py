@@ -103,6 +103,80 @@ def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Opti
 
 
 # ═════════════════════════════════════════════
+# فاز ۵۳.۲ — ابزارهای ریسک
+#   · Sharpe/Sortino روی بازده **روزانه** و **بدون سالانه‌سازی**
+#   · سرمایهٔ مبنا بر اساس scope
+# ═════════════════════════════════════════════
+ASSUMED_BALANCE = 10000.0   # سرمایهٔ فرضی وقتی مبنای واقعی قابل تعیین نیست
+
+
+def _daily_returns(closed) -> list:
+    """بازده **دورهای روزانه**: جمع net_pnl معاملاتِ هر روزِ بسته‌شدن.
+
+    ورودی: لیست دیکشنری‌هایی با کلیدهای `close_time` و `net`.
+    خروجی: لیست اعداد (به ترتیب تاریخ).
+
+    چرا؟ چون Sharpe/Sortino استاندارد روی بازده **دوره‌ای** تعریف می‌شوند؛
+    ضریب سالانه‌سازی √252 فقط برای دادهٔ روزانه و سال کامل معتبر است.
+    """
+    daily: dict = {}
+    for c in closed:
+        ct = c.get("close_time")
+        if ct is None:
+            continue
+        day = ct.date()
+        daily[day] = daily.get(day, 0.0) + float(c.get("net", 0.0) or 0.0)
+    return [daily[d] for d in sorted(daily)]
+
+
+def _sharpe_sortino(series) -> tuple:
+    """Sharpe و Sortino روی یک سری بازده دوره‌ای — **بدون سالانه‌سازی** (فاز ۵۳.۲).
+
+    sharpe  = mean / (std of whole series)
+    sortino = mean / (downside deviation)
+    """
+    n = len(series)
+    if n < 2:
+        return 0.0, 0.0
+    mean = sum(series) / n
+    std = (sum((x - mean) ** 2 for x in series) / n) ** 0.5
+    sharpe = (mean / std) if std > 0 else 0.0
+    neg = [x for x in series if x < 0]
+    if not neg:
+        return sharpe, 0.0
+    ddev = (sum(x ** 2 for x in neg) / n) ** 0.5
+    sortino = (mean / ddev) if ddev > 0 else 0.0
+    return sharpe, sortino
+
+
+def _scope_avg_balance(db, scope: str, account_ids) -> float:
+    """سرمایهٔ مبنای محاسبات ریسک بر اساس scope (فاز ۵۳.۲).
+
+    - `backtest`/`forward` → سرمایهٔ فرضی (حساب واقعی ندارد).
+    - `real`              → میانگین موجودیِ حساب‌های شخصیِ **ارجاع‌شده در همان دامنه**
+                            (در نبودشان → سرمایهٔ فرضی؛ `0` گمراه‌کننده است چون
+                            `risk_of_ruin` را ۱۰۰٪ نشان می‌دهد).
+    - `all`               → میانگین همهٔ حساب‌ها (fallback: فرضی).
+    """
+    if scope in ("backtest", "forward"):
+        return ASSUMED_BALANCE
+    if scope == "real":
+        ids = [i for i in (account_ids or []) if i is not None]
+        if not ids:
+            return ASSUMED_BALANCE
+        avg = (
+            db.query(func.avg(PersonalTradingAccount.current_balance))
+            .filter(PersonalTradingAccount.id.in_(ids))
+            .scalar()
+        )
+        return float(avg) if avg else ASSUMED_BALANCE
+    accts = db.query(PersonalTradingAccount).all()
+    if not accts:
+        return ASSUMED_BALANCE
+    return sum(a.current_balance or 0 for a in accts) / len(accts)
+
+
+# ═════════════════════════════════════════════
 # تحلیل
 # ═════════════════════════════════════════════
 @router.post("/analyze/{version_id}")
@@ -487,28 +561,31 @@ def get_risk_metrics(
     scope: str = Query("real", description="real | backtest | forward | all"),
     db: Session = Depends(get_db),
 ):
-    """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی · فاز ۴۴.۱: scope"""
-    import math
-
+    """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی · فاز ۴۴.۱: scope · فاز ۵۳.۲: بازده روزانه + مبنای scope"""
     sc = normalize_scope(scope)
 
     # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
     _rows = (
         _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None), Trade.is_deleted == False), sc)
-        .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple, Trade.sl, Trade.open_price)
+        .with_entities(
+            Trade.close_time, _net.label("net"), Trade.r_multiple,
+            Trade.sl, Trade.open_price, Trade.personal_trading_account_id,
+        )
         .order_by(Trade.id.asc())
         .all()
     )
     closed_trades = []
-    for _ct, _n, _r, _sl, _op in _rows:
+    account_ids = set()
+    for _ct, _n, _r, _sl, _op, _aid in _rows:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
         closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r, "sl": _sl, "open_price": _op})
+        if _aid is not None:
+            account_ids.add(_aid)
     returns = [c["net"] for c in closed_trades]
-    from ..models.trading import PersonalTradingAccount as _PTA
-    _accts = db.query(_PTA).all()
-    avg_b = sum(a.current_balance or 0 for a in _accts) / len(_accts) if _accts else 10000
+    # فاز ۵۳.۲: مبنای سرمایه بر اساس scope (نه همهٔ حساب‌ها)
+    avg_b = _scope_avg_balance(db, sc, account_ids)
     ps = []
     for rp in [1, 2, 3]:
         ra = avg_b * rp / 100
@@ -517,17 +594,9 @@ def get_risk_metrics(
         ss = ra / (asp / 100 * avg_b) if asp > 0 else 0
         ps.append({"risk_percent": rp, "risk_amount": round(ra, 2), "avg_sl_percent": round(asp, 2),
             "suggested_size": round(ss, 4), "suggested_lots": round(ss * 10, 2)})
-    ar = 0
-    if len(returns) > 1:
-        ar = sum(returns) / len(returns)
-        std = (sum((r - ar) ** 2 for r in returns) / len(returns)) ** 0.5
-        sharpe = (ar / std) * math.sqrt(252) if std > 0 else 0
-    else: sharpe = 0
-    neg = [r for r in returns if r < 0]
-    if len(returns) > 1 and neg:
-        ddev = (sum(r ** 2 for r in neg) / len(returns)) ** 0.5
-        sortino = (ar / ddev) * math.sqrt(252) if ddev > 0 else 0
-    else: sortino = 0
+    ar = (sum(returns) / len(returns)) if returns else 0   # میانگین هر معامله (مبنای expectancy)
+    # فاز ۵۳.۲: Sharpe/Sortino روی بازده **روزانه** و **بدون** سالانه‌سازی (√252 حذف شد)
+    sharpe, sortino = _sharpe_sortino(_daily_returns(closed_trades))
     wins = [r for r in returns if r > 0]; losses = [r for r in returns if r < 0]
     wr = len(wins) / len(returns) if returns else 0
     aw = sum(wins) / len(wins) if wins else 0
@@ -596,27 +665,31 @@ def get_risk_advanced(
     currency: Currency = Query(Currency.USDT),
     db: Session = Depends(get_db),
 ):
-    """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...) — فاز ۴۴.۱: scope"""
-    import math
-
+    """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...) — فاز ۴۴.۱: scope · فاز ۵۳.۲: بازده روزانه + مبنای scope"""
     sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
 
-    # فاز ۱۵.۳: فیلتر بازه در SQL + واکشی فقط ۳ ستون (بدون لود ORM)
+    # فاز ۱۵.۳: فیلتر بازه در SQL + واکشی فقط ستون‌های لازم (بدون لود ORM)
     _net = _net_expr()
     _rows = (
         _scope_filter(db.query(Trade), df_bound, dt_bound, sc, currency)
         .filter(Trade.close_time.isnot(None))
-        .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple)
+        .with_entities(
+            Trade.close_time, _net.label("net"), Trade.r_multiple,
+            Trade.personal_trading_account_id,
+        )
         .order_by(Trade.close_time.asc(), Trade.id.asc())
         .all()
     )
     closed = []
-    for _ct, _n, _r in _rows:
+    account_ids = set()
+    for _ct, _n, _r, _aid in _rows:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
         closed.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r})
+        if _aid is not None:
+            account_ids.add(_aid)
 
     returns = [c["net"] for c in closed]
     total = len(returns)
@@ -631,16 +704,8 @@ def get_risk_advanced(
     net = sum(returns)
     mean_ret = (net / total) if total else 0.0
 
-    # ── Sharpe / Sortino ──
-    sharpe = 0.0
-    sortino = 0.0
-    if total > 1:
-        std = (sum((r - mean_ret) ** 2 for r in returns) / total) ** 0.5
-        sharpe = (mean_ret / std) * math.sqrt(252) if std > 0 else 0.0
-        neg = [r for r in returns if r < 0]
-        if neg:
-            ddev = (sum(r ** 2 for r in neg) / total) ** 0.5
-            sortino = (mean_ret / ddev) * math.sqrt(252) if ddev > 0 else 0.0
+    # ── Sharpe / Sortino (فاز ۵۳.۲: بازده روزانه، بدون سالانه‌سازی) ──
+    sharpe, sortino = _sharpe_sortino(_daily_returns(closed))
 
     # ── Equity / Drawdown / Ulcer ──
     equity = 0.0
@@ -708,10 +773,8 @@ def get_risk_advanced(
     # ── Kelly Criterion ──
     kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
 
-    # ── Risk of Ruin ──
-    from ..models.trading import PersonalTradingAccount as _PTA
-    _accts = db.query(_PTA).all()
-    avg_b = (sum(a.current_balance or 0 for a in _accts) / len(_accts)) if _accts else 10000.0
+    # ── Risk of Ruin (فاز ۵۳.۲: مبنای سرمایه بر اساس scope، نه همهٔ حساب‌ها) ──
+    avg_b = _scope_avg_balance(db, sc, account_ids)
     if wr > 0 and rr > 0:
         p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1.0
         units = (avg_b / avg_loss) if avg_loss > 0 else 100.0
