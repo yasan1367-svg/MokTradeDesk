@@ -7,7 +7,7 @@ from math import sqrt
 from datetime import date
 
 from ..core.database import get_db
-from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus, TestType
+from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus, TestType, AnalysisResult
 from ..utils.enums import enum_value
 from ..utils.trade_scope import analysis_trades_filter
 from ..utils.date_range import filter_by_range
@@ -123,11 +123,60 @@ def update_strategy(strategy_id: int, data: StrategyUpdate, db: Session = Depend
     return {"message": "استراتژی به‌روزرسانی شد"}
 
 
+def _check_strategy_deletable(db: Session, strategy_id: int):
+    """شمارش وابستگی‌های یک استراتژی برای گارد حذف امن (فاز ۵۳.۱).
+
+    برمی‌گرداند `(trade_count, analysis_count)`:
+    - `trade_count`: معاملاتِ حذف‌نشده‌ی همهٔ نسخه‌های استراتژی.
+    - `analysis_count`: نتایج تحلیل ذخیره‌شده‌ی همهٔ نسخه‌های استراتژی.
+    """
+    trade_count = (
+        db.query(Trade)
+        .join(StrategyVersion, Trade.version_id == StrategyVersion.id)
+        .filter(
+            StrategyVersion.strategy_id == strategy_id,
+            Trade.is_deleted == False,
+        )
+        .count()
+    )
+    analysis_count = (
+        db.query(AnalysisResult)
+        .join(StrategyVersion, AnalysisResult.version_id == StrategyVersion.id)
+        .filter(StrategyVersion.strategy_id == strategy_id)
+        .count()
+    )
+    return trade_count, analysis_count
+
+
 @router.delete("/{strategy_id}")
 def delete_strategy(strategy_id: int, db: Session = Depends(get_db)):
+    """حذف استراتژی — فاز ۵۳.۱: گارد از دست رفتن داده.
+
+    اگر استراتژی معامله یا تحلیل داشته باشد، حذف نمی‌شود (۴۰۹) تا cascade
+    به‌طور خاموش، معاملات/تحلیل‌ها را پاک نکند.
+    """
     strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not strategy:
         raise HTTPException(status_code=404, detail="استراتژی پیدا نشد")
+
+    trade_count, analysis_count = _check_strategy_deletable(db, strategy_id)
+    if trade_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"این استراتژی {trade_count} معامله دارد و قابل حذف نیست. "
+                "ابتدا معاملات آن را حذف کنید."
+            ),
+        )
+    if analysis_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=(
+                f"این استراتژی {analysis_count} تحلیل ذخیره‌شده دارد و قابل حذف نیست. "
+                "ابتدا تحلیل‌ها را پاک کنید."
+            ),
+        )
+
     db.delete(strategy)
     db.commit()
     return {"message": "استراتژی حذف شد"}

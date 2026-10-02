@@ -885,8 +885,19 @@ def get_analysis_personal_account(personal_trading_account_id: int, db: Session 
     return _analysis_response(result)
 
 
+def _as_naive(dt):
+    """حذف `tzinfo` برای مقایسهٔ ایمن بین datetime آگاه و ناوابسته (SQLite).
+
+    مقادیر در DB معمولاً UTC هستند؛ پس حذف tzinfo امن است و از خطای
+    «can't compare offset-naive and offset-aware datetimes» جلوگیری می‌کند.
+    """
+    if dt is None:
+        return None
+    return dt.replace(tzinfo=None) if getattr(dt, "tzinfo", None) is not None else dt
+
+
 def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, personal_trading_account_id=None, test_type=None):
-    """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type)"""
+    """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type؛ فاز ۵۳.۱: updated_at)."""
     from ..models.strategy import Trade
     q = db.query(Trade)
     # فاز ۲۵: حذف‌شده‌ها در گارد سازگاری شمرده نمی‌شوند
@@ -911,6 +922,16 @@ def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, personal_
         raise HTTPException(404, detail=f"هیچ معامله‌ای برای {scope_label} یافت نشد.")
     if result.total_trades != count:
         raise HTTPException(404, detail=f"تحلیل کهنه است ({result.total_trades} در برابر {count} معامله). دوباره تحلیل کنید.")
+
+    # فاز ۵۳.۱: تحلیل کهنه بر پایهٔ آخرین ویرایش معاملات (نه فقط تعداد).
+    # اگر سود/حدضرر/زمان معامله‌ای پس از ثبت تحلیل تغییر کرده باشد، تحلیل کهنه است.
+    max_updated = q.with_entities(func.max(Trade.updated_at)).scalar()
+    if max_updated is not None and result.created_at is not None:
+        if _as_naive(result.created_at) < _as_naive(max_updated):
+            raise HTTPException(
+                404,
+                detail="تحلیل کهنه است (معاملات پس از تحلیل ویرایش شده‌اند). دوباره تحلیل کنید.",
+            )
 
 
 def _analysis_response(result):
@@ -1019,6 +1040,17 @@ def get_analysis(
                    f"در برابر {analyzable_trades} معامله‌ی قابل‌تحلیل فعلی). "
                    f"دوباره «تحلیل مجدد» را بزنید.",
         )
+
+    # فاز ۵۳.۱: تحلیل کهنه بر پایهٔ آخرین ویرایش معاملات (نه فقط تعداد).
+    # اگر سود/حدضرر/زمان معامله‌ای پس از ثبت تحلیل تغییر کرده باشد، تحلیل کهنه است.
+    max_updated = count_q.with_entities(func.max(Trade.updated_at)).scalar()
+    if max_updated is not None and result.created_at is not None:
+        if _as_naive(result.created_at) < _as_naive(max_updated):
+            raise HTTPException(
+                status_code=404,
+                detail="تحلیل ذخیره‌شده کهنه است (معاملات پس از تحلیل ویرایش شده‌اند). "
+                       "دوباره «تحلیل مجدد» را بزنید.",
+            )
 
     return {
         "version_id": result.version_id,

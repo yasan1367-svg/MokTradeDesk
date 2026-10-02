@@ -285,7 +285,7 @@ export default function StrategyPage() {
   };
 
   const handleDeleteStrategy = async (strategy: Strategy) => {
-    if (!confirm(`آیا مطمئنید که می‌خواهید «${strategy.name}» را حذف کنید؟\nتمام نسخه‌های آن نیز حذف می‌شوند.`)) return;
+    if (!confirm(`آیا مطمئنید که می‌خواهید «${strategy.name}» را حذف کنید؟\nاگر این استراتژی معامله یا تحلیل داشته باشد، حذف نمی‌شود.`)) return;
     try {
       await deleteStrategy(strategy.id);
       setSuccessMessage('استراتژی حذف شد');

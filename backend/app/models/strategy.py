@@ -164,6 +164,17 @@ class Trade(Base):
     raw_data = Column(JSON, nullable=True)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
+    # ── فاز ۵۳.۱: زمان آخرین ویرایش (مبنای تشخیص «تحلیل کهنه») ──
+    # با هر UPDATE دوباره ست می‌شود (ویرایش/حذف نرم/بازگردانی) تا تحلیل قدیمی
+    # حتی وقتی تعداد معاملات تغییر نکند، کهنه شناخته شود. NULL برای رکوردهای
+    # قدیمیِ قبل از مهاجرت مجاز است.
+    updated_at = Column(
+        DateTime(timezone=True),
+        default=lambda: datetime.now(timezone.utc),
+        onupdate=lambda: datetime.now(timezone.utc),
+        nullable=True,
+    )
+
     # ── Soft Delete (فاز ۲۵) ──
     # حذف نرم: معامله از لیست‌ها پنهان می‌شود ولی داده‌اش حفظ می‌گردد.
     is_deleted = Column(Boolean, default=False, nullable=False, server_default="0", index=True)
