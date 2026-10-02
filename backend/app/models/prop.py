@@ -83,7 +83,7 @@ class WithdrawalStatus(str, enum.Enum):
         REQUESTED → APPROVED → PROCESSING → RECEIVED
         (و هر مرحله‌ی غیرنهایی می‌تواند → CANCELLED شود)
 
-    **قانون مالی:** درآمد (FinancialTransaction) فقط در نقطه‌ی RECEIVED ثبت می‌شود.
+    **قانون مالی:** در نقطه‌ی RECEIVED موجودی مقصد ثبت می‌شود؛ فقط مقصد بانکی درآمد است.
     """
     REQUESTED = "requested"
     APPROVED = "approved"
@@ -146,7 +146,7 @@ class PropAccount(Base):
     account_label = Column(String, nullable=False)
     account_number = Column(String, nullable=True)
     # فاز ۳۸: String → Enum(Currency) (NAME='USD'/'IRR' ⇒ سازگار با دادهٔ قدیمی)
-    currency = Column(Enum(Currency), default=Currency.USD)
+    currency = Column(Enum(Currency), default=Currency.USDT)
     is_active = Column(Integer, default=1)
     # فاز ۴۶.۱: اختلاف ساعت سرور پراپ با UTC (دقیقه).
     server_utc_offset_minutes = Column(Integer, default=0, nullable=False, server_default="0")
@@ -204,7 +204,7 @@ class PropWithdrawal(Base):
     amount = Column(Float, nullable=False)
 
     # ── فاز ۳۳ ──
-    currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
+    currency = Column(Enum(Currency), nullable=False, default=Currency.USDT)
     withdrawal_date = Column(
         DateTime(timezone=True),
         nullable=False,
@@ -241,7 +241,7 @@ class PropCost(Base):
     )
     amount = Column(Float, nullable=False)
     # فاز ۳۸: String → Enum(Currency)
-    currency = Column(Enum(Currency), default=Currency.USD)
+    currency = Column(Enum(Currency), default=Currency.USDT)
     cost_date = Column(DateTime, default=lambda: datetime.now(timezone.utc))
     description = Column(Text, nullable=True)
     is_refunded = Column(Integer, default=0)

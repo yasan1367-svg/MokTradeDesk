@@ -12,6 +12,8 @@ interface AccountFormProps {
     balance: number;
     card_number?: string;
   };
+  allowedTypes?: string[];
+  defaultType?: string;
   onSave: (data: Record<string, any>) => Promise<void>;
   onCancel: () => void;
 }
@@ -26,14 +28,19 @@ const ACCOUNT_TYPES = [
 ];
 
 const CURRENCIES = [
-  { value: 'USD', label: 'USD 🇺🇸' },
+  { value: 'USDT', label: 'USDT' },
   { value: 'IRR', label: 'IRR 🇮🇷' },
 ];
 
-export default function AccountForm({ mode, initialData, onSave, onCancel }: AccountFormProps) {
+export default function AccountForm({
+  mode, initialData, allowedTypes, defaultType, onSave, onCancel,
+}: AccountFormProps) {
   const [name, setName] = useState('');
-  const [type, setType] = useState('bank');
-  const [currency, setCurrency] = useState('USD');
+  const [type, setType] = useState(defaultType || 'bank');
+  const [currency, setCurrency] = useState('USDT');
+  const currencyOptions = ['trust_wallet', 'crypto_wallet'].includes(type)
+    ? CURRENCIES.filter((item) => item.value === 'USDT')
+    : CURRENCIES;
   const [balance, setBalance] = useState('0');
   const [cardNumber, setCardNumber] = useState('');
   // فاز ۳۸.۳ — فیلدهای بی‌اثر `broker_name` / `prop_firm_name` / `prop_firm_id` حذف شدند
@@ -44,7 +51,11 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
     if (mode === 'edit' && initialData) {
       setName(initialData.name);
       setType(initialData.type);
-      setCurrency(initialData.currency);
+      setCurrency(
+        ['trust_wallet', 'crypto_wallet'].includes(initialData.type)
+          ? 'USDT'
+          : initialData.currency,
+      );
       setBalance(String(initialData.balance));
       setCardNumber(initialData.card_number || '');
     }
@@ -62,8 +73,8 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
         card_number: cardNumber || null,
       });
       setName('');
-      setType('bank');
-      setCurrency('USD');
+      setType(defaultType || 'bank');
+      setCurrency('USDT');
       setBalance('0');
       setCardNumber('');
     } finally {
@@ -76,7 +87,9 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <span className="text-2xl">{mode === 'create' ? '🆕' : '✏️'}</span>
           <h3 className="text-base font-extrabold text-[var(--text-primary)]">
-            {mode === 'create' ? 'حساب مالی جدید' : 'ویرایش حساب'}
+            {mode === 'create'
+              ? allowedTypes ? 'کیف‌پول یا حساب صرافی جدید' : 'حساب مالی جدید'
+              : allowedTypes ? 'ویرایش کیف‌پول یا حساب صرافی' : 'ویرایش حساب'}
           </h3>
         </div>
 
@@ -97,10 +110,14 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
             <label className="text-[var(--text-secondary)] text-xs block mb-1">نوع حساب *</label>
             <select
               value={type}
-              onChange={(e) => setType(e.target.value)}
+              onChange={(e) => {
+                const nextType = e.target.value;
+                setType(nextType);
+                if (['trust_wallet', 'crypto_wallet'].includes(nextType)) setCurrency('USDT');
+              }}
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
             >
-              {ACCOUNT_TYPES.map((t) => (
+              {ACCOUNT_TYPES.filter((t) => !allowedTypes || allowedTypes.includes(t.value)).map((t) => (
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
@@ -114,7 +131,7 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
               onChange={(e) => setCurrency(e.target.value)}
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
             >
-              {CURRENCIES.map((c) => (
+              {currencyOptions.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
@@ -159,7 +176,9 @@ export default function AccountForm({ mode, initialData, onSave, onCancel }: Acc
             loadingText="در حال ذخیره..."
             className="px-7"
           >
-            {mode === 'create' ? '💾 ایجاد حساب' : '💾 ذخیره تغییرات'}
+            {mode === 'create'
+              ? allowedTypes ? '💾 ایجاد کیف‌پول/صرافی' : '💾 ایجاد حساب'
+              : '💾 ذخیره تغییرات'}
           </LoadingButton>
         </div>
       </div>

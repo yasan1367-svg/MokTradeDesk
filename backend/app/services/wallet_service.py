@@ -27,6 +27,7 @@
 from __future__ import annotations
 
 import logging
+import math
 from datetime import datetime, timezone
 from typing import Dict, Iterable, List, Optional
 
@@ -135,6 +136,8 @@ def _normalize_amount(
     if raw is None:
         raise WalletError("مبلغ تراکنش الزامی است")
     value = float(raw)
+    if not math.isfinite(value):
+        raise WalletError("مبلغ تراکنش باید عددی محدود باشد")
     if tx_type == TransactionType.ADJUSTMENT:
         if value == 0:
             raise WalletError("مبلغ اصلاح نمی‌تواند صفر باشد")
@@ -250,6 +253,28 @@ class WalletService:
         """
         return _normalize_amount(_as_type(tx_type), amount, signed_amount)
 
+    @staticmethod
+    def validate_accounts(db: Session, tx: FinancialTransaction) -> None:
+        if tx.type is None or tx.currency is None:
+            raise WalletError("نوع تراکنش و ارز الزامی هستند")
+        account_ids = [tx.account_id]
+        if tx.type == TransactionType.TRANSFER:
+            if tx.from_account_id is not None and tx.to_account_id is not None:
+                if tx.from_account_id == tx.to_account_id:
+                    raise WalletError("حساب مبدأ و مقصد باید متفاوت باشند")
+                if tx.account_id != tx.to_account_id:
+                    raise WalletError("حساب انتقال باید همان حساب مقصد باشد")
+                account_ids.extend([tx.from_account_id, tx.to_account_id])
+            elif tx.from_account_id is not None or tx.to_account_id is not None:
+                raise WalletError("برای انتقال، حساب مبدأ و مقصد را با هم مشخص کن")
+        accounts = _load_accounts(db, account_ids)
+        for account_id in account_ids:
+            account = accounts.get(account_id)
+            if account is None:
+                raise WalletError("حساب مالی پیدا نشد")
+            if account.currency != tx.currency:
+                raise WalletError("ارز تراکنش و تمام حساب‌های مرتبط باید یکسان باشد")
+
     # ── ثبت تراکنش ──
     @staticmethod
     def post(
@@ -327,8 +352,22 @@ class WalletService:
                 dst_acc = present[to_account_id]
                 if src_acc.currency != dst_acc.currency and not allow_cross_currency:
                     raise WalletError(
-                        "انتقال بین حساب‌های با ارز متفاوت مجاز نیست (از convert استفاده کن)"
+                        "ارز حساب‌های مبدأ و مقصد باید یکسان باشد؛ انتقال هر ارز را جداگانه ثبت کن"
                     )
+                if (
+                    target_currency is not None
+                    and src_acc.currency is not None
+                    and target_currency != src_acc.currency
+                ):
+                    raise WalletError("ارز تراکنش باید با ارز حساب‌های مبدأ و مقصد یکسان باشد")
+            elif account_id in present:
+                account_obj = present[account_id]
+                if (
+                    target_currency is not None
+                    and account_obj.currency is not None
+                    and target_currency != account_obj.currency
+                ):
+                    raise WalletError("ارز تراکنش باید با ارز حساب یکسان باشد")
         else:
             account_obj = present[account_id]
             if (
@@ -345,7 +384,7 @@ class WalletService:
             account_id=account_id,
             category_id=category_id,
             amount=value,
-            currency=_to_currency(currency),
+            currency=target_currency or present[account_id].currency,
             date=date or datetime.now(timezone.utc),
             description=description,
             type=tx_type,

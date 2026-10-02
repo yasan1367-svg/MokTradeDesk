@@ -44,7 +44,7 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
             fontSize: '12px',
           }}
           formatter={(value: any) => [
-            metric === 'win_rate' ? `${value}%` : metric === 'net_pnl' ? `${value} $` : value,
+            metric === 'win_rate' ? `${value}%` : metric === 'net_pnl' ? `${value} USDT ` : value,
             metric === 'win_rate' ? 'نرخ برد' : metric === 'net_pnl' ? 'سود خالص' : 'معاملات',
           ]}
         />

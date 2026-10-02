@@ -294,7 +294,7 @@ export default function AnalysisPage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5 mb-6">
             <MetricCard
               label="💰 سود خالص"
-              value={`${analysis.net_pnl >= 0 ? '+' : ''}${analysis.net_pnl} $`}
+              value={`${analysis.net_pnl >= 0 ? '+' : ''}${analysis.net_pnl} USDT `}
               sub={`از ${analysis.total_trades} معامله`}
               color={analysis.net_pnl >= 0 ? 'profit' : 'loss'}
               icon="💰"
@@ -314,7 +314,7 @@ export default function AnalysisPage() {
             />
             <MetricCard
               label="⚠️ حداکثر ضرر"
-              value={`-${analysis.max_dd} $`}
+              value={`-${analysis.max_dd} USDT `}
               sub="کمترین نقطه‌ی منحنی"
               color="loss"
               icon="⚠️"
@@ -332,7 +332,7 @@ export default function AnalysisPage() {
             />
             <MetricCard
               label="📐 اکسپکتنسی"
-              value={`${analysis.expectancy} $`}
+              value={`${analysis.expectancy} USDT `}
               sub={analysis.expectancy_r !== null && analysis.expectancy_r !== undefined ? `${analysis.expectancy_r} R به‌ازای هر معامله` : 'به‌ازای هر معامله'}
               color={analysis.expectancy >= 0 ? 'profit' : 'loss'}
               icon="📐"
@@ -362,7 +362,7 @@ export default function AnalysisPage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
                 <div>
                   <div className="text-[var(--text-secondary)] text-xs mb-1">انحراف معیار سود معاملات</div>
-                  <div className="font-bold text-[var(--text-primary)]">{analysis.consistency_analysis.pnl_std_dev} $</div>
+                  <div className="font-bold text-[var(--text-primary)]">{analysis.consistency_analysis.pnl_std_dev} USDT </div>
                 </div>
                 <div>
                   <div className="text-[var(--text-secondary)] text-xs mb-1">وابستگی به معاملات بزرگ</div>
@@ -497,7 +497,7 @@ export default function AnalysisPage() {
                         <td className="py-2 text-[var(--text-primary)]">{t.open_price?.toFixed(2)}</td>
                         <td className="py-2 text-[var(--text-primary)]">{t.close_price?.toFixed(2)}</td>
                         <td className={`py-2 font-bold ${t.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} $
+                          {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} USDT
                         </td>
                         <td className="py-2 text-[var(--text-secondary)] text-xs">
                           {t.close_time ? new Date(t.close_time).toLocaleString('fa-IR') : '-'}

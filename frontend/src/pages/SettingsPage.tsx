@@ -141,9 +141,8 @@ export default function SettingsPage() {
               onChange={(e) => setSettings({ ...settings, currency: e.target.value })}
               className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none cursor-pointer"
             >
-              <option value="USD">USD - دلار</option>
-              <option value="EUR">EUR - یورو</option>
-              <option value="GBP">GBP - پوند</option>
+              <option value="USDT">USDT</option>
+              <option value="IRR">IRR - ریال</option>
             </select>
           </div>
 

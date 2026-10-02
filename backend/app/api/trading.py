@@ -10,7 +10,7 @@ from typing import Optional
 from pydantic import BaseModel
 
 from ..core.database import get_db
-from ..models.trading import Broker, PersonalTradingAccount
+from ..models.trading import Broker, BrokerCashMovement, PersonalTradingAccount
 from ..models.finance import Currency
 
 router = APIRouter()
@@ -37,7 +37,7 @@ class PersonalTradingAccountCreate(BaseModel):
     broker_id: int
     account_number: str
     account_label: Optional[str] = None
-    currency: Currency = Currency.USD
+    currency: Currency = Currency.USDT
     initial_balance: float = 0.0
     current_balance: Optional[float] = None  # اگر None باشد = initial_balance
     is_active: bool = True
@@ -114,6 +114,11 @@ def delete_broker(broker_id: int, db: Session = Depends(get_db)):
     broker = db.query(Broker).filter(Broker.id == broker_id).first()
     if not broker:
         raise HTTPException(status_code=404, detail="بروکر پیدا نشد")
+    account_ids = [row.id for row in broker.accounts]
+    if account_ids and db.query(BrokerCashMovement.id).filter(
+        BrokerCashMovement.personal_trading_account_id.in_(account_ids)
+    ).first():
+        raise HTTPException(status_code=400, detail="برای این بروکر گردش مالی ثبت شده؛ ابتدا تاریخچهٔ گردش‌ها را حذف کن")
     db.delete(broker)
     db.commit()
     return {"message": "بروکر حذف شد"}
@@ -163,6 +168,11 @@ def update_account(account_id: int, data: PersonalTradingAccountUpdate, db: Sess
         broker = db.query(Broker).filter(Broker.id == payload["broker_id"]).first()
         if not broker:
             raise HTTPException(status_code=404, detail="بروکر پیدا نشد")
+    if payload.get("currency") is not None and payload["currency"] != account.currency:
+        if db.query(BrokerCashMovement.id).filter(
+            BrokerCashMovement.personal_trading_account_id == account.id
+        ).first():
+            raise HTTPException(status_code=400, detail="ارز حسابی که گردش مالی دارد قابل تغییر نیست")
     for field, value in payload.items():
         setattr(account, field, value)
     db.commit()
@@ -175,6 +185,10 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     account = db.query(PersonalTradingAccount).filter(PersonalTradingAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب معاملاتی پیدا نشد")
+    if db.query(BrokerCashMovement.id).filter(
+        BrokerCashMovement.personal_trading_account_id == account.id
+    ).first():
+        raise HTTPException(status_code=400, detail="برای این حساب گردش مالی ثبت شده؛ ابتدا تاریخچهٔ گردش‌ها را حذف کن")
     db.delete(account)
     db.commit()
     return {"message": "حساب معاملاتی حذف شد"}

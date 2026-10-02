@@ -12,45 +12,59 @@ from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models.prop import PropStage, StageType
+from ..models.finance import Currency
 from ..models.strategy import TestType, Trade
-from ..models.trading import PersonalTradingAccount
+from ..models.trading import BrokerCashMovement, PersonalTradingAccount
 from . import metrics
 
 DEFAULT_PROFIT_SHARE = 80.0
 
 
-def broker_balance(db: Session) -> float:
+def broker_balance(db: Session, currency: Currency = Currency.USDT) -> float:
     """مجموع موجودی فعلی حساب‌های معاملاتی شخصی (شامل سود تحقق‌یافته)."""
     return float(
-        db.query(func.coalesce(func.sum(PersonalTradingAccount.current_balance), 0.0)).scalar() or 0.0
+        db.query(func.coalesce(func.sum(PersonalTradingAccount.current_balance), 0.0))
+        .filter(PersonalTradingAccount.currency == currency).scalar() or 0.0
     )
 
 
-def broker_pnl(db: Session) -> float:
-    """سود بروکر = Σ (موجودی فعلی − موجودی اولیه)."""
+def broker_pnl(db: Session, currency: Currency = Currency.USDT) -> float:
+    """سود بروکر به‌علاوه برداشت‌های قبلی و منهای واریزهای بعدی."""
     row = db.query(
         func.coalesce(func.sum(PersonalTradingAccount.current_balance), 0.0),
         func.coalesce(func.sum(PersonalTradingAccount.initial_balance), 0.0),
-    ).one()
-    return float(row[0] or 0.0) - float(row[1] or 0.0)
+    ).filter(PersonalTradingAccount.currency == currency).one()
+    withdrawals = db.query(func.coalesce(func.sum(BrokerCashMovement.amount), 0.0)).filter(
+        BrokerCashMovement.currency == currency,
+        BrokerCashMovement.direction == "withdrawal_from_broker",
+    ).scalar() or 0.0
+    deposits = db.query(func.coalesce(func.sum(BrokerCashMovement.amount), 0.0)).filter(
+        BrokerCashMovement.currency == currency,
+        BrokerCashMovement.direction == "deposit_to_broker",
+    ).scalar() or 0.0
+    return float(row[0] or 0.0) - float(row[1] or 0.0) + float(withdrawals) - float(deposits)
 
 
-def initial_capital(db: Session) -> float:
+def initial_capital(db: Session, currency: Currency = Currency.USDT) -> float:
     """سرمایهٔ اولیهٔ حساب‌های معاملاتی شخصی."""
     return float(
-        db.query(func.coalesce(func.sum(PersonalTradingAccount.initial_balance), 0.0)).scalar() or 0.0
+        db.query(func.coalesce(func.sum(PersonalTradingAccount.initial_balance), 0.0))
+        .filter(PersonalTradingAccount.currency == currency).scalar() or 0.0
     )
 
 
-def funded_pnl(db: Session) -> float:
-    """سود خالص مراحل رییل پراپ (REAL_PROP روی FUNDED_REAL) — فاز ۴۳: net_pnl."""
+def funded_pnl(db: Session, currency: Currency = Currency.USDT) -> float:
+    """سود مراحل پراپ فاندشده، به ارز انتخاب‌شده."""
+    from ..models.prop import PropAccount
     val = (
         db.query(func.coalesce(func.sum(metrics.net_pnl_sql()), 0.0))
         .select_from(Trade)
         .join(PropStage, Trade.prop_stage_id == PropStage.id)
+        .join(PropAccount, PropStage.prop_account_id == PropAccount.id)
         .filter(
             Trade.test_type == TestType.REAL_PROP,
             PropStage.stage_type == StageType.FUNDED_REAL,
+            PropAccount.currency == currency,
             Trade.is_deleted == False,
         )
         .scalar()

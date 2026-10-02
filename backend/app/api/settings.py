@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
-from typing import Optional
+from typing import Literal, Optional
 from pydantic import BaseModel
 
 from ..core.database import get_db
@@ -13,7 +13,7 @@ class SettingsUpdate(BaseModel):
     theme: Optional[str] = None
     font_size: Optional[int] = None
     timezone: Optional[str] = None
-    currency: Optional[str] = None
+    currency: Optional[Literal["IRR", "USDT"]] = None
     calendar: Optional[str] = None
     default_risk_percent: Optional[int] = None
     default_profit_share: Optional[int] = None

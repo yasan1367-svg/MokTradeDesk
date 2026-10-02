@@ -31,7 +31,15 @@ class AccountType(str, enum.Enum):
 
 class Currency(str, enum.Enum):
     IRR = "IRR"
-    USD = "USD"
+    USDT = "USDT"
+    # Compatibility alias for old local API callers; all stored/output values are USDT.
+    USD = "USDT"
+
+    @classmethod
+    def _missing_(cls, value):
+        if isinstance(value, str) and value.strip().upper() == "USD":
+            return cls.USDT
+        return None
 
 
 class CategoryType(str, enum.Enum):
@@ -71,7 +79,7 @@ class FinancialAccount(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, nullable=False)
     type = Column(Enum(AccountType), nullable=False)
-    currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
+    currency = Column(Enum(Currency), nullable=False, default=Currency.USDT)
     balance = Column(Float, default=0.0)
     card_number = Column(String, nullable=True)
     # فاز ۴۵.۳: حذف نرم حساب — حساب‌های آرشیوشده از لیست‌ها پنهان می‌شوند
@@ -128,7 +136,7 @@ class FinancialTransaction(Base):
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     amount = Column(Float, nullable=False)
-    currency = Column(Enum(Currency), nullable=False, default=Currency.USD)
+    currency = Column(Enum(Currency), nullable=False, default=Currency.USDT)
     date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     description = Column(Text, nullable=True)
     type = Column(Enum(TransactionType), nullable=False, index=True)

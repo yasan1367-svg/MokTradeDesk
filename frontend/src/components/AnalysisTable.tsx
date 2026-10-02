@@ -48,7 +48,7 @@ export default function AnalysisTable({ title, icon, data, firstColumnLabel }: A
                 <td className="py-2 text-[var(--loss)]">{value.losses}</td>
                 <td className="py-2 text-[var(--text-primary)]">{value.win_rate}٪</td>
                 <td className={`py-2 font-bold ${value.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {value.net_pnl >= 0 ? '+' : ''}{value.net_pnl} $
+                  {value.net_pnl >= 0 ? '+' : ''}{value.net_pnl} USDT
                 </td>
                 <td className="py-2 text-[var(--accent)]">{value.profit_factor}</td>
               </tr>

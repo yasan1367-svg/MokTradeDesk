@@ -90,11 +90,11 @@ def generate_reasons(
 
     reasons: List[Dict[str, str]] = []
     if (metrics.get("net_pnl") or 0) > (best_metrics.get("net_pnl") or 0):
-        reasons.append({"icon": "💰", "text": f"سود خالص بیشتر (+{metrics['net_pnl']}$)"})
+        reasons.append({"icon": "💰", "text": f"سود خالص بیشتر (+{metrics['net_pnl']}USDT )"})
     if (metrics.get("win_rate") or 0) > (best_metrics.get("win_rate") or 0):
         reasons.append({"icon": "✅", "text": f"نرخ برد بالاتر ({metrics['win_rate']}٪)"})
     if (metrics.get("max_dd") or 0) < (best_metrics.get("max_dd") or 0):
-        reasons.append({"icon": "🛡️", "text": f"افت سرمایه کمتر (-{metrics['max_dd']}$)"})
+        reasons.append({"icon": "🛡️", "text": f"افت سرمایه کمتر (-{metrics['max_dd']}USDT )"})
     if (metrics.get("profit_factor") or 0) > (best_metrics.get("profit_factor") or 0):
         reasons.append({"icon": "🏆", "text": f"فاکتور سود بالاتر ({metrics['profit_factor']})"})
     if not reasons:

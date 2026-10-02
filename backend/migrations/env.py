@@ -55,6 +55,7 @@ from app.models.finance import (
 from app.models.trading import (
     Broker,
     PersonalTradingAccount,
+    BrokerCashMovement,
 )
 
 # Import Models (فاز ۳۰/۳۱)

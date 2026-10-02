@@ -128,9 +128,9 @@ export default function RiskManagementPage() {
           </div>
           <div className="space-y-3">
             <RiskRow label="حداکثر ضرر متوالی" value={`${risk_metrics.max_consecutive_losses} مرتبه`} status={risk_metrics.max_consecutive_losses > 5 ? 'danger' : risk_metrics.max_consecutive_losses > 3 ? 'warning' : 'safe'} />
-            <RiskRow label="عمق Drawdown" value={`$${risk_metrics.max_drawdown_depth.toFixed(2)}`} status={risk_metrics.max_drawdown_depth > 2000 ? 'danger' : risk_metrics.max_drawdown_depth > 1000 ? 'warning' : 'safe'} />
+            <RiskRow label="عمق Drawdown" value={`USDT ${risk_metrics.max_drawdown_depth.toFixed(2)}`} status={risk_metrics.max_drawdown_depth > 2000 ? 'danger' : risk_metrics.max_drawdown_depth > 1000 ? 'warning' : 'safe'} />
             <RiskRow label="مدت Drawdown" value={`${risk_metrics.max_drawdown_duration} معامله`} status={risk_metrics.max_drawdown_duration > 10 ? 'danger' : risk_metrics.max_drawdown_duration > 5 ? 'warning' : 'safe'} />
-            <RiskRow label="Exposure باز" value={`$${risk_metrics.open_exposure.toFixed(2)} (${risk_metrics.open_risk_percent.toFixed(1)}٪)`} status={risk_metrics.open_risk_percent > 20 ? 'danger' : risk_metrics.open_risk_percent > 10 ? 'warning' : 'safe'} />
+            <RiskRow label="Exposure باز" value={`USDT ${risk_metrics.open_exposure.toFixed(2)} (${risk_metrics.open_risk_percent.toFixed(1)}٪)`} status={risk_metrics.open_risk_percent > 20 ? 'danger' : risk_metrics.open_risk_percent > 10 ? 'warning' : 'safe'} />
           </div>
         </div>
       </div>
@@ -149,9 +149,9 @@ export default function RiskManagementPage() {
           <PerfItem label="Profit Factor" value={performance_ratios.profit_factor} color={performance_ratios.profit_factor >= 1.5 ? 'text-[var(--profit)]' : performance_ratios.profit_factor >= 1 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="Avg R-Multiple" value={performance_ratios.avg_r_multiple} color={performance_ratios.avg_r_multiple >= 1 ? 'text-[var(--profit)]' : performance_ratios.avg_r_multiple > 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="R:R Ratio" value={performance_ratios.rr_ratio} color={performance_ratios.rr_ratio >= 2 ? 'text-[var(--profit)]' : 'text-[var(--warning)]'} />
-          <PerfItem label="Avg Win" value={`$${performance_ratios.avg_win}`} color="text-[var(--profit)]" />
-          <PerfItem label="Avg Loss" value={`$${performance_ratios.avg_loss}`} color="text-[var(--loss)]" />
-          <PerfItem label="Expectancy" value={`$${performance_ratios.expectancy}`} color={performance_ratios.expectancy > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
+          <PerfItem label="Avg Win" value={`USDT ${performance_ratios.avg_win}`} color="text-[var(--profit)]" />
+          <PerfItem label="Avg Loss" value={`USDT ${performance_ratios.avg_loss}`} color="text-[var(--loss)]" />
+          <PerfItem label="Expectancy" value={`USDT ${performance_ratios.expectancy}`} color={performance_ratios.expectancy > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
           <PerfItem label="Expectancy (R)" value={performance_ratios.expectancy_r} color={performance_ratios.expectancy_r > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
         </div>
       </div>

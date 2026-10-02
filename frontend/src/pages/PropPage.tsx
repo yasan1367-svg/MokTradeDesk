@@ -348,7 +348,7 @@ await passStageWithRules(
                  setModalError(err.response?.data?.detail || 'خطا در پاس کردن');
     }
   };
-   
+
   const handleOpenFailModal = (stage: Stage) => {
     setFailingStage(stage);
     setFailReason('max_daily_dd_exceeded');
@@ -642,7 +642,7 @@ await passStageWithRules(
 
                     <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-5">
             <div>
-              <label className="text-[12px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه ($)</label>
+              <label className="text-[12px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه (USDT )</label>
               <input type="number" value={initialBalance} onChange={(e) => setInitialBalance(e.target.value)}
                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
             </div>
@@ -651,7 +651,7 @@ await passStageWithRules(
               <input type="number" step="0.1" value={profitTargetPercent} onChange={(e) => setProfitTargetPercent(e.target.value)}
                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
               <div className="text-[10px] text-[var(--profit)] font-bold mt-1">
-                = {((parseFloat(profitTargetPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+                = {((parseFloat(profitTargetPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} USDT
               </div>
             </div>
             <div>
@@ -659,7 +659,7 @@ await passStageWithRules(
               <input type="number" step="0.1" value={maxDailyDdPercent} onChange={(e) => setMaxDailyDdPercent(e.target.value)}
                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
               <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-                = {((parseFloat(maxDailyDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+                = {((parseFloat(maxDailyDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} USDT
               </div>
             </div>
             <div>
@@ -667,7 +667,7 @@ await passStageWithRules(
               <input type="number" step="0.1" value={maxTotalDdPercent} onChange={(e) => setMaxTotalDdPercent(e.target.value)}
                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
               <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-                = {((parseFloat(maxTotalDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} $
+                = {((parseFloat(maxTotalDdPercent) || 0) / 100 * (parseFloat(initialBalance) || 0)).toFixed(0)} USDT
               </div>
             </div>
             <div>
@@ -912,7 +912,7 @@ await passStageWithRules(
                                 onChange={(e) => setEditRules({ ...editRules, profit_target_percent: e.target.value })}
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
                               <div className="text-[10px] text-[var(--profit)] font-bold mt-1">
-                                = {((parseFloat(editRules.profit_target_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                                = {((parseFloat(editRules.profit_target_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} USDT
                               </div>
                             </div>
                             <div>
@@ -921,7 +921,7 @@ await passStageWithRules(
                                 onChange={(e) => setEditRules({ ...editRules, max_daily_dd_percent: e.target.value })}
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
                               <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-                                = {((parseFloat(editRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                                = {((parseFloat(editRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} USDT
                               </div>
                             </div>
                             <div>
@@ -930,7 +930,7 @@ await passStageWithRules(
                                 onChange={(e) => setEditRules({ ...editRules, max_total_dd_percent: e.target.value })}
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
                               <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-                                = {((parseFloat(editRules.max_total_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} $
+                                = {((parseFloat(editRules.max_total_dd_percent) || 0) / 100 * (parseFloat(editRules.initial_balance) || 0)).toFixed(0)} USDT
                               </div>
                             </div>
                             <div>
@@ -940,7 +940,7 @@ await passStageWithRules(
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
                             </div>
                             <div>
-                              <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه ($)</label>
+                              <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه (USDT )</label>
                               <input type="number" value={editRules.initial_balance}
                                 onChange={(e) => setEditRules({ ...editRules, initial_balance: e.target.value })}
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
@@ -1092,7 +1092,7 @@ await passStageWithRules(
                         </td>
                         <td className="px-4 py-3 text-[var(--text-primary)] font-semibold text-[13px]">{t.size}</td>
                         <td className={`px-4 py-3 font-extrabold text-[13px] ${t.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} $
+                          {t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} USDT
                         </td>
                         <td className="px-4 py-3 text-[var(--text-secondary)] text-[12px] font-medium">
                           {t.close_time ? new Date(t.close_time).toLocaleDateString('fa-IR') : '-'}
@@ -1145,7 +1145,7 @@ await passStageWithRules(
                   {passProgress.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] font-semibold">
-                  {passProgress.total_trades} معامله | سود فعلی: {passProgress.current_profit} $
+                  {passProgress.total_trades} معامله | سود فعلی: {passProgress.current_profit} USDT
                 </div>
               </div>
 
@@ -1154,7 +1154,7 @@ await passStageWithRules(
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[var(--text-primary)] font-bold">🎯 هدف سود</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.target_reached ? 'text-[var(--profit)]' : 'text-[var(--text-primary)]'}`}>
-                      {passProgress.current_profit} $ / {passProgress.profit_target} $
+                      {passProgress.current_profit} USDT  / {passProgress.profit_target} USDT
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1167,7 +1167,7 @@ await passStageWithRules(
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[var(--text-primary)] font-bold">⚠️ DD روزانه</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.daily_dd_violated ? 'text-[var(--loss)]' : 'text-[var(--text-primary)]'}`}>
-                      {passProgress.max_daily_loss} $ / {passProgress.max_daily_dd_limit} $
+                      {passProgress.max_daily_loss} USDT  / {passProgress.max_daily_dd_limit} USDT
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1180,7 +1180,7 @@ await passStageWithRules(
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[var(--text-primary)] font-bold">📉 DD کلی</span>
                     <span className={`font-extrabold text-[14px] ${passProgress.total_dd_violated ? 'text-[var(--loss)]' : 'text-[var(--text-primary)]'}`}>
-                      {passProgress.max_total_dd} $ / {passProgress.max_total_dd_limit} $
+                      {passProgress.max_total_dd} USDT  / {passProgress.max_total_dd_limit} USDT
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1207,7 +1207,7 @@ await passStageWithRules(
     onChange={(e) => setNextStageRules({ ...nextStageRules, profit_target_percent: e.target.value })}
     className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
   <div className="text-[10px] text-[var(--profit)] font-bold mt-1">
-    = {((parseFloat(nextStageRules.profit_target_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+    = {((parseFloat(nextStageRules.profit_target_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} USDT
   </div>
 </div>
 <div>
@@ -1216,7 +1216,7 @@ await passStageWithRules(
     onChange={(e) => setNextStageRules({ ...nextStageRules, max_daily_dd_percent: e.target.value })}
     className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
   <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-    = {((parseFloat(nextStageRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+    = {((parseFloat(nextStageRules.max_daily_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} USDT
   </div>
 </div>
 <div>
@@ -1225,7 +1225,7 @@ await passStageWithRules(
     onChange={(e) => setNextStageRules({ ...nextStageRules, max_total_dd_percent: e.target.value })}
     className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
   <div className="text-[10px] text-[var(--loss)] font-bold mt-1">
-    = {((parseFloat(nextStageRules.max_total_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} $
+    = {((parseFloat(nextStageRules.max_total_dd_percent) || 0) / 100 * (parseFloat(nextStageRules.initial_balance) || 0)).toFixed(0)} USDT
   </div>
 </div>
                     <div>
@@ -1235,7 +1235,7 @@ await passStageWithRules(
                         className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
                     </div>
                     <div>
-                      <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه ($)</label>
+                      <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">موجودی اولیه (USDT )</label>
                       <input type="number" value={nextStageRules.initial_balance}
                         onChange={(e) => setNextStageRules({ ...nextStageRules, initial_balance: e.target.value })}
                         className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
@@ -1378,7 +1378,7 @@ await passStageWithRules(
                   {progressStage.status === 'active' && stageProgressData.suggested_status === 'failed_total_dd' && '❌ DD کلی نقض شده'}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] font-semibold">
-                  سود فعلی: <span className="text-[var(--profit)] font-extrabold">{stageProgressData.current_profit} $</span>
+                  سود فعلی: <span className="text-[var(--profit)] font-extrabold">{stageProgressData.current_profit} USDT </span>
                 </div>
               </div>
 
@@ -1387,7 +1387,7 @@ await passStageWithRules(
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[var(--text-primary)] font-bold">🎯 هدف سود</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.target_reached ? 'text-[var(--profit)]' : 'text-[var(--text-primary)]'}`}>
-                    {stageProgressData.current_profit} $ / {stageProgressData.profit_target} $
+                    {stageProgressData.current_profit} USDT  / {stageProgressData.profit_target} USDT
                   </span>
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1403,7 +1403,7 @@ await passStageWithRules(
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[var(--text-primary)] font-bold">⚠️ DD روزانه</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.daily_dd_violated ? 'text-[var(--loss)]' : 'text-[var(--text-primary)]'}`}>
-                    {stageProgressData.max_daily_loss} $ / {stageProgressData.max_daily_dd_limit} $
+                    {stageProgressData.max_daily_loss} USDT  / {stageProgressData.max_daily_dd_limit} USDT
                   </span>
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1419,7 +1419,7 @@ await passStageWithRules(
                 <div className="flex justify-between mb-2">
                   <span className="text-[13px] text-[var(--text-primary)] font-bold">📉 DD کلی</span>
                   <span className={`font-extrabold text-[14px] ${stageProgressData.total_dd_violated ? 'text-[var(--loss)]' : 'text-[var(--text-primary)]'}`}>
-                    {stageProgressData.max_total_dd} $ / {stageProgressData.max_total_dd_limit} $
+                    {stageProgressData.max_total_dd} USDT  / {stageProgressData.max_total_dd_limit} USDT
                   </span>
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
@@ -1468,7 +1468,7 @@ await passStageWithRules(
                   <h3 className="text-base font-extrabold text-[var(--text-primary)]">برداشت از پراپ</h3>
                   <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
                     {getStageTypeLabel(withdrawingStage.stage_type)} — سود فعلی:{' '}
-                    {withdrawingStage.current_profit?.toFixed(0)} $
+                    {withdrawingStage.current_profit?.toFixed(0)} USDT
                   </p>
                 </div>
               </div>

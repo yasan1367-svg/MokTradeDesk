@@ -158,11 +158,11 @@ class PropRuleEngine:
         # ── violations: نقض واقعی ──
         if daily_dd_violated:
             violations.append(
-                f"حد Daily DD نقض شده ({max_daily_loss:.2f}$ > {max_daily_dd_limit}$)"
+                f"حد Daily DD نقض شده ({max_daily_loss:.2f}USDT  > {max_daily_dd_limit}USDT )"
             )
         if total_dd_violated:
             violations.append(
-                f"حد Total DD نقض شده ({max_total_dd:.2f}$ > {max_total_dd_limit}$)"
+                f"حد Total DD نقض شده ({max_total_dd:.2f}USDT  > {max_total_dd_limit}USDT )"
             )
 
         # ── وضعیت پیشنهادی ──
@@ -312,8 +312,8 @@ class PropRuleEngine:
         withdrawable = evaluation.get("withdrawable_profit", 0.0)
         if amount > withdrawable:
             return False, (
-                f"مبلغ برداشت ({amount}$) بیشتر از سود قابل برداشت "
-                f"({withdrawable}$) است"
+                f"مبلغ برداشت ({amount}USDT ) بیشتر از سود قابل برداشت "
+                f"({withdrawable}USDT ) است"
             )
 
         return True, ""
@@ -413,13 +413,13 @@ class PropRuleEngine:
         add(
             RuleType.DAILY_DRAWDOWN, max_daily_loss, max_daily_dd_limit,
             PropRuleEngine._grade_loss(max_daily_loss, max_daily_dd_limit),
-            f"Daily DD: {max_daily_loss:.2f}$ از حد {max_daily_dd_limit:.2f}$",
+            f"Daily DD: {max_daily_loss:.2f}USDT  از حد {max_daily_dd_limit:.2f}USDT ",
         )
         # ۲) Max (Total) Drawdown
         add(
             RuleType.MAX_DRAWDOWN, max_total_dd, max_total_dd_limit,
             PropRuleEngine._grade_loss(max_total_dd, max_total_dd_limit),
-            f"Total DD: {max_total_dd:.2f}$ از حد {max_total_dd_limit:.2f}$",
+            f"Total DD: {max_total_dd:.2f}USDT  از حد {max_total_dd_limit:.2f}USDT ",
         )
         # ۳) Profit Target
         if profit_target > 0 and total_pnl >= profit_target:
@@ -430,7 +430,7 @@ class PropRuleEngine:
             tp_sev = Severity.PASS
         add(
             RuleType.PROFIT_TARGET, total_pnl, profit_target, tp_sev,
-            f"سود: {total_pnl:.2f}$ از هدف {profit_target:.2f}$",
+            f"سود: {total_pnl:.2f}USDT  از هدف {profit_target:.2f}USDT ",
         )
         # ۴) Min Trading Days
         add(
@@ -447,14 +447,14 @@ class PropRuleEngine:
             eq_sev = Severity.PASS
         add(
             RuleType.EQUITY_BALANCE, equity, equity_floor, eq_sev,
-            f"موجودی: {equity:.2f}$ (کف مجاز {equity_floor:.2f}$)",
+            f"موجودی: {equity:.2f}USDT  (کف مجاز {equity_floor:.2f}USDT )",
         )
         # ۶) Floating PnL (معاملات باز) — زیان شناور مثبت
         floating_loss = max(-floating_pnl, 0.0)
         add(
             RuleType.FLOATING_PNL, floating_loss, max_daily_dd_limit,
             PropRuleEngine._grade_loss(floating_loss, max_daily_dd_limit),
-            f"زیان شناور: {floating_loss:.2f}$ از حد {max_daily_dd_limit:.2f}$",
+            f"زیان شناور: {floating_loss:.2f}USDT  از حد {max_daily_dd_limit:.2f}USDT ",
         )
         # ۷) Stage Status — ارزیابی فقط روی مرحله فعال مجاز است
         is_active = stage.status == StageStatus.ACTIVE

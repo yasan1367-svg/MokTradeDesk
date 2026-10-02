@@ -14,9 +14,12 @@ from ..models.finance import (
     CategoryType,
     TransactionType,
 )
+from ..models.trading import BrokerCashMovement
+from ..models.prop import PropWithdrawal
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
 from ..services.wallet_service import WalletService, WalletError
-from ..services import metrics, finance_metrics
+from ..services.financial_reporting import bank_income_filter, is_bank_income
+from ..services import metrics
 from ..utils import jalali
 from ..utils.time_utils import to_tehran, TEHRAN
 from ..utils.date_range import filter_by_range
@@ -48,10 +51,17 @@ def _is_masked(value) -> bool:
 # ═════════════════════════════════════════════
 # Schemas
 # ═════════════════════════════════════════════
+
+
+def _validate_account_currency(account_type: AccountType, currency: Currency) -> None:
+    if account_type in (AccountType.TRUST_WALLET, AccountType.CRYPTO_WALLET) and currency != Currency.USDT:
+        raise HTTPException(status_code=400, detail="Digital wallets only support USDT")
+
+
 class AccountCreate(BaseModel):
     name: str
     type: AccountType
-    currency: Currency = Currency.USD
+    currency: Currency = Currency.USDT
     balance: float = 0.0
     card_number: Optional[str] = None
 
@@ -83,7 +93,7 @@ class TransactionCreate(BaseModel):
     account_id: int
     category_id: Optional[int] = None
     amount: float
-    currency: Currency = Currency.USD
+    currency: Currency = Currency.USDT
     date: Optional[datetime] = None
     description: Optional[str] = None
     type: TransactionType
@@ -106,22 +116,10 @@ class TransactionUpdate(BaseModel):
     related_prop_account_id: Optional[int] = None
 
 
-class ConvertRequest(BaseModel):
-    """فاز ۴۵.۵ — تبدیل ارز بین دو حساب با ارز متفاوت."""
-    from_account_id: int
-    to_account_id: int
-    amount: float
-    to_amount: Optional[float] = None
-    rate: Optional[float] = None
-    date: Optional[datetime] = None
-    description: Optional[str] = None
-
-
-# ── فاز ۱۵.۱۲: Schemas برداشت (Withdrawal) ──
 class WithdrawalCreate(BaseModel):
     account_id: int
     amount: float
-    currency: Currency = Currency.USD
+    currency: Currency = Currency.USDT
     date: Optional[datetime] = None
     description: Optional[str] = None
     category_id: Optional[int] = None
@@ -179,6 +177,7 @@ def create_account(account: AccountCreate, db: Session = Depends(get_db)):
     تا دفتر کل و موجودی هم‌یشه هم‌خوان بمانند (reconcile.delta == 0).
     """
     data = account.model_dump()
+    _validate_account_currency(data["type"], data["currency"])
     initial_balance = data.pop("balance", 0.0) or 0.0
     db_account = FinancialAccount(balance=0.0, **data)
     db.add(db_account)
@@ -219,6 +218,9 @@ def update_account(account_id: int, data: AccountUpdate, db: Session = Depends(g
         raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
 
     payload = data.model_dump(exclude_unset=True)
+    resulting_type = payload.get("type", account.type)
+    resulting_currency = payload.get("currency", account.currency)
+    _validate_account_currency(resulting_type, resulting_currency)
     new_currency = payload.get("currency")
     if new_currency and new_currency != account.currency:
         tx_count = (
@@ -448,6 +450,10 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
     )
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
+    if db.query(BrokerCashMovement.id).filter(BrokerCashMovement.transaction_id == tx.id).first():
+        raise HTTPException(status_code=400, detail="این تراکنش متعلق به گردش بروکر است؛ از تاریخچه گردش بروکر ویرایشش کن")
+    if db.query(PropWithdrawal.id).filter(PropWithdrawal.transaction_id == tx.id).first():
+        raise HTTPException(status_code=400, detail="این تراکنش متعلق به برداشت پراپ است؛ از فرم برداشت پراپ ویرایشش کن")
     try:
         # برگشت اثر مقدارهای قبلی (mutation بعدی اثر جدید را اعمال می‌کند)
         WalletService.apply_effects(db, tx, sign=-1)
@@ -460,8 +466,12 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
             if tx.from_account_id == tx.to_account_id:
                 raise WalletError("حساب مبدأ و مقصد نباید یکی باشد")
             tx.account_id = tx.to_account_id
+        elif tx.type != TransactionType.TRANSFER:
+            tx.from_account_id = None
+            tx.to_account_id = None
         # چک مبلغ جدید (وگرنه ویرایش به صفر، اثر قبلی را بی‌صدا حذف می‌کرد)
         WalletService.validate_amount(tx.type, tx.amount)
+        WalletService.validate_accounts(db, tx)
         WalletService.apply_effects(db, tx, sign=+1)
     except (WalletError, ValueError) as exc:
         db.rollback()
@@ -477,6 +487,10 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
     tx = db.query(FinancialTransaction).filter(FinancialTransaction.id == transaction_id).first()
     if not tx:
         raise HTTPException(status_code=404, detail="تراکنش پیدا نشد")
+    if db.query(BrokerCashMovement.id).filter(BrokerCashMovement.transaction_id == tx.id).first():
+        raise HTTPException(status_code=400, detail="این تراکنش متعلق به گردش بروکر است؛ از تاریخچه گردش بروکر حذفش کن")
+    if db.query(PropWithdrawal.id).filter(PropWithdrawal.transaction_id == tx.id).first():
+        raise HTTPException(status_code=400, detail="این تراکنش متعلق به برداشت پراپ است؛ از تاریخچه برداشت پراپ حذفش کن")
     try:
         WalletService.reverse(db, tx)
     except WalletError as exc:
@@ -484,67 +498,6 @@ def delete_transaction(transaction_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail=str(exc))
     return {"message": "تراکنش حذف شد"}
 
-
-@router.post("/wallets/convert")
-def convert_currency(data: ConvertRequest, db: Session = Depends(get_db)):
-    """تبدیل ارز بین دو حساب با ارز متفاوت (فاز ۴۵.۵).
-
-    دو تراکنش `ADJUSTMENT` ثبت می‌شود: خروج از مبدأ و ورود به مقصد. چون انواع
-    برداشت/واریز در گزارش‌های درآمد/هزینه شمرده می‌شوند، از `ADJUSTMENT` استفاده
-    می‌کنیم تا تبدیل ارز، سود/هزینهٔ کاذب نسازد. موجودی مبدأ دستی کنترل می‌شود.
-    """
-    src = db.get(FinancialAccount, data.from_account_id)
-    dst = db.get(FinancialAccount, data.to_account_id)
-    if not src or not dst:
-        raise HTTPException(status_code=404, detail="حساب مالی پیدا نشد")
-    if src.id == dst.id:
-        raise HTTPException(status_code=400, detail="حساب مبدأ و مقصد نباید یکی باشد")
-    if src.currency == dst.currency:
-        raise HTTPException(status_code=400, detail="ارز دو حساب یکسان است؛ از transfer استفاده کن")
-
-    amount = float(data.amount or 0)
-    if amount <= 0:
-        raise HTTPException(status_code=400, detail="مبلغ تبدیل باید بزرگ‌تر از صفر باشد")
-
-    if data.to_amount is not None:
-        to_amount = float(data.to_amount)
-    elif data.rate:
-        to_amount = amount * float(data.rate)
-    else:
-        raise HTTPException(status_code=400, detail="to_amount یا rate الزامی است")
-    if to_amount <= 0:
-        raise HTTPException(status_code=400, detail="مبلغ مقصد باید بزرگ‌تر از صفر باشد")
-
-    if float(src.balance or 0.0) + 0.0049 < amount:
-        raise HTTPException(status_code=400, detail="موجودی حساب مبدأ کافی نیست")
-
-    when = data.date or datetime.now(timezone.utc)
-    desc = data.description or f"تبدیل ارز {src.currency.value}→{dst.currency.value}"
-    try:
-        out_tx = WalletService.post(
-            db, account_id=src.id, type=TransactionType.ADJUSTMENT,
-            amount=amount, signed_amount=-amount, currency=src.currency,
-            date=when, description=desc, commit=False,
-        )
-        in_tx = WalletService.post(
-            db, account_id=dst.id, type=TransactionType.ADJUSTMENT,
-            amount=to_amount, signed_amount=to_amount, currency=dst.currency,
-            date=when, description=desc, commit=False,
-        )
-    except WalletError as exc:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(exc))
-    db.commit()
-    db.refresh(out_tx)
-    db.refresh(in_tx)
-    return {
-        "ok": True,
-        "out_transaction_id": out_tx.id,
-        "in_transaction_id": in_tx.id,
-        "amount": amount,
-        "to_amount": round(to_amount, 2),
-        "effective_rate": round(to_amount / amount, 6) if amount else None,
-    }
 
 @router.get("/accounts/{account_id}/reconcile")
 def reconcile_account(account_id: int, db: Session = Depends(get_db)):
@@ -570,22 +523,22 @@ def get_finance_summary(
 ):
     """خلاصه مالی: مجموع دارایی‌ها، درآمد، هزینه، تعداد تراکنش‌ها.
 
-    فاز ۴۴.۵: اعداد دیگر IRR و USD را با هم جمع نمی‌کنند — مقدار پیش‌فرض USD است و
+    فاز ۴۴.۵: اعداد دیگر IRR و USDT را با هم جمع نمی‌کنند — مقدار پیش‌فرض USDT است و
     تفکیک کامل هر ارز در `by_currency` برمی‌گردد.
     """
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
 
     # مجموع دارایی‌ها به تفکیک ارز
     accounts = db.query(FinancialAccount).all()
     assets_by_currency: dict[str, float] = {}
     for a in accounts:
-        cur = a.currency.value if a.currency else "USD"
+        cur = a.currency.value if a.currency else "USDT"
         assets_by_currency[cur] = assets_by_currency.get(cur, 0.0) + (a.balance or 0.0)
 
     by_currency: dict[str, dict] = {}
-    for c in (Currency.USD, Currency.IRR):
+    for c in (Currency.USDT, Currency.IRR):
         by_currency[c.value] = {
-            "total_income": round(_tx_sum(db, INCOME_TYPES_F, c), 2),
+            "total_income": round(_bank_income_sum(db, c), 2),
             "total_expense": round(_tx_sum(db, EXPENSE_TYPES_F, c), 2),
             "total_transfers": round(_tx_sum(db, [TransactionType.TRANSFER], c), 2),
             "transaction_count": _tx_count(db, c),
@@ -612,7 +565,6 @@ def get_account_stats(account_id: int, db: Session = Depends(get_db)):
     if not account:
         raise HTTPException(status_code=404, detail="حساب پیدا نشد")
 
-    income_types = [TransactionType.DEPOSIT, TransactionType.PROFIT]
     expense_types = [TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE]
 
     base_q = db.query(FinancialTransaction).filter(
@@ -620,11 +572,13 @@ def get_account_stats(account_id: int, db: Session = Depends(get_db)):
         FinancialTransaction.account_id == account_id,
     )
 
-    total_income = (
-        base_q.filter(FinancialTransaction.type.in_(income_types))
-        .with_entities(func.sum(FinancialTransaction.amount))
-        .scalar() or 0.0
-    )
+    total_income = 0.0
+    if account.type == AccountType.BANK:
+        total_income = (
+            base_q.filter(bank_income_filter())
+            .with_entities(func.sum(FinancialTransaction.amount))
+            .scalar() or 0.0
+        )
 
     total_expense = (
         base_q.filter(FinancialTransaction.type.in_(expense_types))
@@ -668,86 +622,69 @@ def get_withdrawal_stats(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """آمار برداشت‌ها: از پراپ، از بروکر، تعداد، تاریخچه — فاز ۴۴.۵: یک ارز"""
-    from sqlalchemy import func as sa_func
+    """مبالغ واقعاً دریافت‌شده از پراپ و برداشت‌شده از حساب بروکر، با یک ارز."""
+    from ..models.prop import PropWithdrawal, WithdrawalStatus
+    from ..models.trading import BrokerCashMovement
+    from ..services.broker_cash_service import WITHDRAWAL_FROM_BROKER
 
-    target = currency or Currency.USD
-    _cur = FinancialTransaction.currency == target
-
-    # برداشت‌های مرتبط با پراپ (فاز ۲۸: بر اساس related_prop_account_id، نه نوع حساب)
-    prop_withdrawals = (
-        db.query(sa_func.sum(FinancialTransaction.amount))
+    target = currency or Currency.USDT
+    prop_rows = (
+        db.query(PropWithdrawal)
         .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.WITHDRAWAL,
-            FinancialTransaction.related_prop_account_id.isnot(None),
-            _cur,
+            PropWithdrawal.status == WithdrawalStatus.RECEIVED,
+            PropWithdrawal.currency == target,
         )
-        .scalar() or 0.0
+        .all()
     )
-
-    # برداشت‌های غیرپراپ (بروکر شخصی و ...)
-    broker_withdrawals = (
-        db.query(sa_func.sum(FinancialTransaction.amount))
+    broker_rows = (
+        db.query(BrokerCashMovement)
         .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.WITHDRAWAL,
-            FinancialTransaction.related_prop_account_id.is_(None),
-            _cur,
+            BrokerCashMovement.direction == WITHDRAWAL_FROM_BROKER,
+            BrokerCashMovement.currency == target,
         )
-        .scalar() or 0.0
-    )
-
-    total_withdrawals = (
-        db.query(sa_func.sum(FinancialTransaction.amount))
-        .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.WITHDRAWAL,
-            _cur,
-        )
-        .scalar() or 0.0
-    )
-
-    withdrawal_count = (
-        db.query(FinancialTransaction)
-        .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.WITHDRAWAL,
-            _cur,
-        )
-        .count()
-    )
-
-    history = (
-        db.query(FinancialTransaction)
-        .filter(
-            FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type == TransactionType.WITHDRAWAL,
-            _cur,
-        )
-        .order_by(FinancialTransaction.date.desc())
-        .limit(20)
         .all()
     )
 
+    prop_total = sum(float(row.amount or 0.0) for row in prop_rows)
+    broker_total = sum(float(row.amount or 0.0) for row in broker_rows)
+    history = []
+    for row in prop_rows:
+        stage = row.stage
+        source = stage.account.account_label if stage and stage.account else "پراپ"
+        history.append({
+            "id": f"prop-{row.id}",
+            "kind": "prop",
+            "amount": row.amount,
+            "currency": row.currency.value if row.currency else None,
+            "date": row.withdrawal_date.isoformat() if row.withdrawal_date else None,
+            "description": row.note,
+            "account_id": row.destination_account_id,
+            "account_name": source,
+        })
+    for row in broker_rows:
+        account = row.trading_account
+        source = (account.account_label or account.account_number) if account else "بروکر"
+        history.append({
+            "id": f"broker-{row.id}",
+            "kind": "broker",
+            "amount": row.amount,
+            "currency": row.currency.value if row.currency else None,
+            "date": row.date.isoformat() if row.date else None,
+            "description": row.note,
+            "account_id": row.personal_trading_account_id,
+            "account_name": source,
+        })
+    history.sort(key=lambda row: row["date"] or "", reverse=True)
+    history = history[:20]
+    withdrawal_count = len(prop_rows) + len(broker_rows)
+
     return {
-        "total_withdrawals": total_withdrawals,
-        "prop_withdrawals": prop_withdrawals,
-        "broker_withdrawals": broker_withdrawals,
+        "total_withdrawals": round(prop_total + broker_total, 2),
+        "prop_withdrawals": round(prop_total, 2),
+        "broker_withdrawals": round(broker_total, 2),
         "withdrawal_count": withdrawal_count,
         "currency": target.value,
-        "history": [
-            {
-                "id": w.id,
-                "amount": w.amount,
-                "currency": w.currency.value if w.currency else None,
-                "date": w.date.isoformat() if w.date else None,
-                "description": w.description,
-                "account_id": w.account_id,
-                "account_name": w.account.name if w.account else None,
-            }
-            for w in history
-        ],
+        "history": history,
     }
 
 
@@ -877,11 +814,11 @@ def get_cashflow_chart(
 ):
     """نمودار جریان نقدی: درآمد vs هزینه به صورت ماهانه.
 
-    فاز ۴۴.۵: فقط یک ارز (پیش‌فرض USD) — IRR و USD با هم جمع نمی‌شوند.
+    فاز ۴۴.۵: فقط یک ارز (پیش‌فرض USDT) — IRR و USDT با هم جمع نمی‌شوند.
     """
     from sqlalchemy import func as sa_func, extract
 
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     base_filter = [
         FinancialTransaction.is_deleted == False,
         FinancialTransaction.currency == target,
@@ -896,7 +833,7 @@ def get_cashflow_chart(
             extract("month", FinancialTransaction.date).label("month"),
             sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, FinancialTransaction.type.in_(INCOME_TYPES_F))
+        .filter(*base_filter, bank_income_filter())
         .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
@@ -1025,7 +962,7 @@ def get_monthly_report(
     db: Session = Depends(get_db),
 ):
     """گزارش ماهانه: درآمد vs هزینه، گروه‌بندی بر اساس ماه شمسی — فاز ۴۴.۵: یک ارز"""
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     target_year = year or _current_jalali_year()
     start, end = _jalali_range(target_year)
 
@@ -1056,7 +993,7 @@ def get_monthly_report(
         jy, jm, _ = _gregorian_to_jalali(t.date.year, t.date.month, t.date.day)
         if jy != target_year or jm < 1 or jm > 12:
             continue
-        if t.type in INCOME_TYPES:
+        if is_bank_income(t):
             buckets[jm]["income"] += float(t.amount or 0.0)
         elif t.type in EXPENSE_TYPES:
             buckets[jm]["expense"] += float(t.amount or 0.0)
@@ -1082,7 +1019,7 @@ def get_category_breakdown(
     db: Session = Depends(get_db),
 ):
     """تفکیک دسته‌بندی: مجموع درآمد/هزینه هر دسته + درصد از کل (نمودار دایره‌ای) — فاز ۴۴.۵: یک ارز"""
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     q = db.query(FinancialTransaction).filter(
         FinancialTransaction.is_deleted == False,
         FinancialTransaction.currency == target,
@@ -1099,7 +1036,7 @@ def get_category_breakdown(
     total_expense = 0.0
 
     for t in txs:
-        if t.type in INCOME_TYPES:
+        if is_bank_income(t):
             kind = "income"
         elif t.type in EXPENSE_TYPES:
             kind = "expense"
@@ -1167,7 +1104,7 @@ def get_account_comparison(
     expense_map: dict = {}
     count_map: dict = {}
     for t in txs:
-        if t.type in INCOME_TYPES:
+        if is_bank_income(t):
             income_map[t.account_id] = income_map.get(t.account_id, 0.0) + float(t.amount or 0.0)
         elif t.type in EXPENSE_TYPES:
             expense_map[t.account_id] = expense_map.get(t.account_id, 0.0) + float(t.amount or 0.0)
@@ -1200,7 +1137,7 @@ def get_profit_loss(
     db: Session = Depends(get_db),
 ):
     """سود و زیان: سود خالص (درآمد - هزینه) به تفکیک ماه/سال + روند — فاز ۴۴.۵: یک ارز"""
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     q = db.query(FinancialTransaction).filter(
         FinancialTransaction.is_deleted == False,
         FinancialTransaction.currency == target,
@@ -1215,7 +1152,7 @@ def get_profit_loss(
     total_expense = 0.0
 
     for t in txs:
-        if t.type in INCOME_TYPES:
+        if is_bank_income(t):
             amount = float(t.amount or 0.0)
         elif t.type in EXPENSE_TYPES:
             amount = -float(t.amount or 0.0)
@@ -1300,7 +1237,7 @@ def _trade_net_expr():
 
 
 # ═════════════════════════════════════════════
-# فاز ۴۴.۵ — جداکردن ارزها (IRR ≠ USD)
+# فاز ۴۴.۵ — جداکردن ارزها (IRR ≠ USDT)
 # ═════════════════════════════════════════════
 def _tx_sum(db: Session, types, currency: Currency) -> float:
     """مجموع مبلغ تراکنش‌های غیرحذف‌شده از انواع داده‌شده، فقط در یک ارز."""
@@ -1310,6 +1247,19 @@ def _tx_sum(db: Session, types, currency: Currency) -> float:
         .filter(
             FinancialTransaction.is_deleted == False,
             FinancialTransaction.type.in_(types),
+            FinancialTransaction.currency == currency,
+        )
+        .scalar() or 0.0
+    )
+
+
+def _bank_income_sum(db: Session, currency: Currency) -> float:
+    """درآمد محقق‌شده فقط از واریزی‌های ثبت‌شده در حساب بانکی."""
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
+        .filter(
+            bank_income_filter(),
             FinancialTransaction.currency == currency,
         )
         .scalar() or 0.0
@@ -1347,14 +1297,15 @@ def _jalali_date_str(dt) -> Optional[str]:
     return f"{jy}/{jm:02d}/{jd:02d}"
 
 
-def _balance_sum(db: Session, acc_type: AccountType) -> float:
+def _balance_sum(db: Session, acc_type: AccountType, currency: Optional[Currency] = None) -> float:
     """مجموع موجودی همهٔ حساب‌های یک نوع"""
     from sqlalchemy import func
-    return float(
-        db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0))
-        .filter(FinancialAccount.type == acc_type)
-        .scalar() or 0.0
+    query = db.query(func.coalesce(func.sum(FinancialAccount.balance), 0.0)).filter(
+        FinancialAccount.type == acc_type
     )
+    if currency:
+        query = query.filter(FinancialAccount.currency == currency)
+    return float(query.scalar() or 0.0)
 
 
 def _balance_sum_currency(db: Session, currency: Currency) -> float:
@@ -1371,11 +1322,11 @@ def _balance_sum_currency(db: Session, currency: Currency) -> float:
     )
 
 
-def _compute_real_pnl(db: Session) -> dict:
-    """سود/زیان Real: مرحلهٔ ۳ پراپ + بروکر (از معاملات، net_pnl)"""
+def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
+    """سود/زیان Real به تفکیک یک ارز: مرحلهٔ ۳ پراپ + بروکر."""
     from sqlalchemy import func
     from ..models.strategy import Trade
-    from ..models.prop import PropStage as PS, StageType
+    from ..models.prop import PropAccount, PropStage as PS, StageType
 
     net = _trade_net_expr()
 
@@ -1383,8 +1334,10 @@ def _compute_real_pnl(db: Session) -> dict:
         db.query(func.coalesce(func.sum(net), 0.0), func.count(Trade.id))
         .select_from(Trade)
         .join(PS, Trade.prop_stage_id == PS.id)
+        .join(PropAccount, PS.prop_account_id == PropAccount.id)
         .filter(
             PS.stage_type == StageType.FUNDED_REAL,
+            PropAccount.currency == currency,
             Trade.pnl.isnot(None),
             Trade.is_deleted == False,  # فاز ۲۵
         )
@@ -1399,6 +1352,7 @@ def _compute_real_pnl(db: Session) -> dict:
         .select_from(Trade)
         .join(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
         .filter(
+            PersonalTradingAccount.currency == currency,
             Trade.pnl.isnot(None),
             Trade.is_deleted == False,  # فاز ۲۵
         )
@@ -1408,6 +1362,7 @@ def _compute_real_pnl(db: Session) -> dict:
     broker_trades = int(broker_row[1] or 0)
 
     return {
+        "currency": currency.value,
         "prop_stage_3": {"pnl": prop_pnl, "trades": prop_trades},
         "broker": {"pnl": broker_pnl, "trades": broker_trades},
         "total": {"pnl": round(prop_pnl + broker_pnl, 2), "trades": prop_trades + broker_trades},
@@ -1415,9 +1370,9 @@ def _compute_real_pnl(db: Session) -> dict:
 
 
 def _expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
-    """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USD)"""
+    """مجموع هزینه‌ها = SUM(amount WHERE type in FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USDT)"""
     from sqlalchemy import func
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     return float(
         db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
@@ -1434,55 +1389,58 @@ def _expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
 # ═════════════════════════════════════════════
 @router.get("/spendable-assets")
 def get_spendable_assets(db: Session = Depends(get_db)):
-    """دارایی قابل برداشت: پراپ مرحلهٔ ۳، بروکر، صرافی، Trust Wallet، کیف‌پول دیجیتال،
-    کارت، نقد، بانک + مجموع به تفکیک ارز.
-
-    فاز ۳۹ (رفع G6):
-    - سبد `trust_wallet` از `AccountType.TRUST_WALLET` پر می‌شود. پیش‌تر اشتباهاً
-      `CRYPTO_WALLET` بود (فاز ۳۸ نوع `TRUST_WALLET` را اضافه کرد ولی این endpoint
-      آپدیت نشد) ⇒ هیچ موجودی تراست‌ولت واقعی دیده نمی‌شد.
-    - سبدهای `crypto_wallet` / `card` / `cash` افزوده شدند (پیش‌تر کاملاً غایب بودند).
-    - `total.irr` = Σ موجودی **همهٔ** کیف‌پول‌های IRR (پیش‌تر هاردکد = سبد `bank`).
-
-    کلیدهای قدیمی (`prop_stage_3`, `broker`, `exchange`, `trust_wallet`, `bank`,
-    `total.usd`, `total.irr`) دست‌نخورده حفظ شده‌اند ⇒ سازگاری فرانت‌اند.
-    """
-    prop_stage_3 = finance_metrics.prop_stage_3(db)
-    # فاز ۲۸: موجودی بروکر از حساب‌های معاملاتی شخصی (نه FinancialAccount مالی)
+    """دارایی شخصی به تفکیک نوع حساب و ارز، بدون سرمایه و سود دریافت‌نشدهٔ پراپ."""
     from ..models.trading import PersonalTradingAccount as _PTA
-    from sqlalchemy import func as _f
-    broker = round(float(
-        db.query(_f.coalesce(_f.sum(_PTA.current_balance), 0.0)).scalar() or 0.0
-    ), 2)
-    exchange = round(_balance_sum(db, AccountType.EXCHANGE), 2)
-    trust_wallet = round(_balance_sum(db, AccountType.TRUST_WALLET), 2)      # فاز ۳۹: رفع G6
-    crypto_wallet = round(_balance_sum(db, AccountType.CRYPTO_WALLET), 2)    # فاز ۳۹: جدید
-    card = round(_balance_sum(db, AccountType.CARD), 2)                      # فاز ۳۹: جدید
-    cash = round(_balance_sum(db, AccountType.CASH), 2)                      # فاز ۳۹: جدید
-    bank = round(_balance_sum(db, AccountType.BANK), 2)
+    from sqlalchemy import func
 
-    total_usd = round(prop_stage_3 + broker + exchange + trust_wallet + crypto_wallet, 2)
-    total_irr = round(_balance_sum_currency(db, Currency.IRR), 2)            # فاز ۳۹: رفع G6
-
-    return {
-        # ── کلیدهای موجود (بدون تغییر) ──
-        "prop_stage_3": {"amount": prop_stage_3, "currency": "USD"},
-        "broker": {"amount": broker, "currency": "USD"},
-        "exchange": {"amount": exchange, "currency": "USD"},
-        "trust_wallet": {"amount": trust_wallet, "currency": "USD"},
-        "bank": {"amount": bank, "currency": "IRR"},
-        "total": {"usd": total_usd, "irr": total_irr},
-        # ── کلیدهای جدید فاز ۳۹ ──
-        "crypto_wallet": {"amount": crypto_wallet, "currency": "USD"},
-        "card": {"amount": card, "currency": "IRR"},
-        "cash": {"amount": cash, "currency": "IRR"},
+    account_types = {
+        "exchange": AccountType.EXCHANGE,
+        "trust_wallet": AccountType.TRUST_WALLET,
+        "crypto_wallet": AccountType.CRYPTO_WALLET,
+        "card": AccountType.CARD,
+        "cash": AccountType.CASH,
+        "bank": AccountType.BANK,
     }
+    by_currency = {
+        currency.value: {key: 0.0 for key in ("broker", *account_types)}
+        for currency in (Currency.USDT, Currency.IRR)
+    }
+    type_keys = {account_type: key for key, account_type in account_types.items()}
+    for account_type, currency, balance in db.query(
+        FinancialAccount.type, FinancialAccount.currency, func.sum(FinancialAccount.balance)
+    ).group_by(FinancialAccount.type, FinancialAccount.currency).all():
+        if currency and currency.value in by_currency and account_type in type_keys:
+            by_currency[currency.value][type_keys[account_type]] = round(float(balance or 0.0), 2)
+    for currency, balance in db.query(
+        _PTA.currency, func.sum(_PTA.current_balance)
+    ).group_by(_PTA.currency).all():
+        if currency and currency.value in by_currency:
+            by_currency[currency.value]["broker"] = round(float(balance or 0.0), 2)
+
+    # Received prop payouts already exist in their destination account balance.
+    result = {
+        "prop_stage_3": {"amount": 0.0, "currency": "USDT"},
+        "by_currency": by_currency,
+        "total": {
+            "usdt": round(sum(by_currency["USDT"].values()), 2),
+            "irr": round(sum(by_currency["IRR"].values()), 2),
+        },
+    }
+    # Keep the established fields for existing API clients.
+    for key in ("broker", *account_types):
+        currency = "IRR" if key in ("bank", "card", "cash") else "USDT"
+        result[key] = {"amount": by_currency[currency][key], "currency": currency}
+    result["broker_irr"] = {"amount": by_currency["IRR"]["broker"], "currency": "IRR"}
+    return result
 
 
 @router.get("/real-pnl")
-def get_real_pnl(db: Session = Depends(get_db)):
-    """سود/زیان Real: مرحلهٔ ۳ پراپ + بروکر (pnl + تعداد معاملات)"""
-    return _compute_real_pnl(db)
+def get_real_pnl(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """سود/زیان Real برای یک ارز (پیش‌فرض USDT)."""
+    return _compute_real_pnl(db, currency or Currency.USDT)
 
 
 @router.get("/net-profit")
@@ -1490,22 +1448,26 @@ def get_net_profit(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USD)"""
-    target = currency or Currency.USD
-    real = _compute_real_pnl(db)
+    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USDT)"""
+    target = currency or Currency.USDT
+    real = _compute_real_pnl(db, target)
     expenses = round(_expenses_total(db, target), 2)
     real_pnl = real["total"]["pnl"]
+    by_currency = {}
+    for c in (Currency.USDT, Currency.IRR):
+        currency_real_pnl = real_pnl if c == target else _compute_real_pnl(db, c)["total"]["pnl"]
+        currency_expenses = round(_expenses_total(db, c), 2)
+        by_currency[c.value] = {
+            "real_pnl": currency_real_pnl,
+            "expenses": currency_expenses,
+            "net_profit": round(currency_real_pnl - currency_expenses, 2),
+        }
     return {
         "real_pnl": real_pnl,
         "expenses": expenses,
         "net_profit": round(real_pnl - expenses, 2),
         "currency": target.value,
-        "by_currency": {
-            c.value: {
-                "expenses": round(_expenses_total(db, c), 2),
-            }
-            for c in (Currency.USD, Currency.IRR)
-        },
+        "by_currency": by_currency,
     }
 
 
@@ -1533,8 +1495,12 @@ def get_money_flow(db: Session = Depends(get_db)):
         .all()
     )
 
+    broker_movements = db.query(BrokerCashMovement).all()
+    broker_tx_ids = {row.transaction_id for row in broker_movements}
     flows = []
     for t in txs:
+        if t.id in broker_tx_ids:
+            continue
         has_link = t.from_account_id is not None or t.to_account_id is not None
         if t.type not in flow_types and not has_link:
             continue
@@ -1549,6 +1515,22 @@ def get_money_flow(db: Session = Depends(get_db)):
             "type": t.type.value if t.type else None,
             "date": t.date.isoformat() if t.date else None,
         })
+    for movement in broker_movements:
+        trading = movement.trading_account
+        financial = movement.financial_account
+        account_label = ((trading.account_label or trading.account_number) if trading else "بروکر")
+        is_deposit = movement.direction == "deposit_to_broker"
+        flows.append({
+            "from": (financial.type.value if financial and financial.type else "financial_account") if is_deposit else "broker",
+            "to": "broker" if is_deposit else (financial.type.value if financial and financial.type else "financial_account"),
+            "from_name": financial.name if is_deposit and financial else account_label,
+            "to_name": account_label if is_deposit else (financial.name if financial else None),
+            "amount": movement.amount,
+            "currency": movement.currency.value if movement.currency else None,
+            "type": movement.direction,
+            "date": movement.date.isoformat() if movement.date else None,
+        })
+    flows.sort(key=lambda item: item.get("date") or "", reverse=True)
     return {"flows": flows}
 
 
@@ -1557,9 +1539,9 @@ def get_expenses(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """گزارش هزینه‌ها — فاز ۴۴.۵: یک ارز (پیش‌فرض USD) + تفکیک by_currency"""
+    """گزارش هزینه‌ها — فاز ۴۴.۵: یک ارز (پیش‌فرض USDT) + تفکیک by_currency"""
     from sqlalchemy.orm import joinedload
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
     txs = (
         db.query(FinancialTransaction)
         .options(joinedload(FinancialTransaction.category), joinedload(FinancialTransaction.account))
@@ -1603,7 +1585,7 @@ def get_expenses(
     result["currency"] = target.value
     result["by_currency"] = {
         c.value: round(_tx_sum(db, [TransactionType.FEE, TransactionType.PURCHASE], c), 2)
-        for c in (Currency.USD, Currency.IRR)
+        for c in (Currency.USDT, Currency.IRR)
     }
     return result
 
@@ -1616,7 +1598,7 @@ def get_money_cycle(
     """چرخهٔ پول: مجموع واریز/برداشت/تبدیل/انتقال + موجودی فعلی — فاز ۴۴.۵: یک ارز."""
     from sqlalchemy import func
 
-    target = currency or Currency.USD
+    target = currency or Currency.USDT
 
     def _transfers(curr) -> float:
         return float(
@@ -1638,7 +1620,7 @@ def get_money_cycle(
         )
 
     by_currency: dict[str, dict] = {}
-    for c in (Currency.USD, Currency.IRR):
+    for c in (Currency.USDT, Currency.IRR):
         by_currency[c.value] = {
             "total_deposits": round(_tx_sum(db, [TransactionType.DEPOSIT], c), 2),
             "total_withdrawals": round(_tx_sum(db, [TransactionType.WITHDRAWAL], c), 2),
@@ -1714,12 +1696,13 @@ def get_asset_trend(
     date_to: Optional[str] = Query(None, description="e.g. 2025-12-31"),
     db: Session = Depends(get_db),
 ):
-    """روند دارایی: مجموع تجمعی USD و IRR به تفکیک روز شمسی (از جریان تراکنش‌ها)"""
+    """روند دارایی: مجموع تجمعی USDT و IRR به تفکیک روز شمسی (از جریان تراکنش‌ها)"""
     from collections import defaultdict
 
     sign = {
         TransactionType.DEPOSIT: 1,
         TransactionType.PROFIT: 1,
+        TransactionType.ADJUSTMENT: 1,  # مبلغ اصلاح خودش علامت مثبت/منفی دارد
         TransactionType.WITHDRAWAL: -1,
         TransactionType.LOSS: -1,
         TransactionType.FEE: -1,
@@ -1730,7 +1713,7 @@ def get_asset_trend(
     # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
     q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
 
-    per_day: dict = defaultdict(lambda: {"USD": 0.0, "IRR": 0.0})
+    per_day: dict = defaultdict(lambda: {"USDT": 0.0, "IRR": 0.0})
     for t in q.order_by(FinancialTransaction.date).all():
         d = _jalali_date_str(t.date)
         if not d:
@@ -1738,79 +1721,49 @@ def get_asset_trend(
         factor = sign.get(t.type, 0)
         if factor == 0:
             continue  # تبدیل، سنتی است و خالص آن صفر فرض می‌شود
-        cur = t.currency.value if t.currency else "USD"
+        cur = t.currency.value if t.currency else "USDT"
         per_day[d][cur] = per_day[d].get(cur, 0.0) + factor * float(t.amount or 0.0)
 
+    # گردش بین حساب مالی و حساب معاملاتی دارایی را جابه‌جا می‌کند، نه اینکه آن را
+    # زیاد یا کم کند؛ دفتر مالی فقط یک سمت را ثبت می‌کند، پس سمت بروکر را اینجا جبران کن.
+    movements = filter_by_range(
+        db.query(BrokerCashMovement), BrokerCashMovement.date, date_from, date_to
+    ).all()
+    for movement in movements:
+        d = _jalali_date_str(movement.date)
+        if not d:
+            continue
+        amount = float(movement.amount or 0.0)
+        broker_delta = amount if movement.direction == "deposit_to_broker" else -amount
+        cur = movement.currency.value if movement.currency else "USDT"
+        per_day[d][cur] = per_day[d].get(cur, 0.0) + broker_delta
+
     trend = []
-    run_usd = 0.0
+    run_usdt = 0.0
     run_irr = 0.0
     for d in sorted(per_day):
-        run_usd += per_day[d].get("USD", 0.0)
+        run_usdt += per_day[d].get("USDT", 0.0)
         run_irr += per_day[d].get("IRR", 0.0)
         trend.append({
             "date": d,
-            "total_usd": round(run_usd, 2),
+            "total_usdt": round(run_usdt, 2),
             "total_irr": round(run_irr, 2),
         })
     return {"trend": trend}
 
 
-@router.get("/exchange-rates")
-def get_exchange_rates(db: Session = Depends(get_db)):
-    """نرخ تبدیل: نرخ ضمنی روزانهٔ IRR→USD از تراکنش‌های تبدیل
-
-    چون هر تراکنش تبدیل فقط یک مبلغ/ارز ذخیره می‌کند، نرخ از نسبت مجموع
-    مبلغ‌های IRR به مجموع مبلغ‌های USD در همان روز شمسی استخراج می‌شود.
-    """
-    from collections import defaultdict
-
-    txs = (
-        db.query(FinancialTransaction)
-        .filter(FinancialTransaction.is_deleted == False, FinancialTransaction.type == TransactionType.TRANSFER)  # فاز ۳۸.۴: EXCHANGE → TRANSFER
-        .all()
-    )
-    per_day: dict = defaultdict(lambda: {"IRR": 0.0, "USD": 0.0})
-    for t in txs:
-        d = _jalali_date_str(t.date)
-        if not d:
-            continue
-        cur = t.currency.value if t.currency else "USD"
-        per_day[d][cur] = per_day[d].get(cur, 0.0) + float(t.amount or 0.0)
-
-    rates = []
-    for d in sorted(per_day):
-        irr = per_day[d].get("IRR", 0.0)
-        usd = per_day[d].get("USD", 0.0)
-        if irr > 0 and usd > 0:
-            rates.append({
-                "date": d,
-                "from": "IRR",
-                "to": "USD",
-                "rate": round(irr / usd, 2),
-            })
-    return {"rates": rates}
-
-
-# ═════════════════════════════════════════════
-# Seed
-# ═════════════════════════════════════════════
 DEFAULT_CATEGORIES = [
-    # درآمد
     {"name": "حقوق", "type": CategoryType.INCOME, "color": "#22c55e", "icon": "💼"},
     {"name": "سود معاملات", "type": CategoryType.INCOME, "color": "#10b981", "icon": "📈"},
     {"name": "پاداش/پورتفولیو", "type": CategoryType.INCOME, "color": "#34d399", "icon": "🎁"},
-    # هزینه
     {"name": "خوراک و رستوران", "type": CategoryType.EXPENSE, "color": "#f97316", "icon": "🍔"},
     {"name": "حمل و نقل", "type": CategoryType.EXPENSE, "color": "#f59e0b", "icon": "🚗"},
     {"name": "قبوض و اشتراک", "type": CategoryType.EXPENSE, "color": "#eab308", "icon": "📄"},
     {"name": "خرید/کالا", "type": CategoryType.EXPENSE, "color": "#ef4444", "icon": "🛒"},
     {"name": "تفریح و سرگرمی", "type": CategoryType.EXPENSE, "color": "#ec4899", "icon": "🎮"},
     {"name": "سلامت و درمان", "type": CategoryType.EXPENSE, "color": "#f43f5e", "icon": "🏥"},
-    # انتقال
     {"name": "انتقال بین حساب‌ها", "type": CategoryType.TRANSFER, "color": "#6366f1", "icon": "🔄"},
-    # تبدیل
-    {"name": "تبدیل ارز", "type": CategoryType.CONVERSION, "color": "#8b5cf6", "icon": "💱"},  # فاز ۳۸.۴: EXCHANGE → CONVERSION
-    # پراپ (فاز ۵)
+    {"name": "تبدیل ارز", "type": CategoryType.CONVERSION, "color": "#8b5cf6", "icon": "💱"},
     {"name": "خرید پراپ", "type": CategoryType.EXPENSE, "color": "#E74C3C", "icon": "🛒"},
     {"name": "برداشت پراپ", "type": CategoryType.INCOME, "color": "#27AE60", "icon": "💰"},
 ]

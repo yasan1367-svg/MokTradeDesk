@@ -1,14 +1,16 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
-from sqlalchemy import func
+from sqlalchemy import case, func
 from typing import List, Optional
 from pydantic import BaseModel
 from math import sqrt
+from datetime import date
 
 from ..core.database import get_db
-from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus
+from ..models.strategy import Strategy, StrategyVersion, Trade, StrategyStatus, TestType
 from ..utils.enums import enum_value
 from ..utils.trade_scope import analysis_trades_filter
+from ..utils.date_range import filter_by_range
 from ..services import metrics
 
 router = APIRouter()
@@ -314,6 +316,7 @@ def get_version_trades(version_id: int, db: Session = Depends(get_db)):
             "pnl": t.pnl,
             "commission": t.commission,
             "swap": t.swap,
+            "r_multiple": t.r_multiple,
         }
         for t in trades
     ]
@@ -468,4 +471,113 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
             "max_consecutive_losses": max_streak,
             "pnl_std_dev": round(std_pnl, 2),
         },
+    }
+
+
+@router.get("/{strategy_id}/live-performance")
+def get_strategy_live_performance(
+    strategy_id: int,
+    date_from: Optional[date] = None,
+    date_to: Optional[date] = None,
+    db: Session = Depends(get_db),
+):
+    """عملکرد معاملات بسته‌شدهٔ Real هر نسخه، در بازهٔ انتخابی.
+
+    Backtest/Forward عمداً در این گزارش وارد نمی‌شوند. سود خالص از تعریف واحد
+    metrics.net_pnl_sql() می‌آید و شامل PnL، کمیسیون و سواپ است.
+    """
+    if date_from and date_to and date_from > date_to:
+        raise HTTPException(status_code=422, detail="تاریخ شروع باید قبل از تاریخ پایان باشد")
+
+    strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
+    if not strategy:
+        raise HTTPException(status_code=404, detail="استراتژی پیدا نشد")
+
+    versions = (
+        db.query(StrategyVersion)
+        .filter(StrategyVersion.strategy_id == strategy_id)
+        .order_by(StrategyVersion.id.asc())
+        .all()
+    )
+    version_rows = {
+        version.id: {
+            "version_id": version.id,
+            "version_name": version.version_name,
+            "status": enum_value(version.status),
+            "forked_from_version_id": version.forked_from_version_id,
+            "total_trades": 0,
+            "net_pnl": 0.0,
+            "winning_trades": 0,
+            "losing_trades": 0,
+            "breakeven_trades": 0,
+            "win_rate": 0.0,
+            "profit_factor": 0.0,
+            "by_type": {
+                "real_personal": {"trades": 0, "net_pnl": 0.0},
+                "real_prop": {"trades": 0, "net_pnl": 0.0},
+            },
+        }
+        for version in versions
+    }
+
+    if version_rows:
+        net = _net_expr()
+        query = db.query(
+            Trade.version_id,
+            Trade.test_type,
+            func.count(Trade.id),
+            func.coalesce(func.sum(net), 0.0),
+            func.coalesce(func.sum(case((net > 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((net < 0, 1), else_=0)), 0),
+            func.coalesce(func.sum(case((net > 0, net), else_=0.0)), 0.0),
+            func.coalesce(func.sum(case((net < 0, net), else_=0.0)), 0.0),
+        ).filter(
+            Trade.version_id.in_(version_rows),
+            Trade.test_type.in_([TestType.REAL_PERSONAL, TestType.REAL_PROP]),
+            Trade.close_time.isnot(None),
+            Trade.is_deleted == False,
+        )
+        query = filter_by_range(query, Trade.close_time, date_from, date_to)
+        for version_id, test_type, count, total_net, wins, losses, gross_wins, gross_losses in (
+            query.group_by(Trade.version_id, Trade.test_type).all()
+        ):
+            row = version_rows[version_id]
+            type_key = "real_personal" if test_type == TestType.REAL_PERSONAL else "real_prop"
+            trade_count = int(count or 0)
+            net_total = float(total_net or 0.0)
+            win_count = int(wins or 0)
+            loss_count = int(losses or 0)
+            type_stats = row["by_type"][type_key]
+            type_stats["trades"] = trade_count
+            type_stats["net_pnl"] = round(net_total, 2)
+            row["total_trades"] += trade_count
+            row["net_pnl"] += net_total
+            row["winning_trades"] += win_count
+            row["losing_trades"] += loss_count
+            gross_loss_abs = abs(float(gross_losses or 0.0))
+            type_stats["gross_profit"] = round(float(gross_wins or 0.0), 2)
+            type_stats["gross_loss"] = round(gross_loss_abs, 2)
+
+    results = []
+    for row in version_rows.values():
+        total_count = row["total_trades"]
+        gross_profit = sum(item.get("gross_profit", 0.0) for item in row["by_type"].values())
+        gross_loss = sum(item.get("gross_loss", 0.0) for item in row["by_type"].values())
+        row["breakeven_trades"] = total_count - row["winning_trades"] - row["losing_trades"]
+        row["win_rate"] = round(row["winning_trades"] / total_count * 100, 2) if total_count else 0.0
+        row["profit_factor"] = round(gross_profit / gross_loss, 2) if gross_loss else (100.0 if gross_profit else 0.0)
+        row["net_pnl"] = round(row["net_pnl"], 2)
+        for type_stats in row["by_type"].values():
+            type_stats.pop("gross_profit", None)
+            type_stats.pop("gross_loss", None)
+        results.append(row)
+
+    return {
+        "strategy_id": strategy.id,
+        "strategy_name": strategy.name,
+        "currency": "USDT",
+        "date_from": date_from.isoformat() if date_from else None,
+        "date_to": date_to.isoformat() if date_to else None,
+        "basis": "closed_trades",
+        "versions": results,
     }

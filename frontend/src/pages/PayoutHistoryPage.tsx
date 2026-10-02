@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
+import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from 'recharts';
 import EmptyState from '../components/ui/EmptyState';
 import PersianDateInput from '../components/PersianDateInput';
 import { RiskSkeleton } from '../components/Skeleton';
@@ -8,14 +8,19 @@ import {
   getPropPayouts,
   getPropPayoutsStats,
   createPropPayout,
+  updatePropPayout,
   updatePropPayoutStatus,
   createPropPayoutTransfer,
   deletePropPayout,
-  getBrokerPayouts,
-  getBrokerPayoutsStats,
+  getBrokerCashMovements,
+  getBrokerCashMovementStats,
+  createBrokerCashMovement,
+  updateBrokerCashMovement,
+  deleteBrokerCashMovement,
   getPropFirms,
   getAllPropStages,
   getFinanceAccountsForDestination,
+  getPersonalTradingAccounts,
 } from '../api/client';
 import { gregorianToJalali } from '../utils/jalali';
 
@@ -98,8 +103,11 @@ export default function PayoutHistoryPage() {
 
   // فرم ثبت برداشت جدید
   const [showForm, setShowForm] = useState(false);
+  const [editingBrokerId, setEditingBrokerId] = useState<number | null>(null);
+  const [editingPropId, setEditingPropId] = useState<number | null>(null);
   const [stages, setStages] = useState<any[]>([]);
   const [destAccounts, setDestAccounts] = useState<any[]>([]);
+  const [tradingAccounts, setTradingAccounts] = useState<any[]>([]);
   const [saving, setSaving] = useState(false);
   const [busyId, setBusyId] = useState<number | null>(null);
 
@@ -110,6 +118,10 @@ export default function PayoutHistoryPage() {
     from_account_id: '', to_account_id: '', amount: '', currency: '', date: '', note: '',
   });
   const [form, setForm] = useState({ prop_stage_id: '', amount: '', destination_account_id: '', withdrawal_date: '', note: '' });
+  const [brokerForm, setBrokerForm] = useState({
+    direction: 'withdrawal_from_broker' as 'deposit_to_broker' | 'withdrawal_from_broker',
+    personal_trading_account_id: '', financial_account_id: '', amount: '', date: '', note: '',
+  });
 
   const params = useMemo(
     () => ({
@@ -129,7 +141,7 @@ export default function PayoutHistoryPage() {
         setRows(list.data || []);
         setStats(st.data || null);
       } else {
-        const [list, st] = await Promise.all([getBrokerPayouts(params), getBrokerPayoutsStats(params)]);
+        const [list, st] = await Promise.all([getBrokerCashMovements(params), getBrokerCashMovementStats(params)]);
         setRows(list.data || []);
         setStats(st.data || null);
       }
@@ -143,10 +155,14 @@ export default function PayoutHistoryPage() {
   useEffect(() => { load(); }, [load]);
 
   useEffect(() => {
-    if (tab !== 'prop') return;
-    getPropFirms().then((r) => setFirms(r.data || [])).catch(() => {});
-    getAllPropStages().then((r) => setStages(r.data || [])).catch(() => {});
-    getFinanceAccountsForDestination().then((r) => setDestAccounts(r.data || [])).catch(() => {});
+    if (tab === 'prop') {
+      getPropFirms().then((r) => setFirms(r.data || [])).catch(() => {});
+      getAllPropStages().then((r) => setStages(r.data || [])).catch(() => {});
+      getFinanceAccountsForDestination().then((r) => setDestAccounts(r.data || [])).catch(() => {});
+    } else {
+      getPersonalTradingAccounts().then((r) => setTradingAccounts(r.data || [])).catch(() => {});
+      getFinanceAccountsForDestination().then((r) => setDestAccounts(r.data || [])).catch(() => {});
+    }
   }, [tab]);
 
   const handleSubmit = async () => {
@@ -154,41 +170,121 @@ export default function PayoutHistoryPage() {
       toast.warning('مرحله، مبلغ و حساب مقصد الزامی است');
       return;
     }
+    const amount = Number(form.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.warning('مبلغ باید عددی مثبت باشد');
+      return;
+    }
     setSaving(true);
     try {
-      await createPropPayout({
-        prop_stage_id: Number(form.prop_stage_id),
-        amount: Number(form.amount),
+      const payload = {
+        amount,
         destination_account_id: Number(form.destination_account_id),
+        currency: destAccounts.find((account: any) => String(account.id) === form.destination_account_id)?.currency,
         withdrawal_date: form.withdrawal_date || undefined,
-        note: form.note || undefined,
-      });
-      toast.success('برداشت با موفقیت ثبت شد');
+        note: form.note,
+      };
+      if (editingPropId !== null) {
+        await updatePropPayout(editingPropId, payload);
+      } else {
+        await createPropPayout({ ...payload, prop_stage_id: Number(form.prop_stage_id) });
+      }
+      toast.success(editingPropId !== null ? 'برداشت و اثر مالی آن اصلاح شد' : 'برداشت با موفقیت ثبت شد');
       setShowForm(false);
+      setEditingPropId(null);
       setForm({ prop_stage_id: '', amount: '', destination_account_id: '', withdrawal_date: '', note: '' });
       load();
     } catch (e: any) {
-      toast.error(e?.response?.data?.detail || 'خطا در ثبت برداشت');
+      toast.error(e?.response?.data?.detail || 'خطا در ذخیره برداشت');
     } finally {
       setSaving(false);
     }
   };
 
+  const openPropEdit = (row: any) => {
+    setEditingPropId(row.id);
+    setForm({
+      prop_stage_id: String(row.prop_stage_id),
+      amount: String(row.amount),
+      destination_account_id: String(row.destination_account_id),
+      withdrawal_date: row.withdrawal_date || '',
+      note: row.note || '',
+    });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   const handleDelete = async (id: number) => {
     try {
-      await deletePropPayout(id);
-      toast.success('برداشت حذف شد');
+      if (isProp) {
+        await deletePropPayout(id);
+        toast.success('برداشت پراپ حذف شد');
+      } else {
+        await deleteBrokerCashMovement(id);
+        toast.success('گردش بروکر حذف شد و موجودی‌ها برگشت خورد');
+      }
       load();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'خطا در حذف برداشت');
     }
   };
 
+  const handleBrokerSubmit = async () => {
+    if (!brokerForm.personal_trading_account_id || !brokerForm.financial_account_id || !brokerForm.amount) {
+      toast.warning('حساب بروکر، حساب مالی و مبلغ الزامی است');
+      return;
+    }
+    const amount = Number(brokerForm.amount);
+    if (!Number.isFinite(amount) || amount <= 0) {
+      toast.warning('مبلغ باید عددی مثبت باشد');
+      return;
+    }
+    setSaving(true);
+    try {
+      const payload = {
+        direction: brokerForm.direction,
+        personal_trading_account_id: Number(brokerForm.personal_trading_account_id),
+        financial_account_id: Number(brokerForm.financial_account_id),
+        amount,
+        date: brokerForm.date || undefined,
+        note: brokerForm.note,
+      };
+      if (editingBrokerId !== null) {
+        await updateBrokerCashMovement(editingBrokerId, payload);
+      } else {
+        await createBrokerCashMovement(payload);
+      }
+      toast.success(editingBrokerId !== null ? 'گردش بروکر و موجودی هر دو حساب اصلاح شد' : brokerForm.direction === 'deposit_to_broker' ? 'واریز به بروکر ثبت شد' : 'برداشت از بروکر ثبت شد');
+      setShowForm(false);
+      setEditingBrokerId(null);
+      setBrokerForm({ ...brokerForm, amount: '', financial_account_id: '', date: '', note: '' });
+      load();
+    } catch (e: any) {
+      toast.error(e?.response?.data?.detail || 'خطا در ثبت گردش بروکر');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const openBrokerEdit = (row: any) => {
+    setEditingBrokerId(row.id);
+    setBrokerForm({
+      direction: row.direction,
+      personal_trading_account_id: String(row.personal_trading_account_id),
+      financial_account_id: String(row.financial_account_id),
+      amount: String(row.amount),
+      date: row.date || '',
+      note: row.note || '',
+    });
+    setShowForm(true);
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
   // فاز ۳۳ — تغییر وضعیت برداشت (REQUESTED → APPROVED → PROCESSING → RECEIVED / CANCELLED)
   const handleAdvance = async (id: number, status: string) => {
     if (
       status === 'received' &&
-      !window.confirm('با ثبت «دریافت»، این مبلغ وارد حسابداری مالی (درآمد) می‌شود. ادامه؟')
+      !window.confirm('با ثبت «دریافت»، موجودی حساب مقصد به‌روز می‌شود؛ فقط اگر مقصد حساب بانکی باشد در گزارش درآمد می‌آید. ادامه؟')
     ) {
       return;
     }
@@ -211,7 +307,7 @@ export default function PayoutHistoryPage() {
       from_account_id: String(row.destination_account_id ?? ''),
       to_account_id: '',
       amount: String(row.amount ?? ''),
-      currency: row.currency || 'USD',
+      currency: row.currency || 'USDT',
       date: '',
       note: '',
     });
@@ -237,7 +333,9 @@ export default function PayoutHistoryPage() {
         date: transferForm.date || undefined,
         note: transferForm.note || undefined,
       });
-      toast.success('انتقال ثبت شد (درآمد نیست)');
+      const destination = destAccounts.find((account: any) => account.id === Number(transferForm.to_account_id));
+      const source = destAccounts.find((account: any) => account.id === Number(transferForm.from_account_id || transferRow.destination_account_id));
+      toast.success(destination?.type === 'bank' && source?.type !== 'bank' ? 'انتقال ثبت شد؛ مبلغ واریزی به بانک در گزارش درآمد می‌آید' : 'انتقال بین حساب‌ها ثبت شد');
       setTransferRow(null);
       load();
     } catch (e: any) {
@@ -250,8 +348,16 @@ export default function PayoutHistoryPage() {
   const isProp = tab === 'prop';
   // حساب‌های مالی مجاز برای انتقال (بدون حساب‌های پراپ)
   const transferAccounts = (destAccounts || []).filter((a: any) => a.type !== 'prop');
-  const chartData = (stats?.monthly || []).map((m: any) => ({ name: m.month, amount: m.amount }));
-  const money = (v: any) => `$${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
+  const selectedTradingAccount = tradingAccounts.find(
+    (a: any) => String(a.id) === brokerForm.personal_trading_account_id,
+  );
+  const brokerFinancialAccounts = transferAccounts.filter(
+    (a: any) => !selectedTradingAccount || a.currency === selectedTradingAccount.currency,
+  );
+  const chartData = (stats?.monthly || []).map((m: any) => ({
+    name: m.month, amount: m.amount, deposits: m.deposits, withdrawals: m.withdrawals,
+  }));
+  const money = (v: any) => `${currency || 'USDT'} ${Number(v || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })}`;
 
   return (
     <div className="space-y-6">
@@ -261,27 +367,31 @@ export default function PayoutHistoryPage() {
           <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl text-white"
                style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>💸</div>
           <div>
-            <h2 className="text-2xl font-extrabold text-[var(--text-primary)]">تاریخچهٔ برداشت‌ها</h2>
+            <h2 className="text-2xl font-extrabold text-[var(--text-primary)]">{isProp ? 'تاریخچهٔ برداشت‌های پراپ' : 'گردش مالی بروکر'}</h2>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">پراپ و بروکر — آمار و تاریخچهٔ کامل</p>
           </div>
         </div>
-        {isProp && (
-          <button
-            onClick={() => setShowForm((v) => !v)}
-            className="text-white px-5 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:-translate-y-0.5 transition-all"
-            style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}
-          >
-            ➕ ثبت برداشت جدید
-          </button>
-        )}
+        <button
+          onClick={() => {
+            setEditingBrokerId(null);
+            setEditingPropId(null);
+            setForm({ prop_stage_id: '', amount: '', destination_account_id: '', withdrawal_date: '', note: '' });
+            setBrokerForm({ ...brokerForm, amount: '', financial_account_id: '', date: '', note: '' });
+            setShowForm((value) => editingBrokerId !== null || editingPropId !== null || !value);
+          }}
+          className="text-white px-5 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:-translate-y-0.5 transition-all"
+          style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}
+        >
+          {isProp ? '➕ ثبت برداشت جدید' : '➕ ثبت گردش بروکر'}
+        </button>
       </div>
 
       {/* تب‌ها */}
       <div className="flex gap-2 bg-[var(--bg-elevated)] p-1.5 rounded-[14px] w-fit">
-        {([['prop', '🏢 پراپ'], ['broker', '📈 بروکر']] as [Tab, string][]).map(([k, label]) => (
+        {([['prop', '🏢 پراپ'], ['broker', '📈 گردش بروکر']] as [Tab, string][]).map(([k, label]) => (
           <button
             key={k}
-            onClick={() => setTab(k)}
+            onClick={() => { setTab(k); setShowForm(false); setEditingBrokerId(null); setEditingPropId(null); }}
             className={`px-5 py-2 rounded-[10px] text-sm font-extrabold transition-all ${
               tab === k ? 'bg-[var(--accent)] text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)]'
             }`}
@@ -291,19 +401,19 @@ export default function PayoutHistoryPage() {
         ))}
       </div>
 
-      {/* فرم ثبت برداشت جدید (فقط پراپ) */}
+      {/* فرم ثبت برداشت پراپ */}
       {isProp && showForm && (
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
                  style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>➕</div>
-            <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ثبت برداشت جدید</h3>
-            <span className="text-[11px] text-[var(--text-muted)]">وضعیت اولیه: «درخواست‌شده» — با دکمه‌های جدول → تأیید → پردازش → دریافت</span>
+            <h3 className="text-lg font-extrabold text-[var(--text-primary)]">{editingPropId !== null ? 'ویرایش برداشت پراپ' : 'ثبت برداشت جدید'}</h3>
+            <span className="text-[11px] text-[var(--text-muted)]">{editingPropId !== null ? 'اصلاح برداشت دریافت‌شده، موجودی مقصد و گزارش درآمد را هم اصلاح می‌کند.' : 'وضعیت اولیه: «درخواست‌شده» — تأیید → پردازش → دریافت'}</span>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
             <div>
               <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🏢 مرحله (رییل)</label>
-              <select className={inputCls} value={form.prop_stage_id}
+              <select className={inputCls} value={form.prop_stage_id} disabled={editingPropId !== null}
                       onChange={(e) => setForm({ ...form, prop_stage_id: e.target.value })}>
                 <option value="">انتخاب مرحله…</option>
                 {stages.filter((s: any) => s.stage_type === 'funded_real').map((s: any) => (
@@ -312,8 +422,8 @@ export default function PayoutHistoryPage() {
               </select>
             </div>
             <div>
-              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💵 مبلغ</label>
-              <input type="number" className={inputCls} value={form.amount} placeholder="مثلاً 500"
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">💵 مبلغ واقعی دریافتی</label>
+              <input type="number" min="0.01" step="any" className={inputCls} value={form.amount} placeholder="مثلاً 500"
                      onChange={(e) => setForm({ ...form, amount: e.target.value })} />
             </div>
             <div>
@@ -344,7 +454,77 @@ export default function PayoutHistoryPage() {
             <button onClick={handleSubmit} disabled={saving}
                     className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-50"
                     style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
-              {saving ? '⏳ در حال ثبت…' : '💾 ثبت برداشت'}
+              {saving ? '⏳ در حال ذخیره…' : editingPropId !== null ? 'ذخیرهٔ اصلاحات' : '💾 ثبت برداشت'}
+            </button>
+          </div>
+        </div>
+      )}
+
+      {!isProp && showForm && (
+        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
+          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+            <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
+                 style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>🔁</div>
+            <div>
+              <h3 className="text-lg font-extrabold text-[var(--text-primary)]">{editingBrokerId !== null ? 'ویرایش گردش پول بروکر' : 'ثبت گردش پول بروکر'}</h3>
+              <p className="text-[11px] text-[var(--text-secondary)]">موجودی هر دو حساب هم‌زمان به‌روز می‌شود؛ ارزها باید یکسان باشند.</p>
+            </div>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">نوع گردش</label>
+              <select className={inputCls} value={brokerForm.direction}
+                      onChange={(e) => setBrokerForm({ ...brokerForm, direction: e.target.value as typeof brokerForm.direction, financial_account_id: '' })}>
+                <option value="withdrawal_from_broker">برداشت از بروکر به حساب مالی</option>
+                <option value="deposit_to_broker">واریز از حساب مالی به بروکر</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">حساب معاملاتی بروکر</label>
+              <select className={inputCls} value={brokerForm.personal_trading_account_id}
+                      onChange={(e) => setBrokerForm({ ...brokerForm, personal_trading_account_id: e.target.value, financial_account_id: '' })}>
+                <option value="">انتخاب حساب…</option>
+                {tradingAccounts.filter((a: any) => a.is_active).map((a: any) => (
+                  <option key={a.id} value={a.id}>{a.broker_name} — {a.account_label || a.account_number} ({a.currency})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                {brokerForm.direction === 'deposit_to_broker' ? 'حساب مالی مبدأ' : 'حساب مالی مقصد'}
+              </label>
+              <select className={inputCls} value={brokerForm.financial_account_id}
+                      onChange={(e) => setBrokerForm({ ...brokerForm, financial_account_id: e.target.value })}>
+                <option value="">انتخاب حساب…</option>
+                {brokerFinancialAccounts.map((a: any) => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.currency})</option>
+                ))}
+              </select>
+            </div>
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">مبلغ ({selectedTradingAccount?.currency || '—'})</label>
+              <input type="number" min="0.01" step="any" className={inputCls} value={brokerForm.amount} placeholder="مثلاً 250"
+                     onChange={(e) => setBrokerForm({ ...brokerForm, amount: e.target.value })} />
+            </div>
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">تاریخ گردش (شمسی)</label>
+              <PersianDateInput value={brokerForm.date} onChange={(iso) => setBrokerForm({ ...brokerForm, date: iso })} />
+            </div>
+            <div>
+              <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">توضیحات</label>
+              <input className={inputCls} value={brokerForm.note} placeholder="اختیاری"
+                     onChange={(e) => setBrokerForm({ ...brokerForm, note: e.target.value })} />
+            </div>
+          </div>
+          <div className="flex justify-end gap-3 mt-6">
+            <button onClick={() => setShowForm(false)}
+                    className="px-5 py-3 rounded-[12px] text-sm font-extrabold bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)]">
+              انصراف
+            </button>
+            <button onClick={handleBrokerSubmit} disabled={saving || tradingAccounts.length === 0}
+                    className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-50"
+                    style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
+              {saving ? '⏳ در حال ذخیره…' : editingBrokerId !== null ? 'ذخیرهٔ اصلاحات' : 'ثبت گردش'}
             </button>
           </div>
         </div>
@@ -364,8 +544,8 @@ export default function PayoutHistoryPage() {
           <div>
             <label className="text-[12px] text-[var(--text-secondary)] font-bold block mb-2">💱 ارز</label>
             <select className={inputCls} value={currency} onChange={(e) => setCurrency(e.target.value)}>
-              <option value="">همه</option>
-              <option value="USD">USD</option>
+              <option value="">پیش‌فرض: USDT</option>
+              <option value="USDT">USDT</option>
               <option value="IRR">IRR</option>
             </select>
           </div>
@@ -396,16 +576,16 @@ export default function PayoutHistoryPage() {
         <>
           {/* آمار */}
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-            <StatCard icon="💵" label="مجموع برداشت‌ها" value={money(stats?.total)} />
-            <StatCard icon="🔢" label="تعداد برداشت‌ها" value={String(stats?.count ?? 0)} tone="purple" />
-            <StatCard icon="📊" label="میانگین برداشت" value={money(stats?.average)} tone="profit" />
-            <StatCard icon="🏆" label="بزرگ‌ترین برداشت" value={money(stats?.largest)} />
+            <StatCard icon="💵" label={isProp ? 'مجموع برداشت‌ها' : 'واریز به بروکر'} value={money(isProp ? stats?.total : stats?.total_deposits)} />
+            <StatCard icon="🏧" label={isProp ? 'تعداد برداشت‌ها' : 'برداشت از بروکر'} value={isProp ? String(stats?.count ?? 0) : money(stats?.total_withdrawals)} tone="purple" />
+            <StatCard icon="📊" label={isProp ? 'میانگین برداشت' : 'تعداد گردش‌ها'} value={isProp ? money(stats?.average) : String(stats?.count ?? 0)} tone="profit" />
+            <StatCard icon="🏆" label={isProp ? 'بزرگ‌ترین برداشت' : 'بزرگ‌ترین گردش'} value={money(stats?.largest)} />
           </div>
 
           {/* نمودار برداشت‌ها در طول زمان */}
           {chartData.length > 0 && (
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-              <h3 className="text-base font-extrabold text-[var(--text-primary)] mb-4">📈 برداشت‌ها در طول زمان</h3>
+              <h3 className="text-base font-extrabold text-[var(--text-primary)] mb-4">{isProp ? '📈 برداشت‌ها در طول زمان' : '🔄 واریز و برداشت بروکر در طول زمان'}</h3>
               <div className="h-64">
                 <ResponsiveContainer width="100%" height="100%">
                   <BarChart data={chartData}>
@@ -413,7 +593,15 @@ export default function PayoutHistoryPage() {
                     <XAxis dataKey="name" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                     <YAxis tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                     <Tooltip contentStyle={{ background: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)' }} />
-                    <Bar dataKey="amount" fill="var(--accent)" radius={[6, 6, 0, 0]} />
+                    {isProp ? (
+                      <Bar dataKey="amount" fill="var(--accent)" radius={[6, 6, 0, 0]} />
+                    ) : (
+                      <>
+                        <Legend />
+                        <Bar dataKey="deposits" name="واریز به بروکر" fill="var(--profit)" radius={[6, 6, 0, 0]} />
+                        <Bar dataKey="withdrawals" name="برداشت از بروکر" fill="var(--loss)" radius={[6, 6, 0, 0]} />
+                      </>
+                    )}
                   </BarChart>
                 </ResponsiveContainer>
               </div>
@@ -431,7 +619,7 @@ export default function PayoutHistoryPage() {
                   <div key={i} className="bg-[var(--bg-elevated)] border border-[var(--border-subtle)] rounded-[14px] px-4 py-3">
                     <div className="text-[12px] font-bold text-[var(--text-primary)]">{x.name}</div>
                     <div className="text-[13px] font-extrabold text-[var(--profit)]">{money(x.amount)}</div>
-                    <div className="text-[11px] text-[var(--text-muted)]">{x.count} برداشت</div>
+                    <div className="text-[11px] text-[var(--text-muted)]">{x.count} {isProp ? 'برداشت' : 'گردش'}</div>
                   </div>
                 ))}
               </div>
@@ -443,8 +631,8 @@ export default function PayoutHistoryPage() {
             {rows.length === 0 ? (
               <EmptyState
                 icon="💸"
-                title="برداشتی ثبت نشده"
-                description="با ثبت اولین برداشت، این جدول پر می‌شود"
+                title={isProp ? 'برداشتی ثبت نشده' : 'گردشی ثبت نشده'}
+                description={isProp ? 'با ثبت اولین برداشت، این جدول پر می‌شود' : 'واریز یا برداشت بروکر را ثبت کن تا در این جدول نمایش داده شود'}
               />
             ) : (
               <div className="overflow-x-auto">
@@ -452,13 +640,14 @@ export default function PayoutHistoryPage() {
                   <thead>
                     <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
                       <th className="text-right py-3 px-4">تاریخ</th>
+                      {!isProp && <th className="text-right py-3 px-4">نوع گردش</th>}
                       <th className="text-right py-3 px-4">مبلغ</th>
                       {isProp && <th className="text-right py-3 px-4">وضعیت</th>}
-                      <th className="text-right py-3 px-4">{isProp ? 'پراپ' : 'بروکر'}</th>
+                      <th className="text-right py-3 px-4">{isProp ? 'پراپ' : 'حساب بروکر'}</th>
                       {isProp && <th className="text-right py-3 px-4">مرحله</th>}
-                      <th className="text-right py-3 px-4">حساب مقصد</th>
+                      <th className="text-right py-3 px-4">{isProp ? 'حساب مقصد' : 'حساب مالی'}</th>
                       <th className="text-right py-3 px-4">توضیحات</th>
-                      {isProp && <th className="text-right py-3 px-4">عملیات</th>}
+                      <th className="text-right py-3 px-4">عملیات</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -470,26 +659,42 @@ export default function PayoutHistoryPage() {
                         <td className="py-3 px-4 text-[var(--text-secondary)] text-[12px]">
                           {faDate(r.withdrawal_date || r.date)}
                         </td>
-                        <td className="py-3 px-4 font-extrabold text-[var(--profit)]">{money(r.amount)}</td>
+                        {!isProp && (
+                          <td className={`py-3 px-4 font-bold ${r.direction === 'deposit_to_broker' ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                            {r.direction === 'deposit_to_broker' ? 'واریز به بروکر' : 'برداشت از بروکر'}
+                          </td>
+                        )}
+                        <td className={`py-3 px-4 font-extrabold ${!isProp && r.direction === 'withdrawal_from_broker' ? 'text-[var(--loss)]' : 'text-[var(--profit)]'}`}>
+                          {money(r.amount)}
+                        </td>
                         {isProp && (
                           <td className="py-3 px-4"><StatusBadge status={r.status} /></td>
                         )}
                         <td className="py-3 px-4 text-[var(--text-primary)]">
-                          {isProp ? (r.firm_name || '—') : (r.broker_name || r.account_name || '—')}
+                          {isProp ? (r.firm_name || '—') : `${r.broker_name || '—'} — ${r.personal_account_name || ''}`}
                         </td>
                         {isProp && (
                           <td className="py-3 px-4 text-[var(--text-secondary)]">{r.stage_type || '—'}</td>
                         )}
                         <td className="py-3 px-4 text-[var(--text-secondary)]">
-                          {r.destination_account_name || r.account_name || '—'}
+                          {isProp ? (r.destination_account_name || '—') : (r.financial_account_name || '—')}
                         </td>
                         <td className="py-3 px-4 text-[var(--text-secondary)] truncate max-w-[200px]">
                           {r.note || r.description || '—'}
                         </td>
-                        {isProp && (
-                          <td className="py-3 px-4">
+                        <td className="py-3 px-4">
                             <div className="flex items-center gap-2">
-                              {(r.allowed_transitions || []).map((s: string) => (
+                              {(
+                                <button
+                                  onClick={() => isProp ? openPropEdit(r) : openBrokerEdit(r)}
+                                  disabled={saving}
+                                  title="ویرایش گردش و اصلاح موجودی هر دو حساب"
+                                  className="text-xs font-bold text-[var(--accent)] hover:underline disabled:opacity-40"
+                                >
+                                  ✏️
+                                </button>
+                              )}
+                              {isProp && (r.allowed_transitions || []).map((s: string) => (
                                 <button
                                   key={s}
                                   disabled={busyId === r.id}
@@ -506,10 +711,10 @@ export default function PayoutHistoryPage() {
                                   {busyId === r.id ? '…' : STATUS_ACTION_LABEL[s] || s}
                                 </button>
                               ))}
-                              {r.status === 'received' && (
+                              {isProp && r.status === 'received' && (
                                 <button
                                   onClick={() => openTransfer(r)}
-                                  title="ثبت انتقال بین‌حسابی (درآمد نیست)"
+                                  title="ثبت انتقال بین‌حسابی"
                                   className="text-xs font-bold text-[#6366f1] hover:underline"
                                 >
                                   🔄
@@ -524,7 +729,6 @@ export default function PayoutHistoryPage() {
                               </button>
                             </div>
                           </td>
-                        )}
                       </tr>
                     ))}
                   </tbody>
@@ -554,7 +758,7 @@ export default function PayoutHistoryPage() {
               <div>
                 <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ثبت انتقال بین‌حسابی</h3>
                 <p className="text-[11px] text-[var(--text-muted)]">
-                  این انتقال <b>درآمد نیست</b>؛ فقط بین حساب‌های مالی جابه‌جا می‌شود.
+                  انتقال از کیف‌پول یا صرافی به بانک در گزارش درآمد می‌آید؛ انتقال بین دو حساب بانکی درآمد تازه نیست.
                 </p>
               </div>
             </div>
@@ -607,7 +811,7 @@ export default function PayoutHistoryPage() {
                   value={transferForm.currency}
                   onChange={(e) => setTransferForm({ ...transferForm, currency: e.target.value })}
                 >
-                  <option value="USD">USD</option>
+                  <option value="USDT">USDT</option>
                   <option value="IRR">IRR</option>
                 </select>
               </div>

@@ -166,7 +166,7 @@ return (
                     {(() => { const [y,m,d] = isoToJalali(selectedDay.date); return `${d} ${JALALI_MONTHS[m-1]} ${y}`; })()}
                   </h3>
                   <span className={`text-sm font-bold ${selectedDay.total_pnl>=0?'text-[var(--profit)]':'text-[var(--loss)]'}`}>
-                    {selectedDay.total_pnl>=0?'+':''}{selectedDay.total_pnl.toFixed(2)} $
+                    {selectedDay.total_pnl>=0?'+':''}{selectedDay.total_pnl.toFixed(2)} USDT
                   </span>
                 </div>
                 <div className='flex gap-4 mb-4 text-xs'>

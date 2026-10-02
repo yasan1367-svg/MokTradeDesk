@@ -75,7 +75,7 @@ export default function EquityCurveChart({ trades = [], initialBalance = 0, heig
             color: '#F0F0F5',
             fontSize: '12px',
           }}
-          formatter={(value: any) => [`${value} $`, 'سرمایه']}
+          formatter={(value: any) => [`${value} USDT `, 'سرمایه']}
           labelFormatter={(label) => `معامله #${label}`}
         />
         <Area

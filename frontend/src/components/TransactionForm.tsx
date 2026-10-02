@@ -25,14 +25,14 @@ interface TransactionFormProps {
 }
 
 const CURRENCIES = [
-  { value: 'USD', label: 'USD 🇺🇸' },
+  { value: 'USDT', label: 'USDT' },
   { value: 'IRR', label: 'IRR 🇮🇷' },
 ];
 
 const TRANSACTION_TYPES = [
   { value: 'deposit', label: '💵 واریز', color: '#22c55e' },
   { value: 'withdrawal', label: '🏧 برداشت', color: '#ef4444' },
-  { value: 'transfer', label: '🔄 انتقال/تبدیل', color: '#8b5cf6' },  // فاز ۳۸.۴: جایگزین EXCHANGE
+  { value: 'transfer', label: '🔄 انتقال', color: '#8b5cf6' },
   { value: 'profit', label: '📈 سود', color: '#10b981' },
   { value: 'loss', label: '📉 ضرر', color: '#f97316' },
   { value: 'fee', label: '💸 کارمزد', color: '#eab308' },
@@ -45,7 +45,7 @@ export default function TransactionForm({
   const [accountId, setAccountId] = useState<number | ''>('');
   const [categoryId, setCategoryId] = useState<number | ''>('');
   const [amount, setAmount] = useState('');
-  const [currency, setCurrency] = useState('USD');
+  const [currency, setCurrency] = useState('USDT');
   const [date, setDate] = useState('');
   const [description, setDescription] = useState('');
   const [type, setType] = useState('deposit');
@@ -68,17 +68,37 @@ export default function TransactionForm({
   }, [mode, initialData]);
 
   const needsTransferFields = type === 'transfer';
-  const isFormValid = accountId !== '' && amount !== '' && parseFloat(amount) >= 0 && date !== '';
+  const sourceAccount = accounts.find((account) => account.id === fromAccountId);
+  const destinationAccount = accounts.find((account) => account.id === toAccountId);
+  const selectedAccount = accounts.find((account) =>
+    account.id === (needsTransferFields && destinationAccount ? toAccountId : accountId),
+  );
+  const transactionCurrency = selectedAccount?.currency || currency;
+  const transferCurrencyMismatch = Boolean(
+    needsTransferFields && sourceAccount && destinationAccount
+      && (sourceAccount.currency !== destinationAccount.currency || sourceAccount.id === destinationAccount.id),
+  );
+  const currencyOptions = selectedAccount
+    ? CURRENCIES.filter((item) => item.value === transactionCurrency)
+    : CURRENCIES;
+
+  useEffect(() => {
+    if (transactionCurrency && transactionCurrency !== currency) setCurrency(transactionCurrency);
+  }, [transactionCurrency, currency]);
+
+  const isTransferValid = fromAccountId !== '' && toAccountId !== '' && !transferCurrencyMismatch;
+  const isFormValid = (needsTransferFields ? isTransferValid : accountId !== '')
+    && amount !== '' && Number.isFinite(Number(amount)) && Number(amount) > 0 && date !== '';
 
   const handleSubmit = async () => {
     if (!isFormValid) return;
     setSaving(true);
     try {
       await onSave({
-        account_id: accountId as number,
+        account_id: (needsTransferFields ? toAccountId : accountId) as number,
         category_id: categoryId !== '' ? (categoryId as number) : null,
         amount: parseFloat(amount) || 0,
-        currency,
+        currency: transactionCurrency,
         date: date || undefined,
         description: description || null,
         type,
@@ -90,7 +110,7 @@ export default function TransactionForm({
       setAccountId('');
       setCategoryId('');
       setAmount('');
-      setCurrency('USD');
+      setCurrency('USDT');
       setDate('');
       setDescription('');
       setType('deposit');
@@ -124,22 +144,40 @@ export default function TransactionForm({
                 <option key={t.value} value={t.value}>{t.label}</option>
               ))}
             </select>
+            {(type === 'deposit' || type === 'profit') && (
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                {selectedAccount?.type === 'bank'
+                  ? 'این مبلغ در گزارش درآمد حساب می‌شود.'
+                  : selectedAccount
+                    ? 'موجودی را افزایش می‌دهد؛ فقط مبالغ ثبت‌شده در حساب بانکی درآمد شمرده می‌شوند.'
+                    : 'فقط مبالغ ثبت‌شده در حساب بانکی در گزارش درآمد محاسبه می‌شوند.'}
+              </p>
+            )}
+            {needsTransferFields && destinationAccount && sourceAccount && (
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                {destinationAccount.type === 'bank' && sourceAccount.type !== 'bank'
+                  ? 'این انتقال در لحظهٔ رسیدن به بانک در گزارش درآمد می‌آید.'
+                  : 'این انتقال درآمد بانکی تازه ثبت نمی‌کند.'}
+              </p>
+            )}
           </div>
 
-          {/* حساب */}
-          <div>
-            <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب *</label>
-            <select
-              value={accountId}
-              onChange={(e) => setAccountId(e.target.value ? parseInt(e.target.value) : '')}
-              className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
-            >
-              <option value="">انتخاب حساب...</option>
-              {accounts.map((a) => (
-                <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
-              ))}
-            </select>
-          </div>
+          {/* حساب برای تراکنش عادی؛ انتقال حساب مبدأ و مقصد مستقل دارد */}
+          {!needsTransferFields && (
+            <div>
+              <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب *</label>
+              <select
+                value={accountId}
+                onChange={(e) => setAccountId(e.target.value ? parseInt(e.target.value) : '')}
+                className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
+              >
+                <option value="">انتخاب حساب...</option>
+                {accounts.map((a) => (
+                  <option key={a.id} value={a.id}>{a.name} ({a.type})</option>
+                ))}
+              </select>
+            </div>
+          )}
 
           {/* مبلغ */}
           <div>
@@ -157,14 +195,22 @@ export default function TransactionForm({
           <div>
             <label className="text-[var(--text-secondary)] text-xs block mb-1">ارز *</label>
             <select
-              value={currency}
+              value={transactionCurrency}
+              disabled={Boolean(selectedAccount)}
               onChange={(e) => setCurrency(e.target.value)}
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
             >
-              {CURRENCIES.map((c) => (
+              {currencyOptions.map((c) => (
                 <option key={c.value} value={c.value}>{c.label}</option>
               ))}
             </select>
+            {needsTransferFields && sourceAccount && destinationAccount && transferCurrencyMismatch && (
+              <p className="text-xs text-[#ef4444] mt-1">
+                {sourceAccount.id === destinationAccount.id
+                  ? 'حساب مبدأ و مقصد باید متفاوت باشند.'
+                  : 'ارز حساب مبدأ و مقصد باید یکسان باشد.'}
+              </p>
+            )}
           </div>
 
           {/* تاریخ شمسی */}

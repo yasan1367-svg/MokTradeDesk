@@ -49,7 +49,7 @@ export default function WeekdayBarChart({ data, metric = 'win_rate', height = 20
             fontSize: '12px',
           }}
           formatter={(value: any) => [
-            metric === 'win_rate' ? `${value}%` : `${value} $`,
+            metric === 'win_rate' ? `${value}%` : `${value} USDT `,
             metric === 'win_rate' ? 'نرخ برد' : 'سود خالص',
           ]}
         />

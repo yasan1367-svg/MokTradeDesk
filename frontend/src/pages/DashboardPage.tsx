@@ -15,12 +15,14 @@ import {
   listBackups, createBackup,
 } from '../api/client';
 import type { TradeScope } from '../api/client';
+import type { CurrencyCode } from '../api/client';
 import { DashboardSkeleton } from '../components/Skeleton';
 import { useToast } from '../components/ToastProvider';
 import PersianDateInput from '../components/PersianDateInput';
 import EmptyState from '../components/ui/EmptyState';
 import InfoTooltip from '../components/ui/Tooltip';
 import ErrorBoundary from '../components/ErrorBoundary';
+import FinancialAssetBalances from '../components/FinancialAssetBalances';
 import { gregorianToJalali, jalaliToGregorian } from '../utils/jalali';
 
 // ── کمک‌تابع‌های هدر (فاز ۱۴.۲) ──
@@ -167,12 +169,12 @@ function MiniPie({ wins, losses, height = 80 }: { wins: number; losses: number; 
   );
 }
 
-function MiniBars({ data, colors, height = 80 }: { data: { label: string; value: number }[]; colors: string[]; height?: number }) {
+function MiniBars({ data, colors, height = 80, currency = 'USDT' }: { data: { label: string; value: number }[]; colors: string[]; height?: number; currency?: string }) {
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={data} margin={{ top: 6, right: 6, left: 6, bottom: 0 }}>
         <XAxis dataKey="label" hide />
-        <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${Number(v).toLocaleString()} $`, '']} />
+        <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${Number(v).toLocaleString()} ${currency} `, '']} />
         <Bar dataKey="value" radius={[4, 4, 0, 0]}>
           {data.map((_, i) => (
             <Cell key={i} fill={colors[i % colors.length]} />
@@ -202,6 +204,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   // فاز ۴۴.۱ — دامنهٔ معاملات (واقعی/بک‌تست/فوروارد/همه)
   const [scope, setScope] = useState<TradeScope>(
     () => (localStorage.getItem('mok_dashboard_scope') as TradeScope) || 'real',
+  );
+  const [currency, setCurrency] = useState<CurrencyCode>(
+    () => localStorage.getItem('mok_dashboard_currency') === 'IRR' ? 'IRR' : 'USDT',
   );
 
   // جدول‌های معاملات
@@ -254,17 +259,17 @@ const [payouts, setPayouts] = useState<any>(null);
       setRefreshing(true);
       try {
         const [dash, yest, sum, flow, accs, riskRes, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
-          getDashboardData({ date_from: r.from, date_to: r.to, scope }),
-          getYesterdayData({ scope }),
+          getDashboardData({ date_from: r.from, date_to: r.to, scope, currency }),
+          getYesterdayData({ scope, currency }),
           getFinanceSummary(),
-          getFinanceCashflow(),
+          getFinanceCashflow({ currency }),
           getFinanceAccounts(),
-          getRiskAdvanced({ date_from: r.from, date_to: r.to, scope }),
-          getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc' }),
-          getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc' }),
+          getRiskAdvanced({ date_from: r.from, date_to: r.to, scope, currency }),
+          getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc', currency }),
+          getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc', currency }),
           getPropAlerts({ unread_only: true }),
           getSpendableAssets(),
-          getNetProfit(),
+          getNetProfit({ currency }),
           getAssetTrend(),
         ]);
         setData(dash.data);
@@ -288,7 +293,7 @@ const [payouts, setPayouts] = useState<any>(null);
         setRefreshing(false);
       }
     },
-    [rangeKey, customFrom, customTo, scope, toast],
+    [rangeKey, customFrom, customTo, scope, currency, toast],
   );
 
   useEffect(() => {
@@ -301,7 +306,8 @@ const [payouts, setPayouts] = useState<any>(null);
     localStorage.setItem('mok_dashboard_custom_from', customFrom);
     localStorage.setItem('mok_dashboard_custom_to', customTo);
     localStorage.setItem('mok_dashboard_scope', scope);
-  }, [rangeKey, customFrom, customTo, scope]);
+    localStorage.setItem('mok_dashboard_currency', currency);
+  }, [rangeKey, customFrom, customTo, scope, currency]);
 
   // ساعت زنده
   useEffect(() => {
@@ -324,6 +330,7 @@ const [payouts, setPayouts] = useState<any>(null);
   if (!data) return null;
 
   const { summary, today, sparkline, equity_curve, pnl_distribution, win_loss, periods, prop_progress } = data;
+  const currencyProfit = netProfit?.by_currency?.[currency] || netProfit;
 
   const getChangeType = (value: number): 'up' | 'down' | 'neutral' => {
     if (value > 0) return 'up';
@@ -441,6 +448,19 @@ const [payouts, setPayouts] = useState<any>(null);
             </button>
           ))}
         </div>
+        <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-[var(--border-subtle)]">
+          <span className="text-xs font-bold text-[var(--text-secondary)] ml-1">💱 ارز:</span>
+          {(['USDT', 'IRR'] as CurrencyCode[]).map((value) => (
+            <button
+              key={value}
+              onClick={() => setCurrency(value)}
+              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${currency === value ? 'text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'}`}
+              style={currency === value ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+            >
+              {value}
+            </button>
+          ))}
+        </div>
         {rangeKey === 'custom' && (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-[var(--border-subtle)]">
             <PersianDateInput label="از تاریخ" value={customFrom} onChange={setCustomFrom} />
@@ -468,7 +488,7 @@ const [payouts, setPayouts] = useState<any>(null);
           <div
             className={`text-4xl font-extrabold ${today.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
           >
-            {today.pnl >= 0 ? '+' : ''}{today.pnl} $
+                  {today.pnl >= 0 ? '+' : ''}{today.pnl} {currency}
           </div>
           <div className="flex items-center gap-4 mt-3 flex-wrap">
             <div className="text-sm text-[var(--text-secondary)]">
@@ -490,19 +510,19 @@ const [payouts, setPayouts] = useState<any>(null);
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
             <div className="text-[11px] text-[var(--text-secondary)] font-bold">این ماه</div>
             <div className={`text-lg font-extrabold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} $
+              {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
             <div className="text-[11px] text-[var(--text-secondary)] font-bold">این فصل</div>
             <div className={`text-lg font-extrabold ${periods.quarter.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+              {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
             <div className="text-[11px] text-[var(--text-secondary)] font-bold">امسال</div>
             <div className={`text-lg font-extrabold ${periods.year.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+              {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
             </div>
           </div>
         </div>
@@ -520,7 +540,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex items-center justify-between">
                 <span className="text-sm text-[var(--text-secondary)]">سود / زیان</span>
                 <span className={`text-xl font-extrabold ${yesterday.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {yesterday.net_pnl >= 0 ? '+' : ''}{yesterday.net_pnl} $
+                  {yesterday.net_pnl >= 0 ? '+' : ''}{yesterday.net_pnl} {currency}
                 </span>
               </div>
               <div className="flex items-center justify-between text-sm">
@@ -555,6 +575,7 @@ const [payouts, setPayouts] = useState<any>(null);
                 ]}
                 colors={['#3F7CFF', '#7959D6', '#13AE81']}
                 height={120}
+                currency={currency}
               />
               <div className="text-[11px] text-[var(--text-muted)] text-center mt-1">تفکیک بر اساس منبع (قدرمطلق سود/زیان)</div>
             </div>
@@ -667,34 +688,9 @@ const [payouts, setPayouts] = useState<any>(null);
       <ErrorBoundary label="گزارش‌های مالی (فاز ۲۲)">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
           <Card>
-            <CardHeader title="💵 دارایی قابل برداشت" subtitle="تفکیک منابع مالی" />
+            <CardHeader title="💵 دارایی شخصی" subtitle="موجودی حساب‌ها به تفکیک ارز" />
             {spendable ? (
-              <div className="space-y-2">
-                {([
-                  ['prop_stage_3', '🏢 مرحلهٔ ۳ پراپ'],
-                  ['broker', '📊 بروکر'],
-                  ['exchange', '🔄 صرافی'],
-                  ['trust_wallet', '₿ تراست ولت'],
-                  ['bank', '🏦 بانک'],
-                ] as const).map(([key, label]) => (
-                  <div key={key} className="flex items-center justify-between bg-[var(--bg-elevated)] rounded-[12px] px-4 py-2.5">
-                    <span className="text-[13px] text-[var(--text-secondary)] font-bold">{label}</span>
-                    <span className="text-[14px] font-extrabold text-[var(--text-primary)]">
-                      {Number(spendable[key]?.amount ?? 0).toLocaleString('en-US')}{' '}
-                      <span className="text-[11px] text-[var(--text-secondary)]">{spendable[key]?.currency}</span>
-                    </span>
-                  </div>
-                ))}
-                <div className="flex items-center justify-between border-t border-[var(--border-subtle)] pt-3 mt-1">
-                  <span className="text-[13px] font-extrabold text-[var(--text-primary)]">مجموع</span>
-                  <span className="text-[14px] font-black text-[var(--accent)]">
-                    {Number(spendable.total?.usd ?? 0).toLocaleString('en-US')} $
-                    <span className="mr-2 text-[12px] text-[var(--text-secondary)]">
-                      {Number(spendable.total?.irr ?? 0).toLocaleString('en-US')} IRR
-                    </span>
-                  </span>
-                </div>
-              </div>
+              <FinancialAssetBalances assets={spendable} />
             ) : (
               <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
             )}
@@ -707,21 +703,21 @@ const [payouts, setPayouts] = useState<any>(null);
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                     <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
-                    <div className={`text-lg font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                      {netProfit.real_pnl >= 0 ? '+' : ''}{Number(netProfit.real_pnl).toLocaleString('en-US')} $
+                    <div className={`text-lg font-extrabold ${currencyProfit.real_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                      {currencyProfit.real_pnl >= 0 ? '+' : ''}{Number(currencyProfit.real_pnl).toLocaleString('en-US')} {currency}
                     </div>
                   </div>
                   <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                     <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
                     <div className="text-lg font-extrabold text-[var(--loss)]">
-                      −{Number(netProfit.expenses).toLocaleString('en-US')} $
+                      −{Number(currencyProfit.expenses).toLocaleString('en-US')} {currency}
                     </div>
                   </div>
                 </div>
                 <div className="flex items-center justify-between bg-[var(--accent-soft)] rounded-[14px] px-4 py-3">
                   <span className="text-[13px] font-extrabold text-[var(--text-primary)]">سود خالص</span>
-                  <span className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                    {netProfit.net_profit >= 0 ? '+' : ''}{Number(netProfit.net_profit).toLocaleString('en-US')} $
+                  <span className={`text-xl font-black ${currencyProfit.net_profit >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                    {currencyProfit.net_profit >= 0 ? '+' : ''}{Number(currencyProfit.net_profit).toLocaleString('en-US')} {currency}
                   </span>
                 </div>
               </div>
@@ -732,7 +728,7 @@ const [payouts, setPayouts] = useState<any>(null);
         </div>
 
         <Card className="mt-5">
-          <CardHeader title="📈 روند دارایی" subtitle="مجموع تجمعی USD / IRR" />
+          <CardHeader title="📈 روند دارایی" subtitle="مجموع تجمعی USDT / IRR" />
           {assetTrend.length > 1 ? (
             <ResponsiveContainer width="100%" height={260}>
               <AreaChart data={assetTrend} margin={{ top: 6, right: 12, left: 0, bottom: 0 }}>
@@ -746,7 +742,7 @@ const [payouts, setPayouts] = useState<any>(null);
                 <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--text-secondary)" />
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                 <Tooltip contentStyle={MINI_TOOLTIP} />
-                <Area type="monotone" dataKey="total_usd" stroke="var(--accent)" fill="url(#assetUsd)" strokeWidth={2} name="USD" />
+                <Area type="monotone" dataKey="total_usdt" stroke="var(--accent)" fill="url(#assetUsd)" strokeWidth={2} name="USDT" />
                 <Area type="monotone" dataKey="total_irr" stroke="#F59E0B" fillOpacity={0} strokeWidth={2} name="IRR" />
               </AreaChart>
             </ResponsiveContainer>
@@ -773,7 +769,7 @@ const [payouts, setPayouts] = useState<any>(null);
         <StatCard
           icon="💰"
           label="سود خالص"
-          value={`${summary.net_pnl >= 0 ? '+' : ''}${summary.net_pnl} $`}
+          value={`${summary.net_pnl >= 0 ? '+' : ''}${summary.net_pnl} ${currency} `}
           change={periods.month.change_percent > 0 ? `+${periods.month.change_percent}٪` : `${periods.month.change_percent}٪`}
           changeType={getChangeType(periods.month.change_percent)}
           color="profit"
@@ -795,7 +791,7 @@ const [payouts, setPayouts] = useState<any>(null);
         <StatCard
           icon="⚠️"
           label="حداکثر ضرر"
-          value={`-${summary.max_dd} $`}
+          value={`-${summary.max_dd} ${currency} `}
           change="—"
           changeType="neutral"
           color="loss"
@@ -805,6 +801,7 @@ const [payouts, setPayouts] = useState<any>(null);
               { label: 'حداکثر افت', value: summary.max_dd ?? 0 },
             ]}
             colors={['#E45D72', '#F0A6B2']}
+            currency={currency}
           />}
         />
         <StatCard
@@ -820,6 +817,7 @@ const [payouts, setPayouts] = useState<any>(null);
               { label: 'زیان ناخالص', value: summary.gross_loss ?? 0 },
             ]}
             colors={['#13AE81', '#E45D72']}
+            currency={currency}
           />}
         />
       </div>
@@ -898,7 +896,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
                 <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} $
+                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
                 </span>
               </div>
               <ProgressBar
@@ -917,7 +915,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
                 <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
                 </span>
               </div>
               <ProgressBar
@@ -927,7 +925,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex justify-between mt-1.5">
                 <span className="text-[11px] text-[var(--text-muted)]">از ابتدای فصل</span>
                 <span className={`text-[11px] font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} $
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
                 </span>
               </div>
             </div>
@@ -936,7 +934,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
                 <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
                 </span>
               </div>
               <ProgressBar
@@ -946,7 +944,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="flex justify-between mt-1.5">
                 <span className="text-[11px] text-[var(--text-muted)]">از ابتدای سال</span>
                 <span className={`text-[11px] font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} $
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
                 </span>
               </div>
             </div>
@@ -998,8 +996,8 @@ const [payouts, setPayouts] = useState<any>(null);
               <RiskStat label="Sortino" value={risk.sortino_ratio} tip="مثل شارپ اما فقط نوسان نزولی را در نظر می‌گیرد" />
               <RiskStat label="Calmar" value={risk.calmar_ratio} tip="بازده سالیانه تقسیم بر حداکثر افت سرمایه" />
               <RiskStat label="Risk of Ruin" value={risk.risk_of_ruin} tip="احتمال از دست دادن کل سرمایه" tone={ruinTone(risk.risk_of_ruin)} />
-              <RiskStat label="VaR 95%" value={risk.var_95} tip="حد ضرر مورد انتظار در ۹۵٪ موارد" tone="loss" suffix=" $" />
-              <RiskStat label="CVaR 95%" value={risk.cvar_95} tip="میانگین زیان‌های فراتر از VaR" tone="loss" suffix=" $" />
+              <RiskStat label="VaR 95%" value={risk.var_95} tip="حد ضرر مورد انتظار در ۹۵٪ موارد" tone="loss" suffix={` ${currency} `} />
+              <RiskStat label="CVaR 95%" value={risk.cvar_95} tip="میانگین زیان‌های فراتر از VaR" tone="loss" suffix={` ${currency} `} />
               <RiskStat label="Max Consec. Losses" value={risk.max_consecutive_losses} tip="بیشترین ضررهای متوالی" tone="loss" />
               <RiskStat label="Max Consec. Wins" value={risk.max_consecutive_wins} tip="بیشترین بردهای متوالی" tone="profit" />
               <RiskStat label="Avg R-Multiple" value={risk.avg_r_multiple} tip="میانگین R هر معامله" tone={risk.avg_r_multiple >= 0 ? 'profit' : 'loss'} />
@@ -1007,7 +1005,7 @@ const [payouts, setPayouts] = useState<any>(null);
               <RiskStat label="Kelly" value={risk.kelly_criterion} tip="کسر بهینهٔ سرمایه برای هر معامله" tone={risk.kelly_criterion > 0 ? 'profit' : 'loss'} />
               <RiskStat label="Recovery Factor" value={risk.recovery_factor} tip="سود خالص تقسیم بر حداکثر افت" />
               <RiskStat label="Ulcer Index" value={risk.ulcer_index} tip="شدت و مدت افت‌ها — کمتر بهتر" />
-              <RiskStat label="Max Drawdown" value={risk.max_drawdown} tip="بیشترین افت سرمایه از سقف" tone="loss" suffix=" $" />
+              <RiskStat label="Max Drawdown" value={risk.max_drawdown} tip="بیشترین افت سرمایه از سقف" tone="loss" suffix={` ${currency} `} />
             </div>
             <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
               <div>
@@ -1044,7 +1042,7 @@ const [payouts, setPayouts] = useState<any>(null);
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                       <XAxis dataKey="index" stroke="var(--text-secondary)" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                       <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
-                      <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} $`, 'افت']} labelFormatter={(l: any) => `معامله #${l}`} />
+                      <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} ${currency} `, 'افت']} labelFormatter={(l: any) => `معامله #${l}`} />
                       <Area type="monotone" dataKey="drawdown" stroke="#E45D72" strokeWidth={2} fill="url(#ddGradient)" />
                     </AreaChart>
                   </ResponsiveContainer>
@@ -1066,9 +1064,7 @@ const [payouts, setPayouts] = useState<any>(null);
           {finance?.summary ? (
             <div>
               <div className="text-2xl font-extrabold text-[var(--text-primary)]">
-                {Object.values(finance.summary.assets_by_currency || {})
-                  .reduce((a: number, b: any) => a + Number(b || 0), 0)
-                  .toLocaleString()}
+                {Number(finance.summary.assets_by_currency?.[currency] || 0).toLocaleString()} {currency}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">
                 {Object.entries(finance.summary.assets_by_currency || {})
@@ -1082,7 +1078,7 @@ const [payouts, setPayouts] = useState<any>(null);
         </Card>
 
         <Card>
-          <CardHeader title="💵 جریان نقدی" subtitle="۶ ماه اخیر" />
+          <CardHeader title="💵 جریان نقدی" subtitle={`۶ ماه اخیر · ${currency}`} />
           {finance?.cashflow?.length ? (
             <ResponsiveContainer width="100%" height={140}>
               <BarChart data={finance.cashflow.slice(-6)}>
@@ -1158,7 +1154,7 @@ const [payouts, setPayouts] = useState<any>(null);
                         <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
                         <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
                         <td className={`py-2.5 px-2 font-bold ${pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} $
+                          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} {currency}
                         </td>
                         <td className="py-2.5 px-2 text-[11px] text-[var(--text-secondary)]">
                           {t.close_time ? new Date(t.close_time).toLocaleDateString('fa-IR') : '—'}
@@ -1200,7 +1196,7 @@ const [payouts, setPayouts] = useState<any>(null);
                         <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
                         <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
                         <td className={`py-2.5 px-2 font-bold ${!hasPnl ? 'text-[var(--text-secondary)]' : pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} $` : '—'}
+                          {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${currency} ` : '—'}
                         </td>
                       </tr>
                     );

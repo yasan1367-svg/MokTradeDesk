@@ -10,8 +10,10 @@ import {
   deleteVersion,
   forkVersion,
   getStrategyStats,
+  getStrategyLivePerformance,
   getVersionTrades,
 } from '../api/client';
+import PersianDateInput from '../components/PersianDateInput';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   BarChart, Bar,
@@ -76,6 +78,7 @@ interface TradeItem {
   id: number;
   symbol: string;
   direction: string;
+  test_type: string | null;
   close_time: string | null;
   pnl: number | null;
   commission: number | null;
@@ -86,6 +89,34 @@ interface TradeItem {
 interface EquityPoint {
   index: number;
   equity: number;
+}
+
+interface LivePerformanceVersion {
+  version_id: number;
+  version_name: string;
+  status: string;
+  forked_from_version_id: number | null;
+  total_trades: number;
+  net_pnl: number;
+  winning_trades: number;
+  losing_trades: number;
+  breakeven_trades: number;
+  win_rate: number;
+  profit_factor: number;
+  by_type: {
+    real_personal: { trades: number; net_pnl: number };
+    real_prop: { trades: number; net_pnl: number };
+  };
+}
+
+interface LivePerformance {
+  strategy_id: number;
+  strategy_name: string;
+  currency: 'USDT';
+  date_from: string | null;
+  date_to: string | null;
+  basis: 'closed_trades';
+  versions: LivePerformanceVersion[];
 }
 
 const STATUS_OPTIONS = [
@@ -172,6 +203,11 @@ export default function StrategyPage() {
   const [showStats, setShowStats] = useState(false);
   const [equityData, setEquityData] = useState<EquityPoint[]>([]);
   const [rMultipleHistogram, setRMultipleHistogram] = useState<{ range: string; count: number; fill: string }[]>([]);
+  const [livePerformance, setLivePerformance] = useState<LivePerformance | null>(null);
+  const [livePerformanceLoading, setLivePerformanceLoading] = useState(false);
+  const [livePerformanceError, setLivePerformanceError] = useState<string | null>(null);
+  const [liveDateFrom, setLiveDateFrom] = useState('');
+  const [liveDateTo, setLiveDateTo] = useState('');
 
   useEffect(() => {
     loadStrategies();
@@ -197,6 +233,9 @@ export default function StrategyPage() {
 
   const handleSelectStrategy = (strategy: Strategy) => {
     setSelectedStrategy(strategy);
+    setLiveDateFrom('');
+    setLiveDateTo('');
+    setLivePerformance(null);
     loadVersions(strategy.id);
     loadStats(strategy.id);
     setShowVersionForm(false);
@@ -358,9 +397,30 @@ const handleForkVersion = (version: Version) => {
   // ═════════════════════════════════════════════
   // Strategy Stats
   // ═════════════════════════════════════════════
+  const loadLivePerformance = async (strategyId: number, dateFrom = '', dateTo = '') => {
+    if (dateFrom && dateTo && dateFrom > dateTo) {
+      setLivePerformanceError('تاریخ شروع باید قبل از تاریخ پایان باشد');
+      return;
+    }
+    setLivePerformanceLoading(true);
+    setLivePerformanceError(null);
+    try {
+      const response = await getStrategyLivePerformance(strategyId, {
+        date_from: dateFrom || undefined,
+        date_to: dateTo || undefined,
+      });
+      setLivePerformance(response.data);
+    } catch (err: any) {
+      setLivePerformanceError(err.response?.data?.detail || 'دریافت عملکرد معاملات Real ناموفق بود');
+    } finally {
+      setLivePerformanceLoading(false);
+    }
+  };
+
   const loadStats = async (strategyId: number) => {
     setStatsLoading(true);
     setShowStats(true);
+    void loadLivePerformance(strategyId);
     try {
       // 1. Get summary stats
       const statsRes = await getStrategyStats(strategyId);
@@ -374,7 +434,9 @@ const handleForkVersion = (version: Version) => {
       for (const vid of versionIds) {
         try {
           const tradesRes = await getVersionTrades(vid);
-          allTrades.push(...tradesRes.data);
+          allTrades.push(...tradesRes.data.filter((trade: TradeItem) =>
+            trade.test_type === 'backtest' || trade.test_type === 'forward',
+          ));
         } catch { /* skip */ }
       }
 
@@ -917,10 +979,10 @@ const handleForkVersion = (version: Version) => {
                           {[
                             { label: 'نرخ برد', value: `${stats.summary.win_rate}%`, color: '#13AE81' },
                             { label: 'فاکتور سود', value: stats.summary.profit_factor.toFixed(2), color: '#3F7CFF' },
-                            { label: 'سود خالص', value: `$${stats.summary.net_pnl.toFixed(0)}`, color: '#7959D6' },
+                            { label: 'سود خالص', value: `USDT ${stats.summary.net_pnl.toFixed(0)}`, color: '#7959D6' },
                             { label: 'شارپ', value: stats.summary.sharpe_ratio.toFixed(2), color: '#D99B25' },
-                            { label: 'افت سرمایه', value: `$${stats.summary.max_drawdown.toFixed(0)}`, color: '#E45D72' },
-                            { label: 'امید ریاضی', value: `$${stats.summary.expectancy.toFixed(2)}`, color: '#13AE81' },
+                            { label: 'افت سرمایه', value: `USDT ${stats.summary.max_drawdown.toFixed(0)}`, color: '#E45D72' },
+                            { label: 'امید ریاضی', value: `USDT ${stats.summary.expectancy.toFixed(2)}`, color: '#13AE81' },
                           ].map((item) => (
                             <div key={item.label} className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3 text-center">
                               <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">{item.label}</div>
@@ -957,15 +1019,15 @@ const handleForkVersion = (version: Version) => {
                             <div className="space-y-1.5">
                               <div className="flex justify-between text-[12px]">
                                 <span className="text-[var(--profit)]">میانگین سود</span>
-                                <span className="font-bold text-[var(--text-primary)]">${stats.averages.avg_win.toFixed(2)}</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.averages.avg_win.toFixed(2)} USDT</span>
                               </div>
                               <div className="flex justify-between text-[12px]">
                                 <span className="text-[var(--loss)]">میانگین زیان</span>
-                                <span className="font-bold text-[var(--text-primary)]">-${stats.averages.avg_loss.toFixed(2)}</span>
+                                <span className="font-bold text-[var(--text-primary)]">−{stats.averages.avg_loss.toFixed(2)} USDT</span>
                               </div>
                               <div className="flex justify-between text-[12px]">
                                 <span className="text-[var(--purple)]">میانگین هر معامله</span>
-                                <span className="font-bold text-[var(--text-primary)]">${stats.averages.avg_trade.toFixed(2)}</span>
+                                <span className="font-bold text-[var(--text-primary)]">{stats.averages.avg_trade.toFixed(2)} USDT</span>
                               </div>
                             </div>
                           </div>
@@ -975,11 +1037,11 @@ const handleForkVersion = (version: Version) => {
                         <div className="grid grid-cols-2 gap-3">
                           <div className="bg-[var(--profit-soft)] border border-[var(--profit-border)] rounded-[12px] p-3">
                             <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">🏆 بهترین معامله</div>
-                            <div className="text-[16px] font-extrabold text-[var(--profit)]">+${stats.extremes.largest_win.toFixed(2)}</div>
+                            <div className="text-[16px] font-extrabold text-[var(--profit)]">+{stats.extremes.largest_win.toFixed(2)} USDT</div>
                           </div>
                           <div className="bg-[var(--loss-soft)] border border-[var(--loss-border)] rounded-[12px] p-3">
                             <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">💔 بدترین معامله</div>
-                            <div className="text-[16px] font-extrabold text-[var(--loss)]">-${stats.extremes.largest_loss.toFixed(2)}</div>
+                            <div className="text-[16px] font-extrabold text-[var(--loss)]">−{stats.extremes.largest_loss.toFixed(2)} USDT</div>
                           </div>
                         </div>
 
@@ -995,7 +1057,7 @@ const handleForkVersion = (version: Version) => {
                                   <YAxis tick={{ fontSize: 10, fill: '#9AA8BF' }} />
                                   <Tooltip
                                     contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5EBF3' }}
-                                    formatter={(value) => [`$${Number(value ?? 0).toFixed(2)}`, 'سرمایه']}
+                                    formatter={(value) => [`USDT ${Number(value ?? 0).toFixed(2)}`, 'سرمایه']}
                                     labelFormatter={(label) => `معامله #${label}`}
                                   />
                                   <Line
@@ -1038,6 +1100,93 @@ const handleForkVersion = (version: Version) => {
                         ⏳ هیچ معامله‌ای برای این استراتژی یافت نشد
                       </div>
                     ) : null}
+
+                    <section className="mt-6 pt-5 border-t border-[var(--border-subtle)]">
+                      <div className="mb-4">
+                        <h4 className="text-sm font-extrabold text-[var(--text-primary)]">💰 عملکرد معاملات Real هر نسخه</h4>
+                        <p className="text-xs text-[var(--text-secondary)] mt-1">
+                          فقط معاملات Real بسته‌شده؛ سود خالص شامل PnL، کمیسیون و سواپ است. هر نسخه جداگانه سنجیده می‌شود.
+                        </p>
+                      </div>
+
+                      <div className="flex items-end gap-3 flex-wrap mb-4">
+                        <PersianDateInput label="از تاریخ" value={liveDateFrom} onChange={setLiveDateFrom} className="min-w-[170px]" />
+                        <PersianDateInput label="تا تاریخ" value={liveDateTo} onChange={setLiveDateTo} className="min-w-[170px]" />
+                        <button
+                          onClick={() => selectedStrategy && loadLivePerformance(selectedStrategy.id, liveDateFrom, liveDateTo)}
+                          disabled={livePerformanceLoading}
+                          className="bg-[var(--accent-soft)] text-[var(--accent)] px-4 py-2 rounded-xl text-xs font-extrabold disabled:opacity-50"
+                        >
+                          {livePerformanceLoading ? 'در حال محاسبه…' : 'اعمال بازه'}
+                        </button>
+                        {(liveDateFrom || liveDateTo) && (
+                          <button
+                            onClick={() => {
+                              setLiveDateFrom('');
+                              setLiveDateTo('');
+                              if (selectedStrategy) loadLivePerformance(selectedStrategy.id);
+                            }}
+                            className="text-[var(--text-secondary)] hover:text-[var(--text-primary)] px-2 py-2 text-xs font-bold"
+                          >
+                            پاک‌کردن بازه
+                          </button>
+                        )}
+                      </div>
+
+                      {livePerformanceError && (
+                        <div className="text-xs text-[var(--loss)] mb-3">{livePerformanceError}</div>
+                      )}
+                      {livePerformanceLoading && !livePerformance ? (
+                        <div className="text-xs text-[var(--text-muted)] text-center py-5">در حال دریافت معاملات Real…</div>
+                      ) : livePerformance && (
+                        <div className="overflow-x-auto rounded-xl border border-[var(--border-subtle)]">
+                          <table className="w-full min-w-[850px] text-xs text-right">
+                            <thead className="bg-[var(--bg-input)] text-[var(--text-secondary)]">
+                              <tr>
+                                <th className="p-3">نسخه</th>
+                                <th className="p-3">معامله</th>
+                                <th className="p-3">سود بروکر</th>
+                                <th className="p-3">سود پراپ</th>
+                                <th className="p-3">سود خالص</th>
+                                <th className="p-3">نرخ برد</th>
+                                <th className="p-3">Profit Factor</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {livePerformance.versions.map((version) => {
+                                const pnlClass = version.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]';
+                                const money = (value: number) => `${value >= 0 ? '+' : ''}${value.toLocaleString('en-US', { maximumFractionDigits: 2 })} USDT`;
+                                return (
+                                  <tr key={version.version_id} className="border-t border-[var(--border-subtle)] text-[var(--text-primary)]">
+                                    <td className="p-3">
+                                      <div className="font-extrabold">{version.version_name}</div>
+                                      <div className="text-[10px] text-[var(--text-muted)] mt-1">
+                                        {version.forked_from_version_id ? `زیرنسخهٔ #${version.forked_from_version_id}` : 'نسخهٔ اصلی'} · {getStatusLabel(version.status)}
+                                      </div>
+                                    </td>
+                                    <td className="p-3">{version.total_trades}</td>
+                                    <td className={`p-3 font-bold ${version.by_type.real_personal.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                                      {money(version.by_type.real_personal.net_pnl)} <span className="text-[10px] font-normal">({version.by_type.real_personal.trades})</span>
+                                    </td>
+                                    <td className={`p-3 font-bold ${version.by_type.real_prop.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                                      {money(version.by_type.real_prop.net_pnl)} <span className="text-[10px] font-normal">({version.by_type.real_prop.trades})</span>
+                                    </td>
+                                    <td className={`p-3 font-black ${pnlClass}`}>{money(version.net_pnl)}</td>
+                                    <td className="p-3">{version.win_rate.toFixed(1)}%</td>
+                                    <td className="p-3">{version.profit_factor.toFixed(2)}</td>
+                                  </tr>
+                                );
+                              })}
+                            </tbody>
+                          </table>
+                          {livePerformance.versions.every((version) => version.total_trades === 0) && (
+                            <div className="text-center text-xs text-[var(--text-muted)] py-5">
+                              در این بازه معاملهٔ Real بسته‌شده‌ای برای این استراتژی ثبت نشده است.
+                            </div>
+                          )}
+                        </div>
+                      )}
+                    </section>
                   </>
                 )}
               </div>

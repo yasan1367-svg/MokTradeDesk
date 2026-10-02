@@ -54,7 +54,7 @@ def draw_equity_chart(trades) -> io.BytesIO:
     ax.plot(equity, color="#3F7CFF", linewidth=2)
     ax.axhline(y=0, color="#D0D5DD", linewidth=0.8, linestyle="--")
     ax.set_xlim(0, len(equity) - 1 if len(equity) > 1 else 1)
-    ax.set_ylabel("Equity ($)", fontsize=9)
+    ax.set_ylabel("Equity (USDT )", fontsize=9)
     ax.set_xlabel("Trade #", fontsize=9)
     ax.tick_params(labelsize=8)
     ax.spines["top"].set_visible(False)

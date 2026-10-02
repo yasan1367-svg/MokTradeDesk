@@ -2,7 +2,7 @@
 
 پیش از این، سه نسخهٔ `_to_currency` در `wallet_service.py`، `payout_service.py` و
 `api/prop.py` وجود داشت که رفتارهای متفاوتی داشتند (یکی None-aware، دوتای دیگر
-fallback به USD). اکنون همه از همین تابع استفاده می‌کنند.
+fallback به USDT). اکنون همه از همین تابع استفاده می‌کنند.
 """
 from typing import Optional
 

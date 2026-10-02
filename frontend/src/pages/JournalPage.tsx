@@ -197,7 +197,7 @@ export default function JournalPage() {
                 <option value="">— انتخاب معامله —</option>
                 {trades.slice(0, 100).map((t) => (
                   <option key={t.id} value={t.id}>
-                    #{t.id} - {t.symbol} {t.direction === 'buy' ? 'خرید' : 'فروش'} ({t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)}$)
+                    #{t.id} - {t.symbol} {t.direction === 'buy' ? 'خرید' : 'فروش'} ({t.pnl >= 0 ? '+' : ''}{t.pnl?.toFixed(2)}USDT )
                   </option>
                 ))}
               </select>
@@ -314,7 +314,7 @@ export default function JournalPage() {
                         </span>
                       </div>
                       <div className={`text-[12px] font-bold ${(review.trade_pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                        {(review.trade_pnl || 0) >= 0 ? '+' : ''}{review.trade_pnl?.toFixed(2)} $
+                        {(review.trade_pnl || 0) >= 0 ? '+' : ''}{review.trade_pnl?.toFixed(2)} USDT
                       </div>
                     </div>
                   </div>

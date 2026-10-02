@@ -10,8 +10,8 @@ export default function ComparisonBarChart({ items, metric, height = 250 }: Comp
   const metricLabels: Record<string, string> = {
     win_rate: 'نرخ برد (٪)',
     profit_factor: 'فاکتور سود',
-    net_pnl: 'سود خالص ($)',
-    max_dd: 'حداکثر DD ($)',
+    net_pnl: 'سود خالص (USDT )',
+    max_dd: 'حداکثر DD (USDT )',
   };
 
   const data = items.map((item) => ({

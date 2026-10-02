@@ -70,7 +70,7 @@ def test_post_single_sided_transfer_has_no_balance_effect(db_session):
     این قرارداد قدیمی `/finance/transactions` است و تست‌های `test_exchange_rates` و
     `test_money_cycle` به آن وابسته‌اند.
     """
-    acc = _account(db_session, "Ex", AccountType.EXCHANGE, balance=0.0)
+    acc = _account(db_session, "Ex", AccountType.EXCHANGE, balance=0.0, currency=Currency.IRR)
 
     tx = WalletService.post(
         db_session,
@@ -482,7 +482,7 @@ def test_payout_still_works(client, db_session):
     """رگرسیون فاز ۳۳: چرخهٔ برداشت پراپ بعد از مهاجرت به WalletService دست‌نخورده کار می‌کند.
 
     - `REQUESTED` ⇒ بدون پول و بدون درآمد
-    - `RECEIVED`  ⇒ ثبت `PROFIT` + افزایش موجودی مقصد (تنها از مسیر WalletService)
+    - `RECEIVED` در کیف‌پول ⇒ افزایش دارایی بدون ثبت درآمد بانکی
     """
     stage = _funded_stage(db_session)
     dest = _account(db_session, "Trust Wallet", AccountType.TRUST_WALLET)
@@ -502,9 +502,9 @@ def test_payout_still_works(client, db_session):
         step = client.post(f"/api/prop/payouts/{payout['id']}/status", json={"status": target})
         assert step.status_code == 200, step.text
 
-    # درآمد فقط در نقطهٔ دریافت
+    # دریافت در کیف‌پول دارایی است؛ درآمد پس از رسیدن به بانک ثبت می‌شود.
     assert _balance(db_session, dest.id) == 500.0
-    assert client.get("/api/finance/summary").json()["total_income"] == 500.0
+    assert client.get("/api/finance/summary").json()["total_income"] == 0.0
 
     db_session.refresh(stage)
     assert stage.total_withdrawn == 500.0
@@ -549,8 +549,8 @@ def test_spendable_assets_trust_wallet(client):
 
     assert body["trust_wallet"]["amount"] == 700
     assert body["crypto_wallet"]["amount"] == 300
-    assert body["trust_wallet"]["currency"] == "USD"
-    assert body["crypto_wallet"]["currency"] == "USD"
+    assert body["trust_wallet"]["currency"] == "USDT"
+    assert body["crypto_wallet"]["currency"] == "USDT"
     # پیش از فاز ۳۹ سبد trust_wallet اشتباهاً ۳۰۰ بود (باگ G6)
 
 
@@ -586,7 +586,7 @@ def test_spendable_assets_preserves_legacy_keys(client):
 
     for key in ("prop_stage_3", "broker", "exchange", "trust_wallet", "bank", "total"):
         assert key in body, key
-    assert set(body["total"]) == {"usd", "irr"}
+    assert set(body["total"]) == {"usdt", "irr"}
     for key in ("prop_stage_3", "broker", "exchange", "trust_wallet", "bank",
                 "crypto_wallet", "card", "cash"):
         assert set(body[key]) == {"amount", "currency"}

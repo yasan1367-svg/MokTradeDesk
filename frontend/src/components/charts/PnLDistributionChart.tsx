@@ -97,7 +97,7 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
             color: '#F0F0F5',
             fontSize: '12px',
           }}
-          formatter={(value: any) => [`${value} $`, 'مجموع']}
+          formatter={(value: any) => [`${value} USDT `, 'مجموع']}
         />
         <Legend wrapperStyle={{ fontSize: '11px', color: '#F0F0F5' }} />
       </PieChart>

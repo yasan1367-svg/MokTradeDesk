@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
 from sqlalchemy.orm import Session
-from sqlalchemy import func, case, and_
+from sqlalchemy import func, case, and_, or_
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
@@ -9,6 +9,9 @@ from ..core.database import get_db
 from ..services.analysis_service import AnalysisService, compare_versions
 from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
+from ..models.finance import Currency
+from ..models.prop import PropAccount, PropStage
+from ..models.trading import PersonalTradingAccount
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 from ..utils import jalali
 from ..utils.time_utils import to_tehran, TEHRAN
@@ -74,11 +77,22 @@ def _apply_scope(query, scope: str):
     return query  # all
 
 
-def _scope_filter(query, df_bound, dt_bound, scope: str = "real"):
+def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Optional[Currency] = None):
     """اعمال فیلتر بازه + دامنه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳ / ۴۴.۱)"""
     # فاز ۲۵: معاملات حذف‌شده (Soft Delete) همیشه کنار گذاشته می‌شوند
     query = query.filter(Trade.is_deleted == False)
     query = _apply_scope(query, scope)
+    if currency is not None:
+        query = (
+            query.outerjoin(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
+            .outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+            .outerjoin(PropAccount, PropStage.prop_account_id == PropAccount.id)
+            .filter(or_(
+                and_(Trade.test_type == TestType.REAL_PERSONAL, PersonalTradingAccount.currency == currency),
+                and_(Trade.test_type == TestType.REAL_PROP, PropAccount.currency == currency),
+                and_(Trade.test_type.in_([TestType.BACKTEST, TestType.FORWARD]), currency == Currency.USDT),
+            ))
+        )
     if df_bound or dt_bound:
         query = query.filter(Trade.close_time.isnot(None))
     if df_bound:
@@ -158,6 +172,7 @@ def get_dashboard_data(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     scope: str = Query("real", description="real | backtest | forward | all"),
+    currency: Currency = Query(Currency.USDT),
     db: Session = Depends(get_db),
 ):
     """داده‌های داشبورد — فاز ۱۵.۳: محاسبات در SQL (بدون لود کل جدول)
@@ -174,7 +189,7 @@ def get_dashboard_data(
     is_closed = Trade.close_time.isnot(None)
     win_cond = and_(is_closed, net > 0)
     loss_cond = and_(is_closed, net < 0)
-    scoped_q = _scope_filter(db.query(Trade), df_bound, dt_bound, sc)
+    scoped_q = _scope_filter(db.query(Trade), df_bound, dt_bound, sc, currency)
     closed_scope = scoped_q.filter(is_closed)
 
     # ── ۱) آمار کلی در یک کوئری (بدون لود ردیف‌ها) ──
@@ -303,16 +318,17 @@ def get_dashboard_data(
 
     # ── فاز ۲۸/۴۴.۴: پول قابل خرج — یک منبع حقیقت مشترک (finance_metrics) ──
     from ..services import finance_metrics
-    broker_pnl = finance_metrics.broker_pnl(db)
-    broker_balance = finance_metrics.broker_balance(db)
-    init_capital = finance_metrics.initial_capital(db)
-    funded_pnl = finance_metrics.funded_pnl(db)
+    broker_pnl = finance_metrics.broker_pnl(db, currency)
+    broker_balance = finance_metrics.broker_balance(db, currency)
+    init_capital = finance_metrics.initial_capital(db, currency)
+    funded_pnl = finance_metrics.funded_pnl(db, currency)
 
     spendable_net = round(broker_pnl + funded_pnl, 2)
 
     # ── Prop Progress (فاز ۳۶: ارزیابی گروهی ⇒ بدون N+1) ──
-    active_stages = db.query(PropStage).filter(
-        PropStage.status == StageStatus.ACTIVE
+    active_stages = db.query(PropStage).join(PropAccount).filter(
+        PropStage.status == StageStatus.ACTIVE,
+        PropAccount.currency == currency,
     ).all()
     stage_ids = [s.id for s in active_stages]
     bulk_eval = PropRuleEngine.evaluate_stages(db, stage_ids)
@@ -323,6 +339,7 @@ def get_dashboard_data(
         prop_progress_data.append(result)
 
     return {
+        "currency": currency.value,
         "summary": {
             "net_pnl": round(tnp, 2),
             "win_rate": round(wr, 2),
@@ -383,6 +400,7 @@ _WEEKDAYS_FA = ["دوشنبه", "سه‌شنبه", "چهارشنبه", "پنج�
 @router.get("/yesterday")
 def get_yesterday_data(
     scope: str = Query("real", description="real | backtest | forward | all"),
+    currency: Currency = Query(Currency.USDT),
     db: Session = Depends(get_db),
 ):
     """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC) — فاز ۴۴.۱: scope"""
@@ -402,9 +420,7 @@ def get_yesterday_data(
     y_end = today_start
 
     yt = []
-    _yq = _apply_scope(
-        db.query(Trade).filter(Trade.close_time != None, Trade.is_deleted == False), sc
-    )
+    _yq = _scope_filter(db.query(Trade), None, None, sc, currency).filter(Trade.close_time != None)
     for t in _yq.all():
         ct = _ensure_utc(t.close_time)
         if ct is not None and y_start <= ct < y_end:
@@ -447,6 +463,7 @@ def get_yesterday_data(
 
     return {
         "date": f"{jy}/{jm:02d}/{jd:02d}",
+        "currency": currency.value,
         "day_of_week": _WEEKDAYS_FA[y_start.weekday()],
         "total_trades": total,
         "winning_trades": winning,
@@ -576,6 +593,7 @@ def get_risk_advanced(
     date_from: Optional[str] = None,
     date_to: Optional[str] = None,
     scope: str = Query("real", description="real | backtest | forward | all"),
+    currency: Currency = Query(Currency.USDT),
     db: Session = Depends(get_db),
 ):
     """آمار ریسک پیشرفته (شارپ، سورتینو، کالمار، VaR/CVaR، کِلی، Ulcer، ...) — فاز ۴۴.۱: scope"""
@@ -588,7 +606,7 @@ def get_risk_advanced(
     # فاز ۱۵.۳: فیلتر بازه در SQL + واکشی فقط ۳ ستون (بدون لود ORM)
     _net = _net_expr()
     _rows = (
-        _scope_filter(db.query(Trade), df_bound, dt_bound, sc)
+        _scope_filter(db.query(Trade), df_bound, dt_bound, sc, currency)
         .filter(Trade.close_time.isnot(None))
         .with_entities(Trade.close_time, _net.label("net"), Trade.r_multiple)
         .order_by(Trade.close_time.asc(), Trade.id.asc())

@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL) 
+const API_BASE_URL = (typeof import.meta !== 'undefined' && import.meta.env?.VITE_API_BASE_URL)
   || 'http://localhost:8000';
 
 export const api = axios.create({
@@ -112,15 +112,17 @@ export const getDashboardData = (params?: {
   date_from?: string;
   date_to?: string;
   scope?: TradeScope;
+  currency?: CurrencyCode;
 }) => api.get('/api/analytics/dashboard', { params });
 
-export const getYesterdayData = (params?: { scope?: TradeScope }) =>
+export const getYesterdayData = (params?: { scope?: TradeScope; currency?: CurrencyCode }) =>
   api.get('/api/analytics/yesterday', { params });
 
 export const getRiskAdvanced = (params?: {
   date_from?: string;
   date_to?: string;
   scope?: TradeScope;
+  currency?: CurrencyCode;
 }) => api.get('/api/analytics/risk-advanced', { params });
 
 // ─────────────────────────────────────────────
@@ -414,6 +416,10 @@ export const getStrategyVersions = (strategyId: number) =>
   api.get(`/api/strategies/${strategyId}/versions`);
 export const getStrategyStats = (strategyId: number) =>
   api.get(`/api/strategies/${strategyId}/stats`);
+export const getStrategyLivePerformance = (
+  strategyId: number,
+  params?: { date_from?: string; date_to?: string },
+) => api.get(`/api/strategies/${strategyId}/live-performance`, { params });
 
 export const updateVersion = (
   versionId: number,
@@ -439,6 +445,7 @@ export const getTrades = (params?: {
   personal_trading_account_id?: number;  // فاز ۳۸.۴: جایگزین منسوخ `finance_account_id`
   symbol?: string;
   test_type?: string;
+  currency?: CurrencyCode;
   source?: string;
   direction?: string;
   status?: string;
@@ -654,7 +661,7 @@ export const seedFinanceCategories = () => api.post('/api/finance/seed');
 // Finance Reports
 // ─────────────────────────────────────────────
 // فاز ۴۴.۵: جداکردن ارزها
-export type CurrencyCode = 'USD' | 'IRR';
+export type CurrencyCode = 'USDT' | 'IRR';
 
 export const getFinanceSummary = (params?: { currency?: CurrencyCode }) =>
   api.get('/api/finance/summary', { params });
@@ -709,23 +716,28 @@ export const getFinanceProfitLoss = (params?: { year?: number; account_id?: numb
 // Finance Reports — فاز ۲۲
 // ─────────────────────────────────────────────
 export type AssetBucket = { amount: number; currency: string };
+export interface FinancialAssets {
+  by_currency: Record<'USDT' | 'IRR', Record<string, number>>;
+  total: { usdt: number; irr: number };
+}
 
 export const getSpendableAssets = () =>
-  api.get<Record<string, AssetBucket> & { total: { usd: number; irr: number } }>(
+  api.get<FinancialAssets>(
     '/api/finance/spendable-assets',
   );
 
-export const getRealPnl = () =>
+export const getRealPnl = (params?: { currency?: CurrencyCode }) =>
   api.get<{
+    currency: string;
     prop_stage_3: { pnl: number; trades: number };
     broker: { pnl: number; trades: number };
     total: { pnl: number; trades: number };
-  }>('/api/finance/real-pnl');
+  }>('/api/finance/real-pnl', { params });
 
 export const getNetProfit = (params?: { currency?: CurrencyCode }) =>
   api.get<{
     real_pnl: number; expenses: number; net_profit: number;
-    currency?: string; by_currency?: Record<string, { expenses: number }>;
+    currency?: string; by_currency?: Record<string, { real_pnl: number; expenses: number; net_profit: number }>;
   }>('/api/finance/net-profit', { params });
 
 export type MoneyFlow = {
@@ -761,13 +773,8 @@ export const getFinancialCalendar = () =>
   api.get<{ days: CalendarDay[] }>('/api/finance/financial-calendar');
 
 export const getAssetTrend = (params?: { date_from?: string; date_to?: string }) =>
-  api.get<{ trend: { date: string; total_usd: number; total_irr: number }[] }>(
+  api.get<{ trend: { date: string; total_usdt: number; total_irr: number }[] }>(
     '/api/finance/asset-trend', { params },
-  );
-
-export const getExchangeRates = () =>
-  api.get<{ rates: { date: string; from: string; to: string; rate: number }[] }>(
-    '/api/finance/exchange-rates',
   );
 
 // ─────────────────────────────────────────────
@@ -837,6 +844,38 @@ export const getBrokerPayoutsStats = (params?: {
   date_from?: string;
   date_to?: string;
 }) => api.get('/api/broker/payouts/stats', { params });
+
+export const getBrokerCashMovements = (params?: {
+  personal_trading_account_id?: number;
+  financial_account_id?: number;
+  currency?: string;
+  direction?: string;
+  date_from?: string;
+  date_to?: string;
+}) => api.get('/api/broker/cash-movements', { params });
+
+export const getBrokerCashMovementStats = (params?: {
+  personal_trading_account_id?: number;
+  financial_account_id?: number;
+  currency?: string;
+  date_from?: string;
+  date_to?: string;
+}) => api.get('/api/broker/cash-movements/stats', { params });
+
+export const createBrokerCashMovement = (data: {
+  direction: 'deposit_to_broker' | 'withdrawal_from_broker';
+  personal_trading_account_id: number;
+  financial_account_id: number;
+  amount: number;
+  date?: string;
+  note?: string;
+}) => api.post('/api/broker/cash-movements', data);
+
+export const updateBrokerCashMovement = (id: number, data: Record<string, unknown>) =>
+  api.patch(`/api/broker/cash-movements/${id}`, data);
+
+export const deleteBrokerCashMovement = (id: number) =>
+  api.delete(`/api/broker/cash-movements/${id}`);
 
 // ─────────────────────────────────────────────
 // Backup (فاز ۱۷)

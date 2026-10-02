@@ -1,6 +1,6 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
-from sqlalchemy import func
+from sqlalchemy import func, and_, or_
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -10,8 +10,9 @@ import hashlib
 from ..core.database import get_db
 from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion
 from ..models.personal import Screenshot
-from ..models.prop import PropStage
+from ..models.prop import PropAccount, PropStage
 from ..models.trading import PersonalTradingAccount
+from ..models.finance import Currency
 from ..utils.trade_metrics import calculate_r_multiple
 from ..utils.trade_validator import TradeValidator
 from ..utils.uploads import read_upload_limited
@@ -241,6 +242,7 @@ def get_trades(
     prop_stage_id: Optional[int] = None,
     symbol: Optional[str] = None,
     test_type: Optional[str] = None,
+    currency: Optional[Currency] = None,
     source: Optional[str] = None,
     direction: Optional[str] = None,
     status: Optional[str] = None,
@@ -262,6 +264,18 @@ def get_trades(
 
     # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در لیست نمایش داده نمی‌شوند
     query = query.filter(Trade.is_deleted == False)
+
+    if currency is not None:
+        query = (
+            query.outerjoin(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
+            .outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+            .outerjoin(PropAccount, PropStage.prop_account_id == PropAccount.id)
+            .filter(or_(
+                and_(Trade.test_type == TestType.REAL_PERSONAL, PersonalTradingAccount.currency == currency),
+                and_(Trade.test_type == TestType.REAL_PROP, PropAccount.currency == currency),
+                and_(Trade.test_type.in_([TestType.BACKTEST, TestType.FORWARD]), currency == Currency.USDT),
+            ))
+        )
 
     if version_id:
         query = query.filter(Trade.version_id == version_id)

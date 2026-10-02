@@ -273,7 +273,7 @@ def export_trades_pdf(
     except Exception:
         els.append(Spacer(1, 20))
 
-    header = ["ID", "Symbol", "Dir", "Size", "Open $", "Close $", "Open Time", "Close Time", "PnL", "Comm.", "Swap", "R"]
+    header = ["ID", "Symbol", "Dir", "Size", "Open USDT ", "Close USDT ", "Open Time", "Close Time", "PnL", "Comm.", "Swap", "R"]
     rows = [header]
     for t in trades:
         rows.append([
@@ -306,7 +306,7 @@ def export_trades_pdf(
         net = wr = pf = 0
     _draw_table(els, [
         [_fa("شاخص"), _fa("مقدار")],
-        [_fa("سود خالص"), f"{net:.2f} $"],
+        [_fa("سود خالص"), f"{net:.2f} USDT "],
         [_fa("نرخ برد"), f"{wr:.1f}%"],
         [_fa("فاکتور سود"), f"{pf:.2f}"],
         [_fa("کل معاملات"), str(len(closed))],
@@ -389,15 +389,15 @@ def export_analysis_pdf(
         [_fa("کل معاملات"), str(metrics.total_trades)],
         [_fa("نرخ برد"), f"{metrics.win_rate:.1f}%"],
         [_fa("فاکتور سود"), f"{metrics.profit_factor:.2f}"],
-        [_fa("سود خالص"), f"{metrics.net_pnl:.2f} $"],
+        [_fa("سود خالص"), f"{metrics.net_pnl:.2f} USDT "],
         [_fa("نتیجه R"), f"{metrics.net_r:.2f} R"],
-        [_fa("حداکثر ضرر"), f"{metrics.max_dd:.2f} $"],
-        [_fa("میانگین هر معامله"), f"{metrics.expectancy:.2f} $"],
+        [_fa("حداکثر ضرر"), f"{metrics.max_dd:.2f} USDT "],
+        [_fa("میانگین هر معامله"), f"{metrics.expectancy:.2f} USDT "],
         [_fa("اکسپکتنسی R"), f"{metrics.expectancy_r:.2f} R" if metrics.expectancy_r else "-"],
-        [_fa("میانگین برد"), f"{metrics.avg_win:.2f} $"],
-        [_fa("میانگین باخت"), f"{metrics.avg_loss:.2f} $"],
-        [_fa("بزرگ‌ترین برد"), f"{metrics.largest_win:.2f} $"],
-        [_fa("بزرگ‌ترین باخت"), f"{metrics.largest_loss:.2f} $"],
+        [_fa("میانگین برد"), f"{metrics.avg_win:.2f} USDT "],
+        [_fa("میانگین باخت"), f"{metrics.avg_loss:.2f} USDT "],
+        [_fa("بزرگ‌ترین برد"), f"{metrics.largest_win:.2f} USDT "],
+        [_fa("بزرگ‌ترین باخت"), f"{metrics.largest_loss:.2f} USDT "],
         [_fa("بیشترین باخت متوالی"), str(metrics.max_consecutive_losses)],
     ], [200, 200], "")
 
@@ -460,10 +460,10 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
         els.append(Paragraph(_fa("خلاصه وضعیت"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("شاخص"), _fa("مقدار")],
-            [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} $"],
+            [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} USDT "],
             [_fa("نرخ برد"), f"{s.get('win_rate', 0):.1f}%"],
             [_fa("فاکتور سود"), f"{s.get('profit_factor', 0):.2f}"],
-            [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} $"],
+            [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} USDT "],
         ], [200, 200], "")
 
         els.append(Spacer(1, 15))
@@ -471,7 +471,7 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
         els.append(Paragraph(_fa("عملکرد امروز"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("شاخص"), _fa("مقدار")],
-            [_fa("سود/زیان"), f"{t.get('pnl', 0):.2f} $"],
+            [_fa("سود/زیان"), f"{t.get('pnl', 0):.2f} USDT "],
             [_fa("تعداد معاملات"), str(t.get('trades_count', 0))],
             [_fa("نرخ برد"), f"{t.get('win_rate', 0):.1f}%"],
         ], [200, 200], "")
@@ -481,9 +481,9 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
         els.append(Paragraph(_fa("عملکرد دوره‌ای"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("دوره"), _fa("سود/زیان")],
-            [_fa("ماه جاری"), f"{p.get('month', {}).get('pnl', 0):.2f} $"],
-            [_fa("فصل جاری"), f"{p.get('quarter', {}).get('pnl', 0):.2f} $"],
-            [_fa("سال جاری"), f"{p.get('year', {}).get('pnl', 0):.2f} $"],
+            [_fa("ماه جاری"), f"{p.get('month', {}).get('pnl', 0):.2f} USDT "],
+            [_fa("فصل جاری"), f"{p.get('quarter', {}).get('pnl', 0):.2f} USDT "],
+            [_fa("سال جاری"), f"{p.get('year', {}).get('pnl', 0):.2f} USDT "],
         ], [200, 200], "")
 
         pp = dashboard_data.get("prop_progress", [])

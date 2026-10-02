@@ -59,7 +59,7 @@ export default function TradesPage() {
   const [editScreenshots, setEditScreenshots] = useState<any[]>([]);
   const [uploadingScreenshot, setUploadingScreenshot] = useState(false);
   const screenshotInputRef = useRef<HTMLInputElement>(null);
-  
+
   const [showManualModal, setShowManualModal] = useState(false);
   const [showGalleryModal, setShowGalleryModal] = useState(false);
 const [galleryTrade, setGalleryTrade] = useState<Trade | null>(null);
@@ -630,7 +630,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                     </td>
                     <td className="py-2 text-[var(--text-primary)]">{t.size}</td>
                     <td className={`py-2 font-bold ${(t.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                      {(t.pnl || 0) >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} $
+                      {(t.pnl || 0) >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} USDT
                     </td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getSourceLabel(t.source)}</td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getTestTypeLabel(t.test_type)}</td>
@@ -757,7 +757,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 <div>
                   <div className="text-[var(--text-secondary)] text-xs">سود/زیان</div>
                   <div className={`font-bold ${(editingTrade.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                    {editingTrade.pnl?.toFixed(2)} $
+                    {editingTrade.pnl?.toFixed(2)} USDT
                   </div>
                 </div>
               </div>
@@ -910,7 +910,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">سود/زیان ($)</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">سود/زیان (USDT )</label>
                 <input
                   type="number"
                   step="0.01"

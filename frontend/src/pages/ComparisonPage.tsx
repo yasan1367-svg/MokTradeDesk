@@ -456,10 +456,10 @@ export default function ComparisonPage() {
                                 {m.profit_factor?.toFixed(2) ?? '—'}
                               </td>
                               <td className={`py-4 px-4 text-[13px] font-bold ${(m.net_pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                                {(m.net_pnl ?? 0) >= 0 ? '+' : ''}{(m.net_pnl ?? 0).toFixed(0)} $
+                                {(m.net_pnl ?? 0) >= 0 ? '+' : ''}{(m.net_pnl ?? 0).toFixed(0)} USDT
                               </td>
                               <td className="py-4 px-4 text-[13px] font-bold text-[var(--loss)]">
-                                -{(m.max_dd ?? 0).toFixed(0)} $
+                                -{(m.max_dd ?? 0).toFixed(0)} USDT
                               </td>
                               <td className="py-4 px-4">
                                 <div className="space-y-1">

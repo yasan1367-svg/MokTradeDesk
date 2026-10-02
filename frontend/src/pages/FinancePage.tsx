@@ -3,6 +3,8 @@ import Skeleton from '../components/Skeleton';
 import PersianDateInput from '../components/PersianDateInput';
 import AccountForm from '../components/AccountForm';
 import TransactionForm from '../components/TransactionForm';
+import FinancialAssetBalances from '../components/FinancialAssetBalances';
+import type { FinancialAssets } from '../api/client';
 import CategoryForm from '../components/CategoryForm';
 import {
   getFinanceAccounts,
@@ -35,7 +37,6 @@ import {
   getFinanceExpenses,
   getMoneyCycle,
   getFinancialCalendar,
-  getExchangeRates,
   api,
 } from '../api/client';
 
@@ -51,7 +52,7 @@ import InfoTooltip from '../components/ui/Tooltip';
 import { useToast } from '../components/ToastProvider';
 
 type Tab = 'accounts' | 'transactions' | 'categories' | 'reports' | 'advanced'
-  | 'real' | 'moneyflow' | 'expenses' | 'cycle' | 'calendar' | 'rates';
+  | 'real' | 'moneyflow' | 'expenses' | 'cycle' | 'calendar' | 'wallets';
 
 type Account = {
   id: number; name: string; type: string; currency: string;
@@ -97,8 +98,9 @@ const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
 
 // برچسب و رنگ فارسی انواع تراکنش (برای نمودار دایره‌ای)
 const TRANSACTION_TYPE_LABELS: Record<string, string> = {
-  deposit: 'واریز', withdrawal: 'برداشت', transfer: 'انتقال/تبدیل',  // فاز ۳۸.۴: exchange → transfer
+  deposit: 'واریز', withdrawal: 'برداشت', transfer: 'انتقال',
   profit: 'سود', loss: 'ضرر', fee: 'کارمزد', purchase: 'خرید',
+  deposit_to_broker: 'واریز به بروکر', withdrawal_from_broker: 'برداشت از بروکر',
 };
 
 const TRANSACTION_TYPE_COLORS: Record<string, string> = {
@@ -123,6 +125,7 @@ export default function FinancePage() {
   const [reconcileMap, setReconcileMap] = useState<Record<number, any>>({});
   const [showAccountForm, setShowAccountForm] = useState(false);
   const [editAccount, setEditAccount] = useState<Account | null>(null);
+  const [accountFormScope, setAccountFormScope] = useState<'accounts' | 'wallets'>('accounts');
 
   // Categories state
   const [categories, setCategories] = useState<Category[]>([]);
@@ -156,7 +159,7 @@ export default function FinancePage() {
     broker_withdrawals: number;
     withdrawal_count: number;
     history: Array<{
-      id: number; amount: number; currency: string; date: string;
+      id: number | string; kind: 'prop' | 'broker'; amount: number; currency: string; date: string;
       description?: string; account_id: number; account_name?: string;
     }>;
   } | null>(null);
@@ -193,16 +196,15 @@ export default function FinancePage() {
   } | null>(null);
 
   // فاز ۲۲ — گزارش‌های مالی جدید
-  const [spendableAssets, setSpendableAssets] = useState<Record<string, any> | null>(null);
+  const [spendableAssets, setSpendableAssets] = useState<FinancialAssets | null>(null);
   const [realPnl, setRealPnl] = useState<any>(null);
   const [netProfit, setNetProfit] = useState<any>(null);
   const [moneyFlow, setMoneyFlow] = useState<Array<any>>([]);
   const [expenses, setExpenses] = useState<any>(null);
   const [moneyCycle, setMoneyCycle] = useState<any>(null);
   const [calendar, setCalendar] = useState<Array<any>>([]);
-  const [exchangeRates, setExchangeRates] = useState<Array<any>>([]);
   // فاز ۴۴.۵ — ارز فعال گزارش‌های مالی
-  const [currency, setCurrency] = useState<'USD' | 'IRR'>('USD');
+  const [currency, setCurrency] = useState<'USDT' | 'IRR'>('USDT');
 
   // Load functions
   const loadAccounts = async () => {
@@ -298,15 +300,14 @@ export default function FinancePage() {
   // فاز ۲۲ — بارگذاری همهٔ گزارش‌های جدید
   const loadPhase22 = async () => {
     try {
-      const [spRes, rpRes, npRes, mfRes, exRes, mcRes, calRes, rtRes] = await Promise.all([
+      const [spRes, rpRes, npRes, mfRes, exRes, mcRes, calRes] = await Promise.all([
         getSpendableAssets(),
-        getRealPnl(),
+        getRealPnl({ currency }),
         getNetProfit({ currency }),
         getMoneyFlow(),
         getFinanceExpenses({ currency }),
         getMoneyCycle({ currency }),
         getFinancialCalendar(),
-        getExchangeRates(),
       ]);
       setSpendableAssets(spRes.data);
       setRealPnl(rpRes.data);
@@ -315,7 +316,6 @@ export default function FinancePage() {
       setExpenses(exRes.data);
       setMoneyCycle(mcRes.data);
       setCalendar(calRes.data.days || []);
-      setExchangeRates(rtRes.data.rates || []);
     } catch { /* silent */ }
   };
 
@@ -324,14 +324,41 @@ export default function FinancePage() {
     if (tab === 'transactions') loadTransactions();
     if (tab === 'reports') loadReports();
     if (tab === 'advanced') loadAdvancedReports();
-    if ((['real', 'moneyflow', 'expenses', 'cycle', 'calendar', 'rates'] as Tab[]).includes(tab)) loadPhase22();
+    if ((['real', 'moneyflow', 'expenses', 'cycle', 'calendar'] as Tab[]).includes(tab)) loadPhase22();
   },
     [tab, filterDateFrom, filterDateTo, filterAccountId, filterType, filterCategoryId, advYear, advMonth, advAccountId, currency]);
 
   const showSuccess = (msg: string) => toast.success(msg);
+  const walletAccountTypes = ['exchange', 'trust_wallet', 'crypto_wallet'];
+  const walletAccounts = accounts.filter((account) => walletAccountTypes.includes(account.type));
+
+  const saveAccount = async (data: Record<string, any>) => {
+    if (editAccount) {
+      await updateFinanceAccount(editAccount.id, data);
+      showSuccess(accountFormScope === 'wallets' ? 'کیف پول به‌روزرسانی شد' : 'حساب به‌روزرسانی شد');
+    } else {
+      await createFinanceAccount(data as any);
+      showSuccess(accountFormScope === 'wallets' ? 'کیف پول ساخته شد' : 'حساب ساخته شد');
+    }
+    setShowAccountForm(false);
+    setEditAccount(null);
+    await loadAccounts();
+  };
+
+  const accountFormPanel = showAccountForm ? (
+    <AccountForm
+      mode={editAccount ? 'edit' : 'create'}
+      initialData={editAccount ?? undefined}
+      allowedTypes={accountFormScope === 'wallets' ? walletAccountTypes : undefined}
+      defaultType={accountFormScope === 'wallets' ? 'trust_wallet' : undefined}
+      onSave={saveAccount}
+      onCancel={() => { setShowAccountForm(false); setEditAccount(null); }}
+    />
+  ) : null;
 
   const TABS: { key: Tab; icon: string; label: string }[] = [
     { key: 'accounts', icon: '🏦', label: 'حساب‌ها' },
+    { key: 'wallets', icon: '👛', label: 'کیف‌پول‌ها' },
     { key: 'transactions', icon: '💳', label: 'تراکنش‌ها' },
     { key: 'categories', icon: '🏷️', label: 'دسته‌بندی‌ها' },
     { key: 'reports', icon: '📊', label: 'گزارش‌ها' },
@@ -341,7 +368,6 @@ export default function FinancePage() {
     { key: 'expenses', icon: '🧾', label: 'هزینه‌ها' },
     { key: 'cycle', icon: '♻️', label: 'چرخهٔ پول' },
     { key: 'calendar', icon: '🗓️', label: 'تقویم مالی' },
-    { key: 'rates', icon: '💱', label: 'نرخ تبدیل' },
   ];
 
   if (loading) return <FinanceSkeleton />;
@@ -378,11 +404,11 @@ export default function FinancePage() {
         ))}
       </div>
 
-      {/* فاز ۴۴.۵: انتخاب ارز گزارش‌ها (IRR و USD جدا) */}
+      {/* گزارش‌ها بر اساس IRR یا USDT فیلتر می‌شوند. */}
       {(['reports', 'advanced', 'real', 'expenses', 'cycle'] as Tab[]).includes(tab) && (
         <div className="flex items-center gap-2 mb-5 flex-wrap">
           <span className="text-xs font-bold text-[var(--text-secondary)]">💱 ارز:</span>
-          {(['USD', 'IRR'] as const).map((c) => (
+          {(['USDT', 'IRR'] as const).map((c) => (
             <button
               key={c}
               onClick={() => setCurrency(c)}
@@ -403,7 +429,11 @@ export default function FinancePage() {
       {tab === 'accounts' && (
         <>
           <div className="flex gap-3 mb-6 flex-wrap">
-            <button onClick={() => { setShowAccountForm(!showAccountForm); setEditAccount(null); }}
+            <button onClick={() => {
+              setEditAccount(null);
+              setAccountFormScope('accounts');
+              setShowAccountForm(!(showAccountForm && accountFormScope === 'accounts'));
+            }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all"
               style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
               🆕 حساب جدید
@@ -420,24 +450,7 @@ export default function FinancePage() {
             </button>
           </div>
 
-          {showAccountForm && (
-            <AccountForm
-              mode={editAccount ? 'edit' : 'create'}
-              initialData={editAccount ?? undefined}
-              onSave={async (data) => {
-                if (editAccount) {
-                  await updateFinanceAccount(editAccount.id, data);
-                  showSuccess('حساب به‌روزرسانی شد');
-                } else {
-                  await createFinanceAccount(data as any);
-                  showSuccess('حساب ساخته شد');
-                }
-                setShowAccountForm(false); setEditAccount(null);
-                await loadAccounts();
-              }}
-              onCancel={() => { setShowAccountForm(false); setEditAccount(null); }}
-            />
-          )}
+          {accountFormScope === 'accounts' && accountFormPanel}
 
           {accounts.length === 0 ? (
             <EmptyState
@@ -445,7 +458,7 @@ export default function FinancePage() {
               title="هیچ حسابی ثبت نشده"
               description="برای شروع، یک حساب جدید ایجاد کنید"
               actionLabel="حساب جدید"
-              onAction={() => { setShowAccountForm(true); setEditAccount(null); }}
+              onAction={() => { setAccountFormScope('accounts'); setShowAccountForm(true); setEditAccount(null); }}
             />
           ) : (
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
@@ -455,12 +468,12 @@ export default function FinancePage() {
                     <div>
                       <div className="text-lg font-extrabold text-[var(--text-primary)]">{a.name}</div>
                       <div className="text-xs text-[var(--text-secondary)] mt-1">
-                        {ACCOUNT_TYPE_LABELS[a.type] || '❓'} {a.type} • {a.currency}
+                        {ACCOUNT_TYPE_LABELS[a.type] || '❓'} {ACCOUNT_TYPE_NAMES[a.type] || a.type} • {a.currency}
                       </div>
                     </div>
                     <div className="flex gap-1">
                       <InfoTooltip content="ویرایش حساب">
-                        <button onClick={() => { setEditAccount(a); setShowAccountForm(true); }}
+                        <button onClick={() => { setAccountFormScope('accounts'); setEditAccount(a); setShowAccountForm(true); }}
                           className="w-8 h-8 rounded-lg bg-[var(--bg-base)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all flex items-center justify-center text-sm">✏️</button>
                       </InfoTooltip>
                       <InfoTooltip content="حذف حساب">
@@ -488,6 +501,81 @@ export default function FinancePage() {
                     )}
                   </div>
                   {a.card_number && <div className="text-xs text-[var(--text-secondary)] mt-2 font-mono">💳 {a.card_number}</div>}
+                </div>
+              ))}
+            </div>
+          )}
+        </>
+      )}
+      {tab === 'wallets' && (
+        <>
+          <div className="flex items-start justify-between gap-4 flex-wrap mb-5">
+            <div>
+              <h2 className="text-lg font-extrabold text-[var(--text-primary)]">کیف‌پول‌ها و حساب‌های صرافی</h2>
+              <p className="text-xs text-[var(--text-secondary)] mt-1">
+                برای صرافی، حساب جداگانهٔ IRR و USDT بساز. برنامه تبدیل ارز انجام نمی‌دهد.
+              </p>
+            </div>
+            <button
+              onClick={() => {
+                setEditAccount(null);
+                setAccountFormScope('wallets');
+                setShowAccountForm(!(showAccountForm && accountFormScope === 'wallets'));
+              }}
+              className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:-translate-y-0.5 transition-all"
+              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+            >
+              🆕 کیف‌پول یا حساب صرافی
+            </button>
+          </div>
+
+          {accountFormScope === 'wallets' && accountFormPanel}
+
+          {walletAccounts.length === 0 ? (
+            <EmptyState
+              icon="👛"
+              title="هنوز کیف‌پول یا حساب صرافی ثبت نشده"
+              description="Trust Wallet و کیف‌پول‌های دیگر فقط با USDT ثبت می‌شوند."
+              actionLabel="ساخت کیف‌پول"
+              onAction={() => {
+                setEditAccount(null);
+                setAccountFormScope('wallets');
+                setShowAccountForm(true);
+              }}
+            />
+          ) : (
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {walletAccounts.map((account) => (
+                <div key={account.id} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 transition-all hover:shadow-lg hover:border-[var(--border-accent)]">
+                  <div className="flex items-start justify-between mb-3">
+                    <div>
+                      <div className="text-lg font-extrabold text-[var(--text-primary)]">{account.name}</div>
+                      <div className="text-xs text-[var(--text-secondary)] mt-1">
+                        {ACCOUNT_TYPE_LABELS[account.type] || '👛'} {ACCOUNT_TYPE_NAMES[account.type] || account.type} · {account.currency}
+                      </div>
+                    </div>
+                    <div className="flex gap-1">
+                      <InfoTooltip content="ویرایش حساب">
+                        <button onClick={() => { setAccountFormScope('wallets'); setEditAccount(account); setShowAccountForm(true); }}
+                          className="w-8 h-8 rounded-lg bg-[var(--bg-base)] text-[var(--text-secondary)] hover:text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all flex items-center justify-center text-sm">✏️</button>
+                      </InfoTooltip>
+                      <InfoTooltip content="حذف حساب">
+                        <button onClick={() => setPendingDelete({ message: `حساب «${account.name}» حذف شود؟`, onConfirm: async () => {
+                          try {
+                            await deleteFinanceAccount(account.id);
+                            showSuccess('حساب آرشیو شد');
+                            await loadAccounts();
+                          } catch (err: any) {
+                            toast.toast(err?.response?.data?.detail || 'حذف حساب ممکن نشد', 'error');
+                          }
+                        } })}
+                          className="w-8 h-8 rounded-lg bg-[var(--bg-base)] text-[var(--text-secondary)] hover:text-red-500 hover:bg-red-500/10 transition-all flex items-center justify-center text-sm">🗑️</button>
+                      </InfoTooltip>
+                    </div>
+                  </div>
+                  <div className="text-2xl font-black text-[var(--text-primary)]">
+                    {account.balance?.toLocaleString() ?? '0'} <span className="text-xs font-bold text-[var(--text-secondary)]">{account.currency}</span>
+                  </div>
                 </div>
               ))}
             </div>
@@ -545,7 +633,7 @@ export default function FinancePage() {
                 <option value="">همه</option>
                 <option value="deposit">💵 واریز</option>
                 <option value="withdrawal">🏧 برداشت</option>
-                <option value="transfer">🔄 انتقال/تبدیل</option>  {/* فاز ۳۸.۴: جایگزین EXCHANGE */}
+                <option value="transfer">🔄 انتقال</option>
                 <option value="profit">📈 سود</option>
                 <option value="loss">📉 ضرر</option>
                 <option value="fee">💸 کارمزد</option>
@@ -862,7 +950,7 @@ export default function FinancePage() {
                   <table className="w-full text-sm">
                     <thead>
                       <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
-                        <th className="text-right py-3 px-3">حساب</th>
+                        <th className="text-right py-3 px-3">منبع</th>
                         <th className="text-right py-3 px-3">مبلغ</th>
                         <th className="text-right py-3 px-3">ارز</th>
                         <th className="text-right py-3 px-3">تاریخ</th>
@@ -872,7 +960,7 @@ export default function FinancePage() {
                     <tbody>
                       {withdrawalStats.history.map((w) => (
                         <tr key={w.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
-                          <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{w.account_name || `#${w.account_id}`}</td>
+                          <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{w.kind === 'prop' ? 'پراپ' : 'بروکر'} — {w.account_name || `#${w.account_id}`}</td>
                           <td className="py-3 px-3 text-[#ef4444] font-bold">{w.amount.toLocaleString()}</td>
                           <td className="py-3 px-3 text-[var(--text-secondary)]">{w.currency}</td>
                           <td className="py-3 px-3 text-xs text-[var(--text-secondary)]">{new Date(w.date).toLocaleDateString('fa-IR')}</td>
@@ -1099,21 +1187,21 @@ export default function FinancePage() {
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">🏢 مرحلهٔ ۳ پراپ</div>
               <div className={`text-2xl font-extrabold ${(realPnl?.prop_stage_3?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                {realPnl ? `${realPnl.prop_stage_3.pnl >= 0 ? '+' : ''}${realPnl.prop_stage_3.pnl.toLocaleString()}` : '—'} $
+                {realPnl ? `${realPnl.prop_stage_3.pnl >= 0 ? '+' : ''}${realPnl.prop_stage_3.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.prop_stage_3?.trades ?? '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📊 بروکر</div>
               <div className={`text-2xl font-extrabold ${(realPnl?.broker?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                {realPnl ? `${realPnl.broker.pnl >= 0 ? '+' : ''}${realPnl.broker.pnl.toLocaleString()}` : '—'} $
+                {realPnl ? `${realPnl.broker.pnl >= 0 ? '+' : ''}${realPnl.broker.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.broker?.trades ?? '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-accent)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">Σ مجموع Real</div>
               <div className={`text-2xl font-black ${(realPnl?.total?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
-                {realPnl ? `${realPnl.total.pnl >= 0 ? '+' : ''}${realPnl.total.pnl.toLocaleString()}` : '—'} $
+                {realPnl ? `${realPnl.total.pnl >= 0 ? '+' : ''}${realPnl.total.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد کل: {realPnl?.total?.trades ?? '—'}</div>
             </div>
@@ -1156,15 +1244,15 @@ export default function FinancePage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
-                  <div className={`text-xl font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.real_pnl.toLocaleString()} $</div>
+                  <div className={`text-xl font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.real_pnl.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
                 <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
-                  <div className="text-xl font-extrabold text-[#ef4444]">−{netProfit.expenses.toLocaleString()} $</div>
+                  <div className="text-xl font-extrabold text-[#ef4444]">−{netProfit.expenses.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
                 <div className="bg-[var(--accent-soft)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود خالص</div>
-                  <div className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.net_profit.toLocaleString()} $</div>
+                  <div className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.net_profit.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
               </div>
             ) : (
@@ -1179,28 +1267,8 @@ export default function FinancePage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
           <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">🔀 جریان پول بین حساب‌ها</div>
           {spendableAssets && (
-            <div className="flex flex-wrap gap-3 mb-5">
-              {([
-                ['prop_stage_3', '🏢 پراپ ۳'],
-                ['broker', '📊 بروکر'],
-                ['exchange', '🔄 صرافی'],
-                ['trust_wallet', '₿ تراست'],
-                ['bank', '🏦 بانک'],
-              ] as const).map(([k, label]) => (
-                <div key={k} className="bg-[var(--bg-elevated)] rounded-[12px] px-4 py-2">
-                  <span className="text-[11px] text-[var(--text-secondary)] font-bold ml-2">{label}</span>
-                  <span className="text-[13px] font-extrabold text-[var(--text-primary)]">
-                    {Number(spendableAssets[k]?.amount ?? 0).toLocaleString()}{' '}
-                    <span className="text-[10px] text-[var(--text-secondary)]">{spendableAssets[k]?.currency}</span>
-                  </span>
-                </div>
-              ))}
-              <div className="bg-[var(--accent-soft)] rounded-[12px] px-4 py-2">
-                <span className="text-[11px] text-[var(--text-secondary)] font-bold ml-2">Σ مجموع</span>
-                <span className="text-[13px] font-black text-[var(--accent)]">
-                  {Number(spendableAssets.total?.usd ?? 0).toLocaleString()} $ | {Number(spendableAssets.total?.irr ?? 0).toLocaleString()} IRR
-                </span>
-              </div>
+            <div className="mb-5">
+              <FinancialAssetBalances assets={spendableAssets} />
             </div>
           )}
           {moneyFlow.length === 0 ? (
@@ -1221,8 +1289,8 @@ export default function FinancePage() {
                 <tbody>
                   {moneyFlow.map((f, i) => (
                     <tr key={i} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
-                      <td className="py-3 px-3 text-[var(--text-primary)]">{ACCOUNT_TYPE_LABELS[f.from] || ''} {ACCOUNT_TYPE_NAMES[f.from] || f.from || '—'}</td>
-                      <td className="py-3 px-3 text-[var(--text-primary)]">{ACCOUNT_TYPE_LABELS[f.to] || ''} {ACCOUNT_TYPE_NAMES[f.to] || f.to || '—'}</td>
+                      <td className="py-3 px-3 text-[var(--text-primary)]">{f.from_name || `${ACCOUNT_TYPE_LABELS[f.from] || ''} ${ACCOUNT_TYPE_NAMES[f.from] || f.from || '—'}`}</td>
+                      <td className="py-3 px-3 text-[var(--text-primary)]">{f.to_name || `${ACCOUNT_TYPE_LABELS[f.to] || ''} ${ACCOUNT_TYPE_NAMES[f.to] || f.to || '—'}`}</td>
                       <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{Number(f.amount).toLocaleString()}</td>
                       <td className="py-3 px-3 text-[var(--text-secondary)]">{f.currency}</td>
                       <td className="py-3 px-3"><span className="text-xs px-2 py-0.5 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] font-bold">{TRANSACTION_TYPE_LABELS[f.type] || f.type}</span></td>
@@ -1251,7 +1319,7 @@ export default function FinancePage() {
               <div key={key} className={`bg-[var(--bg-card)] border rounded-[22px] p-4 ${key === 'total' ? 'border-[var(--border-accent)]' : 'border-[var(--border-subtle)]'}`}>
                 <div className="text-[11px] text-[var(--text-secondary)] mb-1">{label}</div>
                 <div className={`text-lg font-extrabold ${key === 'total' ? 'text-[var(--accent)]' : 'text-[#ef4444]'}`}>
-                  {expenses ? Number(expenses[key] ?? 0).toLocaleString() : '—'} $
+                  {expenses ? Number(expenses[key] ?? 0).toLocaleString() : '—'} USDT
                 </div>
               </div>
             ))}
@@ -1271,7 +1339,7 @@ export default function FinancePage() {
                   <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                   <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'Vazirmatn' }} stroke="var(--text-secondary)" />
                   <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [`${Number(v).toLocaleString()} $`, '']} />
+                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [`${Number(v).toLocaleString()} USDT`, '']} />
                   <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#ef4444" />
                 </BarChart>
               </ResponsiveContainer>
@@ -1315,7 +1383,7 @@ export default function FinancePage() {
                   style={{ background: d.pnl > 0 ? 'rgba(34,197,94,0.08)' : d.pnl < 0 ? 'rgba(239,68,68,0.08)' : 'var(--bg-elevated)' }}>
                   <div className="text-[11px] font-bold text-[var(--text-secondary)] mb-1">{d.date}</div>
                   <div className={`text-base font-extrabold ${d.pnl > 0 ? 'text-[#22c55e]' : d.pnl < 0 ? 'text-[#ef4444]' : 'text-[var(--text-primary)]'}`}>
-                    {d.pnl >= 0 ? '+' : ''}{d.pnl.toLocaleString()} $
+                    {d.pnl >= 0 ? '+' : ''}{d.pnl.toLocaleString()} USDT
                   </div>
                   <div className="text-[10px] text-[var(--text-secondary)] mt-1">{d.trades} معامله</div>
                   {(d.deposits > 0 || d.withdrawals > 0) && (
@@ -1331,56 +1399,7 @@ export default function FinancePage() {
         </div>
       )}
 
-      {/* ═══ Exchange Rates Tab (فاز ۲۲.۳) ═══ */}
-      {tab === 'rates' && (
-        <div className="space-y-6">
-          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
-            <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">💱 روند نرخ تبدیل IRR → USD</div>
-            {exchangeRates.length > 0 ? (
-              <ResponsiveContainer width="100%" height={300}>
-                <LineChart data={exchangeRates}>
-                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} stroke="var(--text-secondary)" />
-                  <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
-                  <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [Number(v).toLocaleString(), 'نرخ']} />
-                  <Line type="monotone" dataKey="rate" stroke="#8b5cf6" strokeWidth={2} dot={{ r: 3 }} />
-                </LineChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="text-center py-12 text-[var(--text-secondary)]">نرخ تبدیلی برای نمایش وجود ندارد</div>
-            )}
           </div>
-
-          {exchangeRates.length > 0 && (
-            <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
-              <div className="text-sm font-extrabold text-[var(--text-primary)] mb-4">📋 تاریخچهٔ نرخ‌ها</div>
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
-                      <th className="text-right py-3 px-3">تاریخ</th>
-                      <th className="text-right py-3 px-3">از</th>
-                      <th className="text-right py-3 px-3">به</th>
-                      <th className="text-right py-3 px-3">نرخ</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {exchangeRates.map((r, i) => (
-                      <tr key={i} className="border-b border-[var(--border-subtle)]/50">
-                        <td className="py-3 px-3 text-[var(--text-primary)]">{r.date}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{r.from}</td>
-                        <td className="py-3 px-3 text-[var(--text-secondary)]">{r.to}</td>
-                        <td className="py-3 px-3 font-bold text-[var(--accent)]">{Number(r.rate).toLocaleString()}</td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-    </div>
   );
 }
 
