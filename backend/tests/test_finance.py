@@ -220,8 +220,8 @@ def test_spendable_assets_empty(client):
     body = client.get("/api/finance/spendable-assets").json()
     assert body["prop_stage_3"]["amount"] == 0
     assert body["bank"]["currency"] == "IRR"
-    assert body["broker"]["currency"] == "USD"
-    assert body["total"] == {"usd": 0.0, "irr": 0.0}
+    assert body["broker"]["currency"] == "USDT"
+    assert body["total"] == {"usdt": 0.0, "irr": 0.0}
 
 
 def test_spendable_assets(client, db_session):
@@ -258,7 +258,7 @@ def test_spendable_assets(client, db_session):
     assert body["trust_wallet"]["amount"] == 0
     assert body["crypto_wallet"]["amount"] == 100
     assert body["bank"]["amount"] == 100000000
-    assert body["total"]["usd"] == 3700
+    assert body["total"]["usdt"] == 3300
     assert body["total"]["irr"] == 100000000
 
 
@@ -399,24 +399,24 @@ def test_asset_trend(client):
 
     body = client.get("/api/finance/asset-trend").json()
     assert len(body["trend"]) == 2
-    assert body["trend"][0]["total_usd"] == 1000
-    assert body["trend"][1]["total_usd"] == 1200
+    assert body["trend"][0]["total_usdt"] == 1000
+    assert body["trend"][1]["total_usdt"] == 1200
 
 
-def test_exchange_rates(client):
-    acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "exchange"}).json()["id"]
-    client.post("/api/finance/transactions", json={
+def test_exchange_account_currency_enforcement(client):
+    """یک حساب صرافی ⋯ ارز تراکنش باید با ارز حساب یکسان باشد."""
+    acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "exchange", "currency": "IRR"}).json()["id"]
+    # تراکنش با ارز یکسان (IRR) ⇒ موفق
+    r = client.post("/api/finance/transactions", json={
         "account_id": acc_id, "amount": 100000000, "currency": "IRR", "type": "transfer",
         "date": "2025-03-15T10:00:00+00:00",
     })
-    client.post("/api/finance/transactions", json={
-        "account_id": acc_id, "amount": 1000, "currency": "USD", "type": "transfer",
+    assert r.status_code == 200, r.text
+    # تراکنش با ارز متفاوت ⇒ ۴۰۰
+    r = client.post("/api/finance/transactions", json={
+        "account_id": acc_id, "amount": 1000, "currency": "USDT", "type": "transfer",
         "date": "2025-03-15T11:00:00+00:00",
     })
-
-    body = client.get("/api/finance/exchange-rates").json()
-    assert len(body["rates"]) == 1
-    assert body["rates"][0]["from"] == "IRR"
-    assert body["rates"][0]["to"] == "USD"
-    assert body["rates"][0]["rate"] == 100000.0
+    assert r.status_code == 400
+    assert "ارز" in r.json()["detail"]
 

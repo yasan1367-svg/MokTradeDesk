@@ -24,9 +24,9 @@ def test_summary_groups_by_currency(client):
     body = client.get("/api/finance/summary").json()
     # پیش‌فرض USD — ریال نباید در عدد دلاری بیاید
     assert body["total_income"] == 1000
-    assert body["by_currency"]["USD"]["total_income"] == 1000
+    assert body["by_currency"]["USDT"]["total_income"] == 1000
     assert body["by_currency"]["IRR"]["total_income"] == 5_000_000
-    assert body["currency"] == "USD"
+    assert body["currency"] == "USDT"
 
     irr = client.get("/api/finance/summary?currency=IRR").json()
     assert irr["total_income"] == 5_000_000
@@ -64,16 +64,16 @@ def test_expenses_groups_by_currency(client):
 
     body = client.get("/api/finance/expenses").json()
     assert body["total"] == 100
-    assert body["by_currency"]["USD"] == 100
+    assert body["by_currency"]["USDT"] == 100
     assert body["by_currency"]["IRR"] == 200_000
 
 
 def test_net_profit_currency(client):
     body = client.get("/api/finance/net-profit").json()
-    assert body["currency"] == "USD"
-    assert set(body["by_currency"]) == {"USD", "IRR"}
+    assert body["currency"] == "USDT"
+    assert set(body["by_currency"]) == {"USDT", "IRR"}
 
 
 def test_withdrawals_stats_currency(client):
     body = client.get("/api/finance/withdrawals/stats").json()
-    assert body["currency"] == "USD"
+    assert body["currency"] == "USDT"

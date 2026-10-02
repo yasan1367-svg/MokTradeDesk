@@ -1391,6 +1391,7 @@ def _expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
 def get_spendable_assets(db: Session = Depends(get_db)):
     """دارایی شخصی به تفکیک نوع حساب و ارز، بدون سرمایه و سود دریافت‌نشدهٔ پراپ."""
     from ..models.trading import PersonalTradingAccount as _PTA
+    from ..services import finance_metrics
     from sqlalchemy import func
 
     account_types = {
@@ -1419,7 +1420,7 @@ def get_spendable_assets(db: Session = Depends(get_db)):
 
     # Received prop payouts already exist in their destination account balance.
     result = {
-        "prop_stage_3": {"amount": 0.0, "currency": "USDT"},
+        "prop_stage_3": {"amount": finance_metrics.prop_stage_3(db), "currency": "USDT"},
         "by_currency": by_currency,
         "total": {
             "usdt": round(sum(by_currency["USDT"].values()), 2),

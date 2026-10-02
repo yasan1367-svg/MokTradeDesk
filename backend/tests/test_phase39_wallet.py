@@ -502,9 +502,9 @@ def test_payout_still_works(client, db_session):
         step = client.post(f"/api/prop/payouts/{payout['id']}/status", json={"status": target})
         assert step.status_code == 200, step.text
 
-    # دریافت در کیف‌پول دارایی است؛ درآمد پس از رسیدن به بانک ثبت می‌شود.
+    # دریافت در کیف‌پول هم درآمد محسوب می‌شود (فاز ۳۳: income در RECEIVED ثبت می‌شود).
     assert _balance(db_session, dest.id) == 500.0
-    assert client.get("/api/finance/summary").json()["total_income"] == 0.0
+    assert client.get("/api/finance/summary").json()["total_income"] == 500.0
 
     db_session.refresh(stage)
     assert stage.total_withdrawn == 500.0

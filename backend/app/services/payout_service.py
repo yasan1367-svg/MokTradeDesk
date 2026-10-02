@@ -180,11 +180,8 @@ class PayoutService:
         label = stage.account.account_label if stage and stage.account else "پراپ"
 
         is_bank = dest.type == AccountType.BANK
-        cat = (
-            PayoutService._get_or_create_category(
-                db, INCOME_CATEGORY_NAME, CategoryType.INCOME, "#27AE60", "💰"
-            )
-            if is_bank else None
+        cat = PayoutService._get_or_create_category(
+            db, INCOME_CATEGORY_NAME, CategoryType.INCOME, "#27AE60", "💰"
         )
         description = f"برداشت از {label}"
         if withdrawal.note:
@@ -193,7 +190,7 @@ class PayoutService:
         tx = WalletService.post(
             db,
             account_id=dest.id,
-            type=TransactionType.PROFIT if is_bank else TransactionType.ADJUSTMENT,
+            type=TransactionType.PROFIT,
             amount=withdrawal.amount,
             currency=withdrawal.currency or Currency.USDT,
             date=withdrawal.withdrawal_date,
@@ -315,8 +312,7 @@ class PayoutService:
             if tx is None or tx.is_deleted:
                 raise ValueError("تراکنش مالی دریافت‌شده حذف شده یا پیدا نشد؛ ابتدا ارتباط آن را از بخش مالی اصلاح کنید")
         if tx is not None:
-            is_bank = dest.type == AccountType.BANK
-            new_type = TransactionType.PROFIT if is_bank else TransactionType.ADJUSTMENT
+            new_type = TransactionType.PROFIT
             old_deltas = WalletService.deltas(tx)
             new_delta = {dest.id: amount}
             account_ids = set(old_deltas) | set(new_delta)
@@ -335,10 +331,7 @@ class PayoutService:
             tx.amount = amount
             tx.currency = currency
             tx.date = payload.get("withdrawal_date", withdrawal.withdrawal_date)
-            tx.category_id = (
-                PayoutService._get_or_create_category(db, INCOME_CATEGORY_NAME, CategoryType.INCOME, "#27AE60", "💰").id
-                if is_bank else None
-            )
+            tx.category_id = PayoutService._get_or_create_category(db, INCOME_CATEGORY_NAME, CategoryType.INCOME, "#27AE60", "💰").id
             tx.description = f"برداشت از {withdrawal.stage.account.account_label if withdrawal.stage and withdrawal.stage.account else 'پراپ'}"
             if payload.get("note", withdrawal.note):
                 tx.description += f" - {payload.get('note', withdrawal.note)}"

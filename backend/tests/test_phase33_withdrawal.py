@@ -274,7 +274,7 @@ def test_serializer_exposes_status_and_transitions(client, db_session):
     assert len(rows) == 1
     row = rows[0]
     assert row["status"] == WithdrawalStatus.REQUESTED.value
-    assert row["currency"] == "USD"
+    assert row["currency"] == "USDT"
     assert set(row["allowed_transitions"]) == {"approved", "cancelled"}
 
 

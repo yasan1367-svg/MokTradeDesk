@@ -82,12 +82,12 @@ def test_cost_type_invalid_rejected(client):
 # ═════════════════════════════════════════════
 def test_prop_account_currency_is_enum():
     col = PropAccount.__table__.c.currency
-    assert "USD" in col.type.enums and "IRR" in col.type.enums
+    assert "USDT" in col.type.enums and "IRR" in col.type.enums
 
 
 def test_prop_cost_currency_is_enum():
     col = PropCost.__table__.c.currency
-    assert "USD" in col.type.enums and "IRR" in col.type.enums
+    assert "USDT" in col.type.enums and "IRR" in col.type.enums
 
 
 def test_prop_account_currency_persists(client, db_session):
