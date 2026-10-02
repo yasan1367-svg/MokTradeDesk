@@ -266,7 +266,7 @@ export default function AnalysisPage() {
           {analysis && selectedId && (scope === 'backtest' || scope === 'forward') && (
             <button onClick={async () => {
               try {
-                const res = await exportAnalysisPdf(selectedId!);
+                const res = await exportAnalysisPdf(selectedId!, scope === 'forward' ? 'FORWARD' : 'BACKTEST');
                 const blob = new Blob([res.data], { type: 'application/pdf' });
                 const url = window.URL.createObjectURL(blob);
                 const a = document.createElement('a'); a.href = url;

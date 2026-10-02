@@ -9,6 +9,7 @@ import json
 import os
 import shutil
 import sqlite3
+import zipfile
 from datetime import datetime, timezone
 from typing import Optional
 
@@ -20,6 +21,11 @@ CONFIG_PATH = os.path.join(BACKUP_DIR, ".backup_config.json")
 PREFIX = "trading_desk_"
 PREMIGRATE_PREFIX = "premigrate_"
 SUFFIX = ".db"
+
+# فاز ۵۳.۶.۴ — Backup کامل (DB + تصاویر)
+ARCHIVE_SUFFIX = ".zip"
+STORAGE_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "..", "storage"))
+SCREENSHOTS_DIR = os.path.join(STORAGE_DIR, "screenshots")
 
 DEFAULT_CONFIG = {
     "auto_enabled": True,
@@ -340,5 +346,86 @@ def run_auto_backup() -> Optional[dict]:
     info = create_backup()
     cleanup_old_backups()
     return info
+
+
+# ═════════════════════════════════════════════
+# فاز ۵۳.۶.۴ — Backup کامل (DB + تصاویر) در یک فایل zip
+# ═════════════════════════════════════════════
+def safe_archive_name(filename: str) -> str:
+    """اعتبارسنجی نام فایل zip (جلوگیری از Path Traversal)."""
+    name = os.path.basename(filename or "")
+    if not name.startswith(PREFIX) or not name.endswith(ARCHIVE_SUFFIX):
+        raise ValueError("نام فایل Backup نامعتبر است")
+    return name
+
+
+def create_backup_archive(prefix: str = "") -> dict:
+    """ساخت Backup کامل: دیتابیس + پوشهٔ screenshots در یک فایل ``.zip``.
+
+    سازگاری: یک نسخهٔ خام ``.db`` هم ساخته می‌شود (خارجی و قابل بازیابی با
+    مسیر موجود)؛ نام آن در ``db_filename`` برگردانده می‌شود.
+    """
+    ensure_backup_dir()
+    info = create_backup(prefix=prefix)
+
+    ts = datetime.now().strftime("%Y%m%d_%H%M%S")
+    base = f"{PREFIX}{prefix}{ts}"
+    archive_path = os.path.join(BACKUP_DIR, f"{base}{ARCHIVE_SUFFIX}")
+    counter = 1
+    while os.path.exists(archive_path):
+        archive_path = os.path.join(BACKUP_DIR, f"{base}_{counter}{ARCHIVE_SUFFIX}")
+        counter += 1
+
+    screenshots_count = 0
+    with zipfile.ZipFile(archive_path, "w", zipfile.ZIP_DEFLATED) as zf:
+        zf.write(os.path.join(BACKUP_DIR, info["filename"]), arcname=info["filename"])
+        if os.path.isdir(SCREENSHOTS_DIR):
+            for root, _dirs, files in os.walk(SCREENSHOTS_DIR):
+                for fn in sorted(files):
+                    full = os.path.join(root, fn)
+                    arc = os.path.join("screenshots", os.path.relpath(full, SCREENSHOTS_DIR))
+                    zf.write(full, arcname=arc.replace(os.sep, "/"))
+                    screenshots_count += 1
+
+    st = os.stat(archive_path)
+    return {
+        "filename": os.path.basename(archive_path),
+        "db_filename": info["filename"],
+        "screenshots_count": screenshots_count,
+        "size": st.st_size,
+        "created_at": datetime.fromtimestamp(st.st_mtime, tz=timezone.utc).isoformat(sep=" "),
+    }
+
+
+def restore_backup_archive(filename: str) -> dict:
+    """بازیابی کامل از فایل zip: ابتدا دیتابیس، سپس screenshots."""
+    ensure_backup_dir()
+    name = safe_archive_name(filename)
+    path = os.path.join(BACKUP_DIR, name)
+    if not os.path.exists(path):
+        raise FileNotFoundError("فایل Backup پیدا نشد")
+
+    with zipfile.ZipFile(path) as zf:
+        members = zf.namelist()
+        # امنیت: هیچ مسیر خارج از مقصد مجاز نیست
+        for m in members:
+            if m.startswith("/") or ".." in m.replace("\\", "/").split("/"):
+                raise ValueError("مسیر نامعتبر داخل فایل Backup")
+        db_members = [m for m in members if os.path.basename(m).startswith(PREFIX) and m.endswith(SUFFIX)]
+        if not db_members:
+            raise ValueError("دیتابیس داخل فایل Backup پیدا نشد")
+
+        db_member = db_members[0]
+        zf.extract(db_member, BACKUP_DIR)
+        os.makedirs(SCREENSHOTS_DIR, exist_ok=True)
+        restored_shots = 0
+        for m in members:
+            if m.replace("\\", "/").startswith("screenshots/") and not m.endswith("/"):
+                zf.extract(m, STORAGE_DIR)
+                restored_shots += 1
+
+    result = restore_backup(os.path.basename(db_member))
+    result["restored_screenshots"] = restored_shots
+    return result
 
 

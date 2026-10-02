@@ -39,9 +39,32 @@ interface Version {
   created_at: string;
 }
 
+interface StrategyVersionStats {
+  version_id: number;
+  version_name: string | null;
+  total_trades: number;
+  summary: {
+    net_pnl: number;
+    win_rate: number;
+    profit_factor: number;
+    max_drawdown: number;
+    sharpe_ratio: number;
+    expectancy: number;
+  };
+  trade_counts: {
+    total: number;
+    winning: number;
+    losing: number;
+    breakeven: number;
+  };
+}
+
 interface StrategyStats {
   strategy_id: number;
   strategy_name: string;
+  // فاز ۵۳.۳.۲: برچسب دامنه (تجمیعی) + آمار تفکیکی هر نسخه
+  scope?: string;
+  per_version?: StrategyVersionStats[];
   versions_count: number;
   version_ids: number[];
   total_trades: number;
@@ -974,6 +997,12 @@ const handleForkVersion = (version: Version) => {
                       <div className="text-[var(--text-muted)] text-xs text-center py-6 animate-pulse">⏳ در حال محاسبه آمار...</div>
                     ) : stats && stats.total_trades > 0 ? (
                       <div className="space-y-5">
+                        {/* فاز ۵۳.۳.۲ — برچسب دامنه: این اعداد تجمیعیِ همهٔ نسخه‌هاست */}
+                        <div className="flex items-center gap-2">
+                          <span className="text-[11px] font-extrabold px-2.5 py-1 rounded-full bg-[var(--accent-soft)] text-[var(--accent)] border border-[var(--border-accent)]">
+                            📊 تجمیعی (همهٔ {stats.versions_count} نسخه)
+                          </span>
+                        </div>
                         {/* کارت‌های خلاصه */}
                         <div className="grid grid-cols-3 gap-2">
                           {[
@@ -990,6 +1019,30 @@ const handleForkVersion = (version: Version) => {
                             </div>
                           ))}
                         </div>
+
+                        {/* فاز ۵۳.۳.۲ — تفکیک آمار هر نسخه */}
+                        {stats.per_version && stats.per_version.length > 0 && (
+                          <div className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3">
+                            <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-2">🧩 تفکیک هر نسخه</div>
+                            <div className="space-y-2">
+                              {stats.per_version.map((pv) => (
+                                <div
+                                  key={pv.version_id}
+                                  className="flex items-center justify-between text-[12px] border-b border-[var(--border-subtle)] last:border-0 pb-1.5"
+                                >
+                                  <span className="text-[var(--text-primary)] font-bold truncate max-w-[35%]">
+                                    {pv.version_name ?? `#${pv.version_id}`}
+                                  </span>
+                                  <span className="text-[var(--text-secondary)]">{pv.total_trades} معامله</span>
+                                  <span className="text-[var(--text-secondary)]">{pv.summary.win_rate}%</span>
+                                  <span className={`font-extrabold ${pv.summary.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                                    {pv.summary.net_pnl >= 0 ? '+' : ''}{pv.summary.net_pnl.toFixed(0)} USDT
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
 
                         {/* جزئیات معاملات */}
                         <div className="grid grid-cols-2 gap-3">

@@ -403,6 +403,9 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       if (filterTestType) params.test_type = filterTestType;
       if (filterSource) params.source = filterSource;
       if (searchQuery) params.search = searchQuery;
+      // فاز ۵۳.۵.۳: خروجی باید همان فیلترهای صفحه (شامل بازهٔ تاریخ) را حفظ کند
+      if (filterDateFrom) params.date_from = filterDateFrom;
+      if (filterDateTo) params.date_to = filterDateTo;
 
       const res = await apiFn(params);
       const blob = new Blob([res.data], { type: res.headers['content-type'] });

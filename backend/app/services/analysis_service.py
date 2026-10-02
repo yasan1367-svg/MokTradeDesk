@@ -61,20 +61,26 @@ def _calculate_filtered_metrics(
     date_to,
     db: Session,
 ) -> Dict[str, Any]:
-    """محاسبهٔ مجدد متریک‌ها روی تریدهای فیلترشده (نماد/بازهٔ تاریخ) — فاز 48a.
+    """محاسبهٔ مجدد متریک‌ها روی تریدهای فیلترشده (نماد/بازهٔ تاریخ) — فاز 48a/53.4.
 
-    بازهٔ تاریخ **شامل آخرین روز** است (نیمه‌باز) و روی `open_time` اعمال می‌شود.
+    - `test_type` مشخص (BACKTEST/FORWARD/REAL_*) ⇒ همان نوع (بدون قید غیر-REAL).
+      این اجازه می‌دهد **مقایسهٔ REAL** هم کار کند (فاز ۵۳.۴.۱).
+    - `test_type=None` (legacy) ⇒ فقط معاملات غیر-REAL (`analysis_trades_filter`).
+    - بازهٔ تاریخ **شامل آخرین روز** است و روی `close_time` اعمال می‌شود
+      (قابل‌اعمال بر REAL که open/close مستقل دارند).
     """
+    tt = _normalize_test_type(test_type)
     q = db.query(Trade).filter(
         Trade.version_id == version_id,
-        analysis_trades_filter(),
+        Trade.is_deleted == False,
     )
-    tt = _normalize_test_type(test_type)
-    if tt is not None:
+    if tt is None:
+        q = q.filter(analysis_trades_filter())
+    else:
         q = q.filter(Trade.test_type == tt)
     if symbol:
         q = q.filter(Trade.symbol == symbol)
-    q = filter_by_range(q, Trade.open_time, date_from, date_to)
+    q = filter_by_range(q, Trade.close_time, date_from, date_to)
 
     trades = q.all()
     basic = AnalysisService(db)._calculate_basic_metrics(trades)
@@ -117,33 +123,46 @@ def compare_versions(
     """
     results: List[Dict[str, Any]] = []
     tt = _normalize_test_type(test_type)
+    # فاز ۵۳.۴.۱: معاملات REAL تحلیلِ ذخیره‌شده ندارند ⇒ همیشه زنده محاسبه می‌شوند
+    is_real = tt in (TestType.REAL_PERSONAL, TestType.REAL_PROP)
 
     for vid in version_ids:
-        key = version_scope_key(vid, tt)
-        analysis = db.query(AnalysisResult).filter(
-            AnalysisResult.scope == AnalysisScope.VERSION,
-            AnalysisResult.scope_key == key,
-        ).first()
-        # سازگاری: رکوردهای legacy که با کلید `str(vid)` ذخیره شده‌اند
-        if analysis is None and key != str(vid):
-            analysis = db.query(AnalysisResult).filter(
-                AnalysisResult.scope == AnalysisScope.VERSION,
-                AnalysisResult.scope_key == str(vid),
-            ).first()
-
-        if not analysis:
-            results.append({
-                "version_id": vid,
-                "error": "تحلیل نشده — اول «تحلیل مجدد» را بزن",
-            })
-            continue
-
-        if symbol or date_from or date_to:
+        if is_real:
             metrics_d = _calculate_filtered_metrics(
                 vid, tt, symbol, date_from, date_to, db
             )
+            if not metrics_d.get("total_trades"):
+                results.append({
+                    "version_id": vid,
+                    "error": "هیچ معاملهٔ REAL برای این نسخه یافت نشد",
+                })
+                continue
         else:
-            metrics_d = _extract_metrics(analysis)
+            key = version_scope_key(vid, tt)
+            analysis = db.query(AnalysisResult).filter(
+                AnalysisResult.scope == AnalysisScope.VERSION,
+                AnalysisResult.scope_key == key,
+            ).first()
+            # سازگاری: رکوردهای legacy که با کلید `str(vid)` ذخیره شده‌اند
+            if analysis is None and key != str(vid):
+                analysis = db.query(AnalysisResult).filter(
+                    AnalysisResult.scope == AnalysisScope.VERSION,
+                    AnalysisResult.scope_key == str(vid),
+                ).first()
+
+            if not analysis:
+                results.append({
+                    "version_id": vid,
+                    "error": "تحلیل نشده — اول «تحلیل مجدد» را بزن",
+                })
+                continue
+
+            if symbol or date_from or date_to:
+                metrics_d = _calculate_filtered_metrics(
+                    vid, tt, symbol, date_from, date_to, db
+                )
+            else:
+                metrics_d = _extract_metrics(analysis)
 
         score_result = calculate_version_score(metrics_d)
         results.append({

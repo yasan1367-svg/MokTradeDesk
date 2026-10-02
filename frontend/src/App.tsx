@@ -6,6 +6,9 @@ import type { CommandItem } from './components/CommandPalette';
 import { useToast } from './components/ToastProvider';
 // فاز ۴۸c — صفحهٔ فعال در URL نگه داشته می‌شود (بدون react-router؛ History API خام)
 import { writeSearch } from './utils/urlState';
+import { applyTheme, resolveInitialTheme, readStoredTheme, THEME_EVENT } from './utils/theme';
+import type { Theme } from './utils/theme';
+import { getPropAlerts } from './api/client';
 
 // ── فاز ۱۵.۴: Code Splitting — هر صفحه یک chunk جداگانه ──
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -68,31 +71,28 @@ function PageLoading() {
 }
 
 function useTheme() {
-  const [theme, setTheme] = useState<'light' | 'dark'>(() => {
-    // ۱. اولویت با localStorage
-    const stored = localStorage.getItem('moktrade-theme');
-    if (stored === 'dark' || stored === 'light') return stored;
-    // ۲. بعد system preference
-    if (window.matchMedia('(prefers-color-scheme: dark)').matches) return 'dark';
-    return 'light';
-  });
+  // فاز ۵۳.۶.۳: منبع یگانه (utils/theme) — هم‌خوان با SettingsPage
+  const [theme, setTheme] = useState<Theme>(resolveInitialTheme);
 
   useEffect(() => {
-    const root = document.documentElement;
-    if (theme === 'dark') {
-      root.classList.add('dark');
-    } else {
-      root.classList.remove('dark');
-    }
-    localStorage.setItem('moktrade-theme', theme);
+    applyTheme(theme);
   }, [theme]);
 
-  // گوش دادن به تغییر system preference
+  // همگام‌سازی با تغییر theme از SettingsPage
+  useEffect(() => {
+    const onChange = (e: Event) => {
+      const next = (e as CustomEvent<Theme>).detail;
+      if (next === 'dark' || next === 'light') setTheme(next);
+    };
+    window.addEventListener(THEME_EVENT, onChange);
+    return () => window.removeEventListener(THEME_EVENT, onChange);
+  }, []);
+
+  // گوش دادن به تغییر system preference (فقط وقتی کاربر انتخاب نکرده)
   useEffect(() => {
     const mq = window.matchMedia('(prefers-color-scheme: dark)');
     const handler = (e: MediaQueryListEvent) => {
-      const stored = localStorage.getItem('moktrade-theme');
-      if (!stored) {
+      if (!readStoredTheme()) {
         setTheme(e.matches ? 'dark' : 'light');
       }
     };
@@ -108,6 +108,14 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const toast = useToast();
+
+  // فاز ۵۳.۶.۱ — نشانگر هشدارهای خوانده‌نشدهٔ پراپ روی دکمهٔ 🔔
+  const [unreadAlerts, setUnreadAlerts] = useState(0);
+  useEffect(() => {
+    getPropAlerts({ unread_only: true })
+      .then((res) => setUnreadAlerts((res.data || []).length))
+      .catch(() => { /* بی‌صدا: نبودِ هشدار مشکل UI نیست */ });
+  }, [page]);
 
   // ── preload صفحهٔ پیش‌فرض (فاز ۱۵.۴) ──
   useEffect(() => { preloadDashboard(); }, []);
@@ -201,8 +209,17 @@ export default function App() {
             >
               {theme === 'dark' ? '☀️' : '🌙'}
             </button>
-            <button className="w-10 h-10 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer text-base text-[var(--text-secondary)] transition-all hover:bg-[var(--accent-soft)] hover:border-[var(--border-accent)] hover:text-[var(--accent)]">
+            <button
+              onClick={() => setPage('prop')}
+              className="relative w-10 h-10 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer text-base text-[var(--text-secondary)] transition-all hover:bg-[var(--accent-soft)] hover:border-[var(--border-accent)] hover:text-[var(--accent)]"
+              title={unreadAlerts > 0 ? `${unreadAlerts} هشدار خوانده‌نشدهٔ پراپ` : 'هشدارهای پراپ'}
+            >
               🔔
+              {unreadAlerts > 0 && (
+                <span className="absolute -top-1 -left-1 min-w-[16px] h-4 px-1 rounded-full bg-[var(--loss)] text-white text-[9px] font-bold flex items-center justify-center">
+                  {unreadAlerts > 9 ? '9+' : unreadAlerts}
+                </span>
+              )}
             </button>
             <button
               onClick={() => setPage('settings')}

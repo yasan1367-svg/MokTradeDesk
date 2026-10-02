@@ -14,6 +14,7 @@ from ..services.analysis_service import AnalysisService
 from ..services import metrics
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
 from ..utils.trade_scope import analysis_trades_filter
+from ..utils.date_range import filter_by_range
 
 # ═════════════════════════════════════════════
 # Font Registration (Vazirmatn) + Persian Date
@@ -156,18 +157,8 @@ def export_trades_csv(
     if source: query = query.filter(Trade.source == source)
     if direction: query = query.filter(Trade.direction == direction)
     if search: query = query.filter(Trade.note.like(f"%{search}%"))
-    if date_from:
-        from datetime import datetime as dtf
-        try:
-            df = dtf.fromisoformat(date_from)
-            query = query.filter(Trade.open_time >= (df if df.tzinfo else df.replace(tzinfo=timezone.utc)))
-        except ValueError: pass
-    if date_to:
-        from datetime import datetime as dtf
-        try:
-            dt = dtf.fromisoformat(date_to)
-            query = query.filter(Trade.open_time <= (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)))
-        except ValueError: pass
+    # فاز ۵۳.۵.۳: بازهٔ تاریخ **شامل آخرین روز** (نیمه‌باز) — سازگار با بقیهٔ گزارش‌ها
+    query = filter_by_range(query, Trade.open_time, date_from, date_to)
 
     trades = query.order_by(Trade.close_time.desc()).all()
     output = io.StringIO()
@@ -224,18 +215,8 @@ def export_trades_pdf(
     if source: query = query.filter(Trade.source == source)
     if direction: query = query.filter(Trade.direction == direction)
     if search: query = query.filter(Trade.note.like(f"%{search}%"))
-    if date_from:
-        from datetime import datetime as dtf
-        try:
-            df = dtf.fromisoformat(date_from)
-            query = query.filter(Trade.open_time >= (df if df.tzinfo else df.replace(tzinfo=timezone.utc)))
-        except ValueError: pass
-    if date_to:
-        from datetime import datetime as dtf
-        try:
-            dt = dtf.fromisoformat(date_to)
-            query = query.filter(Trade.open_time <= (dt if dt.tzinfo else dt.replace(tzinfo=timezone.utc)))
-        except ValueError: pass
+    # فاز ۵۳.۵.۳: بازهٔ تاریخ **شامل آخرین روز** (نیمه‌باز) — سازگار با بقیهٔ گزارش‌ها
+    query = filter_by_range(query, Trade.open_time, date_from, date_to)
 
     trades = query.order_by(Trade.close_time.desc()).all()
     buffer = io.BytesIO()
@@ -322,13 +303,22 @@ def export_trades_pdf(
 def export_analysis_pdf(
     request: Request,
     version_id: int = Query(..., description="Version ID for analysis report"),
+    test_type: Optional[str] = Query("BACKTEST", description="BACKTEST | FORWARD"),
     db: Session = Depends(get_db),
 ):
-    """Export version analysis as PDF"""
+    """Export version analysis as PDF — فاز ۵۳.۵.۲: پشتیبانی از `test_type`"""
+    from ..models.strategy import TestType as _TT
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
+
+    tt = None
+    if test_type:
+        try:
+            tt = _TT(str(test_type).strip().lower())
+        except ValueError:
+            tt = None
 
     version = db.query(StrategyVersion).filter(StrategyVersion.id == version_id).first()
     if not version:
@@ -336,19 +326,22 @@ def export_analysis_pdf(
 
     service = AnalysisService(db)
     try:
-        result = service.analyze_version(version_id)
+        result = service.analyze_version(version_id, tt)
     except ValueError as e:
         raise HTTPException(status_code=404, detail=str(e))
     except Exception as e:
         raise HTTPException(status_code=500, detail=f"Analysis error: {str(e)}")
 
     metrics = result["result"]
-    # هماهنگ با متریک‌های بالا: فقط معاملات غیر-REAL
-    trades_list = (
-        db.query(Trade)
-        .filter(Trade.version_id == version_id, analysis_trades_filter())
-        .all()
+    # فاز ۵۳.۵.۲: معاملات هم مطابق `test_type` (Backtest/Forward) فیلتر می‌شوند
+    trades_q = db.query(Trade).filter(
+        Trade.version_id == version_id, Trade.is_deleted == False
     )
+    if tt is not None:
+        trades_q = trades_q.filter(Trade.test_type == tt)
+    else:
+        trades_q = trades_q.filter(analysis_trades_filter())
+    trades_list = trades_q.all()
 
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(

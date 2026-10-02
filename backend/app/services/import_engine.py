@@ -339,7 +339,9 @@ def normalize_trade(raw: Dict[str, Any], ctx: ImportContext) -> Dict[str, Any]:
     swap = _to_float(raw.get("swap"))
     r_multiple = _to_float(raw.get("r_multiple"))
     if r_multiple is None:
-        r_multiple = calculate_r_multiple(direction or "", open_price, close_price, sl)
+        # فاز ۵۳.۳: در نبود R آماده، استاپِ اولیه (اگر در raw_data باشد) مبنای ریسک است
+        initial_sl = _to_float(raw_data.get("initial_sl")) if isinstance(raw_data, dict) else None
+        r_multiple = calculate_r_multiple(direction or "", open_price, close_price, sl, initial_sl)
 
     return {
         "version_id": ctx.version_id,

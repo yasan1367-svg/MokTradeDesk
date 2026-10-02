@@ -5,6 +5,7 @@ import {
   commitImport,
   cancelImportBatch,
   getAllPropStages,
+  getPersonalTradingAccounts,
   getSymbolMappings,
   createSymbolMapping,
   deleteSymbolMapping,
@@ -22,12 +23,22 @@ interface PropStage {
   display_name: string;
 }
 
+// فاز ۵۳.۵.۱ — حساب معاملاتی شخصی (مقصد REAL_PERSONAL)
+interface PersonalAccount {
+  id: number;
+  account_label: string;
+  account_number: string;
+  broker_name: string;
+}
+
 export default function ImportPage() {
   const [versions, setVersions] = useState<Version[]>([]);
   const [propStages, setPropStages] = useState<PropStage[]>([]);
   const [selectedVersion, setSelectedVersion] = useState<number | null>(null);
   const [selectedPropStage, setSelectedPropStage] = useState<number | null>(null);
-  const [importTarget, setImportTarget] = useState<'strategy' | 'prop'>('strategy');
+  const [personalAccounts, setPersonalAccounts] = useState<PersonalAccount[]>([]);
+  const [selectedPersonalAccount, setSelectedPersonalAccount] = useState<number | null>(null);
+  const [importTarget, setImportTarget] = useState<'strategy' | 'prop' | 'personal'>('strategy');
   const [fileType, setFileType] = useState<'soft4x' | 'mt4'>('soft4x');
   const [symbol, setSymbol] = useState<string>('XAUUSD');
   const [testType, setTestType] = useState<'backtest' | 'forward' | 'real'>('backtest');
@@ -57,6 +68,11 @@ export default function ImportPage() {
     getAllPropStages()
       .then((res) => setPropStages(res.data))
       .catch((err) => console.error('خطا در دریافت مراحل پراپ:', err));
+
+    // فاز ۵۳.۵.۱ — حساب‌های معاملاتی شخصی (منبع: /api/trading/accounts)
+    getPersonalTradingAccounts()
+      .then((res) => setPersonalAccounts(res.data || []))
+      .catch((err) => console.error('خطا در دریافت حساب‌های شخصی:', err));
   }, []);
 
   // ═════════════════════════════════════════════
@@ -95,7 +111,7 @@ export default function ImportPage() {
   useEffect(() => {
     setPreview(null);
     setAllowPossible(false);
-  }, [fileType, importTarget, selectedVersion, selectedPropStage, symbol, testType]);
+  }, [fileType, importTarget, selectedVersion, selectedPropStage, selectedPersonalAccount, symbol, testType]);
 
   const handleSubmit = async () => {
     if (!file) {
@@ -116,6 +132,7 @@ export default function ImportPage() {
         {
           versionId: selectedVersion || undefined,
           propStageId: importTarget === 'prop' ? selectedPropStage || undefined : undefined,
+          personalTradingAccountId: importTarget === 'personal' ? selectedPersonalAccount || undefined : undefined,
           symbol: fileType === 'soft4x' ? symbol : undefined,
           testType,
         },
@@ -316,6 +333,20 @@ export default function ImportPage() {
               >
                 🏢 پراپ
               </button>
+              <button
+                onClick={() => {
+                  setImportTarget('personal');
+                  setTestType('real');
+                }}
+                className={`flex-1 min-w-[100px] py-3 rounded-[12px] text-[13px] font-extrabold transition-all ${
+                  importTarget === 'personal'
+                    ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
+                    : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
+                }`}
+                style={importTarget === 'personal' ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+              >
+                💼 حساب شخصی
+              </button>
             </div>
           </div>
 
@@ -417,6 +448,46 @@ export default function ImportPage() {
                   {propStages.map((s) => (
                     <option key={s.id} value={s.id}>
                       {s.display_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
+
+          {/* فاز ۵۳.۵.۱ — مقصد حساب معاملاتی شخصی (REAL_PERSONAL) */}
+          {importTarget === 'personal' && (
+            <>
+              <div className="mb-2">
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                  🎯 نسخه‌ی استراتژی <span className="text-[var(--loss)]">*</span>
+                </label>
+                <select
+                  value={selectedVersion || ''}
+                  onChange={(e) => setSelectedVersion(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer"
+                >
+                  <option value="">— انتخاب نسخه —</option>
+                  {versions.map((v) => (
+                    <option key={v.id} value={v.id}>
+                      {v.strategy_name} / {v.version_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="mb-2">
+                <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+                  💼 حساب معاملاتی شخصی <span className="text-[var(--loss)]">*</span>
+                </label>
+                <select
+                  value={selectedPersonalAccount || ''}
+                  onChange={(e) => setSelectedPersonalAccount(e.target.value ? Number(e.target.value) : null)}
+                  className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer"
+                >
+                  <option value="">— انتخاب حساب —</option>
+                  {personalAccounts.map((a) => (
+                    <option key={a.id} value={a.id}>
+                      {a.broker_name} / {a.account_label}
                     </option>
                   ))}
                 </select>

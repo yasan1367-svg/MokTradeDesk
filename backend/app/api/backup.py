@@ -38,6 +38,30 @@ def create_backup():
         raise HTTPException(status_code=500, detail=str(e))
 
 
+@router.post("/archive")
+def create_backup_archive():
+    """ساخت Backup کامل (DB + تصاویر screenshot) به‌صورت zip — فاز ۵۳.۶.۴"""
+    try:
+        return svc.create_backup_archive()
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@router.post("/restore-archive/{filename}")
+def restore_backup_archive(filename: str):
+    """بازیابی کامل از فایل zip (DB + تصاویر) — فاز ۵۳.۶.۴"""
+    try:
+        return svc.restore_backup_archive(filename)
+    except FileNotFoundError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
 @router.get("/list")
 def list_backups():
     """لیست Backupهای موجود"""

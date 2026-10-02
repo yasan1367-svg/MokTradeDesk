@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 from sqlalchemy import case, func
-from typing import List, Optional
+from typing import Any, Dict, List, Optional
 from pydantic import BaseModel
 from math import sqrt
 from datetime import date
@@ -371,12 +371,97 @@ def get_version_trades(version_id: int, db: Session = Depends(get_db)):
     ]
 
 
+def _summarize_trades(trades) -> Dict[str, Any]:
+    """آمار یک مجموعه معامله. هر آیتم: `(close_time, open_time, net)`.
+
+    منبع مشترک «آمار تجمیعی استراتژی» و «آمار per-version» (فاز ۵۳.۳.۲).
+    """
+    total = len(trades)
+    if total == 0:
+        return {
+            "total_trades": 0,
+            "summary": {"net_pnl": 0.0, "win_rate": 0.0, "profit_factor": 0.0,
+                        "max_drawdown": 0.0, "sharpe_ratio": 0.0, "expectancy": 0.0},
+            "trade_counts": {"total": 0, "winning": 0, "losing": 0, "breakeven": 0},
+            "averages": {"avg_win": 0.0, "avg_loss": 0.0, "avg_trade": 0.0},
+            "extremes": {"largest_win": 0.0, "largest_loss": 0.0},
+            "consistency": {"max_consecutive_losses": 0, "pnl_std_dev": 0.0},
+        }
+
+    wins = [t for t in trades if t[2] > 0]
+    losses = [t for t in trades if t[2] < 0]
+    gross_profit = sum(t[2] for t in wins) if wins else 0
+    gross_loss = abs(sum(t[2] for t in losses)) if losses else 0
+    net_pnl = sum(t[2] for t in trades)
+
+    win_rate = round((len(wins) / total * 100), 2) if total else 0
+    if gross_loss > 0:
+        profit_factor = round(gross_profit / gross_loss, 2)
+    elif gross_profit > 0:
+        profit_factor = 100.0
+    else:
+        profit_factor = 0.0
+
+    sorted_trades = sorted(trades, key=lambda t: t[0] or t[1])
+    equity = 0.0
+    peak = 0.0
+    max_dd = 0.0
+    for t in sorted_trades:
+        equity += t[2]
+        if equity > peak:
+            peak = equity
+        dd = peak - equity
+        if dd > max_dd:
+            max_dd = dd
+
+    pnl_values = [t[2] for t in trades]
+    mean_pnl = sum(pnl_values) / len(pnl_values) if pnl_values else 0
+    if len(pnl_values) > 1:
+        variance = sum((p - mean_pnl) ** 2 for p in pnl_values) / (len(pnl_values) - 1)
+        std_pnl = sqrt(variance) if variance > 0 else 0
+    else:
+        std_pnl = 0
+    # Sharpe = (mean / std) * sqrt(num_trades) — فرض می‌کنیم هر معامله یک روز معاملاتی است
+    sharpe_ratio = round((mean_pnl / std_pnl * sqrt(total)) if std_pnl > 0 else 0, 3)
+
+    win_rate_ratio = (len(wins) / total) if total else 0
+    loss_rate_ratio = (len(losses) / total) if total else 0
+    avg_win = (gross_profit / len(wins)) if wins else 0
+    avg_loss = (gross_loss / len(losses)) if losses else 0  # مقدار مثبت
+    expectancy = round((win_rate_ratio * avg_win) - (loss_rate_ratio * avg_loss), 2)
+    largest_win = round(max((t[2] for t in wins), default=0), 2)
+    largest_loss = round(abs(min((t[2] for t in losses), default=0)), 2)
+
+    streak = 0
+    max_streak = 0
+    for t in sorted_trades:
+        npnl = t[2]
+        if npnl < 0:
+            streak += 1
+            max_streak = max(max_streak, streak)
+        elif npnl > 0:
+            streak = 0
+
+    return {
+        "total_trades": total,
+        "summary": {"net_pnl": round(net_pnl, 2), "win_rate": win_rate,
+                    "profit_factor": profit_factor, "max_drawdown": round(max_dd, 2),
+                    "sharpe_ratio": sharpe_ratio, "expectancy": expectancy},
+        "trade_counts": {"total": total, "winning": len(wins), "losing": len(losses),
+                         "breakeven": total - len(wins) - len(losses)},
+        "averages": {"avg_win": round(avg_win, 2), "avg_loss": round(avg_loss, 2),
+                     "avg_trade": round(mean_pnl, 2)},
+        "extremes": {"largest_win": largest_win, "largest_loss": largest_loss},
+        "consistency": {"max_consecutive_losses": max_streak, "pnl_std_dev": round(std_pnl, 2)},
+    }
+
+
 # ═════════════════════════════════════════════
 # Strategy Stats
 # ═════════════════════════════════════════════
 @router.get("/{strategy_id}/stats")
 def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
-    """آمار تفصیلی یک استراتژی از مجموع معاملات همه نسخه‌ها"""
+    """آمار یک استراتژی — تجمیعی همهٔ نسخه‌ها **به‌همراه** آمار per-version (فاز ۵۳.۳.۲)."""
     # 1. بررسی وجود استراتژی
     strategy = db.query(Strategy).filter(Strategy.id == strategy_id).first()
     if not strategy:
@@ -391,135 +476,65 @@ def get_strategy_stats(strategy_id: int, db: Session = Depends(get_db)):
         return {
             "strategy_id": strategy_id,
             "strategy_name": strategy.name,
+            "scope": "aggregate",
             "versions_count": 0,
             "total_trades": 0,
+            "per_version": [],
             "message": "این استراتژی هیچ نسخه‌ای ندارد",
         }
 
-    # 3. دریافت معاملات — فاز ۱۵.۳: فقط ۳ ستون لازم (بدون لود ORM)
+    # 3. دریافت معاملات — فاز ۱۵.۳: فقط ستون‌های لازم (بدون لود ORM)
+    # فاز ۵۳.۳.۲: `version_id` هم لازم است تا آمار per-version ساخته شود.
     # معاملات REAL در آمار Backtest/Forward شمرده نمی‌شوند
     version_ids = [v.id for v in versions]
     _net = _net_expr()
     _rows = (
         db.query(Trade)
         .filter(Trade.version_id.in_(version_ids), analysis_trades_filter())
-        .with_entities(Trade.close_time, Trade.open_time, _net.label("net"))
+        .with_entities(Trade.close_time, Trade.open_time, _net.label("net"), Trade.version_id)
         .order_by(Trade.id.asc())
         .all()
     )
-    all_trades = [(ct, ot, float(n or 0.0)) for ct, ot, n in _rows]
+    all_trades = [(ct, ot, float(n or 0.0)) for ct, ot, n, _vid in _rows]
+
+    # فاز ۵۳.۳.۲: گروه‌بندی معاملات بر اساس نسخه
+    by_version: Dict[int, list] = {}
+    for ct, ot, n, vid in _rows:
+        by_version.setdefault(vid, []).append((ct, ot, float(n or 0.0)))
+    name_by_id = {v.id: v.version_name for v in versions}
+    per_version = [
+        {"version_id": vid, "version_name": name_by_id.get(vid),
+         **_summarize_trades(by_version.get(vid, []))}
+        for vid in version_ids
+    ]
 
     if not all_trades:
         return {
             "strategy_id": strategy_id,
             "strategy_name": strategy.name,
+            "scope": "aggregate",
             "versions_count": len(versions),
             "version_ids": version_ids,
             "total_trades": 0,
+            "per_version": per_version,
             "message": "هیچ معامله‌ای برای این استراتژی یافت نشد",
         }
 
-    total = len(all_trades)
-    wins = [t for t in all_trades if t[2] > 0]
-    losses = [t for t in all_trades if t[2] < 0]
-
-    gross_profit = sum(t[2] for t in wins) if wins else 0
-    gross_loss = abs(sum(t[2] for t in losses)) if losses else 0
-    net_pnl = sum(t[2] for t in all_trades)
-
-    # ─── Win Rate ───
-    win_rate = round((len(wins) / total * 100), 2) if total > 0 else 0
-
-    # ─── Profit Factor ───
-    if gross_loss > 0:
-        profit_factor = round(gross_profit / gross_loss, 2)
-    elif gross_profit > 0:
-        profit_factor = 100.0
-    else:
-        profit_factor = 0.0
-
-    # ─── Max Drawdown ───
-    sorted_trades = sorted(all_trades, key=lambda t: t[0] or t[1])
-    equity = 0.0
-    peak = 0.0
-    max_dd = 0.0
-    for t in sorted_trades:
-        equity += t[2]
-        if equity > peak:
-            peak = equity
-        dd = peak - equity
-        if dd > max_dd:
-            max_dd = dd
-    max_dd = round(max_dd, 2)
-
-    # ─── Sharpe Ratio ───
-    pnl_values = [t[2] for t in all_trades]
-    mean_pnl = sum(pnl_values) / len(pnl_values) if pnl_values else 0
-    if len(pnl_values) > 1:
-        variance = sum((p - mean_pnl) ** 2 for p in pnl_values) / (len(pnl_values) - 1)
-        std_pnl = sqrt(variance) if variance > 0 else 0
-    else:
-        std_pnl = 0
-
-    # Sharpe = (mean / std) * sqrt(num_trades) — فرض می‌کنیم هر معامله یک روز معاملاتی است
-    sharpe_ratio = round((mean_pnl / std_pnl * sqrt(total)) if std_pnl > 0 else 0, 3)
-
-    # ─── Expectancy ───
-    win_rate_ratio = (len(wins) / total) if total > 0 else 0
-    loss_rate_ratio = (len(losses) / total) if total > 0 else 0
-    avg_win = (gross_profit / len(wins)) if wins else 0
-    avg_loss = (gross_loss / len(losses)) if losses else 0  # مقدار مثبت
-    expectancy = round((win_rate_ratio * avg_win) - (loss_rate_ratio * avg_loss), 2)
-
-    # ─── Largest Win / Loss ───
-    largest_win = round(max((t[2] for t in wins), default=0), 2)
-    largest_loss = round(abs(min((t[2] for t in losses), default=0)), 2)
-
-    # ─── Max Consecutive Losses ───
-    streak = 0
-    max_streak = 0
-    for t in sorted_trades:
-        npnl = t[2]
-        if npnl < 0:
-            streak += 1
-            max_streak = max(max_streak, streak)
-        elif npnl > 0:
-            streak = 0
-
-    # ─── Return ───
+    # فاز ۵۳.۳.۲: آمار تجمیعی از منبع مشترک `_summarize_trades` (برچسب scope=aggregate)
+    agg = _summarize_trades(all_trades)
     return {
         "strategy_id": strategy_id,
         "strategy_name": strategy.name,
+        "scope": "aggregate",          # این آمار، تجمیعیِ همهٔ نسخه‌هاست
         "versions_count": len(versions),
         "version_ids": version_ids,
-        "total_trades": total,
-        "summary": {
-            "net_pnl": round(net_pnl, 2),
-            "win_rate": win_rate,
-            "profit_factor": profit_factor,
-            "max_drawdown": max_dd,
-            "sharpe_ratio": sharpe_ratio,
-            "expectancy": expectancy,
-        },
-        "trade_counts": {
-            "total": total,
-            "winning": len(wins),
-            "losing": len(losses),
-            "breakeven": total - len(wins) - len(losses),
-        },
-        "averages": {
-            "avg_win": round(avg_win, 2),
-            "avg_loss": round(avg_loss, 2),
-            "avg_trade": round(mean_pnl, 2),
-        },
-        "extremes": {
-            "largest_win": largest_win,
-            "largest_loss": largest_loss,
-        },
-        "consistency": {
-            "max_consecutive_losses": max_streak,
-            "pnl_std_dev": round(std_pnl, 2),
-        },
+        "total_trades": agg["total_trades"],
+        "summary": agg["summary"],
+        "trade_counts": agg["trade_counts"],
+        "averages": agg["averages"],
+        "extremes": agg["extremes"],
+        "consistency": agg["consistency"],
+        "per_version": per_version,
     }
 
 

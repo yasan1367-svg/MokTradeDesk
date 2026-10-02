@@ -142,8 +142,11 @@ export const exportTradesCsv = (params?: Record<string, any>) =>
   api.get('/api/export/trades/csv', { params, responseType: 'blob' });
 export const exportTradesPdf = (params?: Record<string, any>) =>
   api.get('/api/export/trades/pdf', { params, responseType: 'blob' });
-export const exportAnalysisPdf = (versionId: number) =>
-  api.get('/api/export/analysis/pdf', { params: { version_id: versionId }, responseType: 'blob' });
+export const exportAnalysisPdf = (versionId: number, testType?: string) =>
+  api.get('/api/export/analysis/pdf', {
+    params: { version_id: versionId, ...(testType ? { test_type: testType } : {}) },
+    responseType: 'blob',
+  });
 export const exportDashboardPdf = () =>
   api.get('/api/export/dashboard/pdf', { responseType: 'blob' });
 // ─────────────────────────────────────────────

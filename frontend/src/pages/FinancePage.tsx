@@ -266,7 +266,10 @@ export default function FinancePage() {
         })
       );
       setAccountStats(statsMap);
-    } catch { /* silent */ }
+    } catch (err: any) {
+      // فاز ۵۳.۶.۲: خطا دیگر بی‌صدا نیست
+      toast.error(err?.response?.data?.detail || 'خطا در بارگذاری گزارش‌های مالی');
+    }
   };
 
   const loadAdvancedReports = async () => {
@@ -284,7 +287,10 @@ export default function FinancePage() {
       setCategoryBreakdown(catRes.data);
       setAccountComparison(accRes.data);
       setProfitLoss(plRes.data);
-    } catch { /* silent */ }
+    } catch (err: any) {
+      // فاز ۵۳.۶.۲: خطا دیگر بی‌صدا نیست
+      toast.error(err?.response?.data?.detail || 'خطا در بارگذاری گزارش‌های پیشرفته');
+    }
   };
 
   const loadAll = async () => {
@@ -316,7 +322,10 @@ export default function FinancePage() {
       setExpenses(exRes.data);
       setMoneyCycle(mcRes.data);
       setCalendar(calRes.data.days || []);
-    } catch { /* silent */ }
+    } catch (err: any) {
+      // فاز ۵۳.۶.۲: خطا دیگر بی‌صدا نیست
+      toast.error(err?.response?.data?.detail || 'خطا در بارگذاری گزارش‌های مالی');
+    }
   };
 
   useEffect(() => { loadAll(); }, []);

@@ -91,6 +91,16 @@ class Soft4XImporter:
                 self._get_value(row, column("close_price", "Close Price"), 0) or 0
             )
             sl = self._to_float(self._get_value(row, column("sl", "SL")))
+            # فاز ۵۳.۳: استاپِ اولیه (Soft4X) — مبنای درست R (حتی اگر SL جابجا شده باشد)
+            initial_sl = self._to_float(
+                self._get_value(row, column("initial_sl", "Initial SL"))
+            )
+
+            raw_data = self._make_json_safe({
+                headers[i]: row[i] for i in range(len(row)) if i < len(headers)
+            })
+            if initial_sl is not None:
+                raw_data["initial_sl"] = initial_sl
 
             trade = {
                 "symbol": self.symbol,
@@ -104,16 +114,14 @@ class Soft4XImporter:
                 "sl": sl,
                 "tp": self._to_float(self._get_value(row, column("tp", "TP"))),
                 "pnl": float(self._get_value(row, column("pnl", "P/L"), 0) or 0),
-                "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl),
+                "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl, initial_sl),
                 "commission": self._to_float(
                     self._get_value(row, column("commission", "Commission"))
                 ) or 0,
                 "swap": 0.0,
                 "entry_sequence": 1,
                 "source": TradeSource.SOFT4X_IMPORT,
-                "raw_data": self._make_json_safe({
-                    headers[i]: row[i] for i in range(len(row)) if i < len(headers)
-                })
+                "raw_data": raw_data,
             }
             trades.append(trade)
 

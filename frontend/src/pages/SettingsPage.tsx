@@ -1,6 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../api/client';
 import BackupManager from '../components/BackupManager';
+import { applyTheme, readStoredTheme } from '../utils/theme';
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<'general' | 'backup'>('general');
@@ -12,7 +13,12 @@ export default function SettingsPage() {
 
   useEffect(() => {
     getSettings()
-      .then((res) => setSettings(res.data))
+      .then((res) => {
+        setSettings(res.data);
+        // فاز ۵۳.۶.۳: اگر کاربر انتخاب محلی ندارد، تمِ ذخیره‌شده در API اعمال شود
+        const t = res.data?.theme;
+        if (!readStoredTheme() && (t === 'dark' || t === 'light')) applyTheme(t);
+      })
       .catch(() => setError('خطا در بارگذاری تنظیمات'))
       .finally(() => setLoading(false));
   }, []);
@@ -22,6 +28,8 @@ export default function SettingsPage() {
     setError(null);
     try {
       await updateSettings(settings);
+      // فاز ۵۳.۶.۳: اعمال فوری تم (همگام با App از طریق رویداد مشترک)
+      if (settings.theme === 'dark' || settings.theme === 'light') applyTheme(settings.theme);
       setSuccessMessage('تنظیمات با موفقیت ذخیره شد');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
