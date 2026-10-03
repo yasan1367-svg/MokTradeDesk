@@ -10,6 +10,7 @@ from alembic import context
 # side-effect ثبت جدول‌ها در `Base.metadata` (لازم برای alembic autogenerate).
 # در `pyproject.toml` با per-file-ignores از F401 مستثنا شده‌اند — حذف نشوند.
 from app.core.database import Base
+from app.domain.risk.instrument_spec import InstrumentSpec  # noqa: F401
 
 # Strategy Models
 from app.models.strategy import (

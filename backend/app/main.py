@@ -13,6 +13,7 @@ from .api import strategies, prop, personal, imports, analytics, trades, symbol_
 from .api import import_engine as import_engine_api
 from .api import settings as settings_api
 from .api import backup as backup_api
+from .domain.risk.instrument_spec import InstrumentSpec  # noqa: F401 (register SQLAlchemy model)
 
 # ═════════════════════════════════════════════
 # Logging
