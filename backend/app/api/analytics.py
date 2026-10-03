@@ -4,6 +4,7 @@ from sqlalchemy import func, case, and_, or_
 from typing import List, Optional
 from datetime import datetime, timezone, timedelta
 from collections import defaultdict
+from types import SimpleNamespace
 
 from ..core.database import get_db
 from ..services.analysis_service import AnalysisService, compare_versions
@@ -20,6 +21,13 @@ from ..schemas.analytics import (
     CustomTimeIntervalResponse,
     CompareRequest,
 )
+from ..domain.risk.drawdown_engine import (
+    calculate_drawdown_curve,
+    calculate_drawdown_duration,
+    calculate_peak_to_trough_dd,
+    calculate_static_dd,
+)
+from ..domain.risk.equity_engine import calculate_equity_curve
 
 router = APIRouter()
 
@@ -176,6 +184,49 @@ def _scope_avg_balance(db, scope: str, account_ids) -> float:
     return sum(a.current_balance or 0 for a in accts) / len(accts)
 
 
+ASSUMED_BALANCE = 10000.0
+
+
+def _scope_initial_balance(db, scope: str, personal_account_ids, prop_stage_ids, currency=None) -> float:
+    """Get initial equity for the trade scope, or use the simulation default.
+
+    Personal account balances and prop-stage balances are summed once per
+    referenced account/stage. Prop accounts themselves do not store an initial
+    balance; their associated trading stage does.
+    """
+    if scope in ("backtest", "forward"):
+        return ASSUMED_BALANCE
+
+    balance = 0.0
+    personal_ids = {account_id for account_id in (personal_account_ids or []) if account_id is not None}
+    stage_ids = {stage_id for stage_id in (prop_stage_ids or []) if stage_id is not None}
+
+    if personal_ids:
+        personal_query = db.query(PersonalTradingAccount).filter(PersonalTradingAccount.id.in_(personal_ids))
+        if currency is not None:
+            personal_query = personal_query.filter(PersonalTradingAccount.currency == currency)
+        balance += sum(float(account.initial_balance or 0.0) for account in personal_query.all())
+
+    if stage_ids:
+        prop_query = db.query(PropStage).filter(PropStage.id.in_(stage_ids))
+        if currency is not None:
+            prop_query = prop_query.join(PropAccount).filter(PropAccount.currency == currency)
+        balance += sum(float(stage.initial_balance or 0.0) for stage in prop_query.all())
+
+    return balance if balance > 0 else ASSUMED_BALANCE
+
+
+def _equity_trade(close_time, net):
+    """Adapt the SQL-projected net PnL row to the domain EquityEngine input."""
+    return SimpleNamespace(
+        close_time=close_time,
+        pnl=net,
+        commission=0.0,
+        swap=0.0,
+        is_deleted=False,
+    )
+
+
 # ═════════════════════════════════════════════
 # تحلیل
 # ═════════════════════════════════════════════
@@ -296,25 +347,39 @@ def get_dashboard_data(
     loss_ratio = (losses_n / closed_count) if closed_count else 0.0
     expectancy = (win_ratio * avg_win) - (loss_ratio * avg_loss)
 
-    # ── ۲) سکانس مرتب با فقط ۲ ستون برای DD/streak/اکوییتی (بدون ORM) ──
+    # ── ۲) سکانس مرتب برای streak و محاسبه‌های دامنه‌ای equity/drawdown ──
     narrow = (
-        closed_scope.with_entities(Trade.close_time, net.label("net"), Trade.id)
+        closed_scope.with_entities(
+            Trade.close_time,
+            net.label("net"),
+            Trade.id,
+            Trade.personal_trading_account_id,
+            Trade.prop_stage_id,
+        )
         .order_by(Trade.close_time.asc(), Trade.id.asc())
         .all()
     )
     seq = []
-    for _ct, _n, _id in narrow:
+    personal_account_ids = set()
+    prop_stage_ids = set()
+    for _ct, _n, _id, _personal_id, _stage_id in narrow:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
         seq.append((_ct, float(_n or 0.0)))
+        if _personal_id is not None:
+            personal_account_ids.add(_personal_id)
+        if _stage_id is not None:
+            prop_stage_ids.add(_stage_id)
 
-    eq = 0.0; pk = 0.0; md = 0.0; sp = []
-    for _ct, _n in seq:
-        eq += _n
-        if eq > pk: pk = eq
-        d = pk - eq
-        if d > md: md = d
-        sp.append(round(eq, 2))
+    initial_balance = _scope_initial_balance(
+        db, sc, personal_account_ids, prop_stage_ids, currency
+    )
+    equity_trades = [_equity_trade(close_time, net_pnl) for close_time, net_pnl in seq]
+    equity_points = calculate_equity_curve(initial_balance, equity_trades)
+    peak_to_trough = calculate_peak_to_trough_dd(equity_points)
+    static_dd = calculate_static_dd(initial_balance, equity_points)
+    max_drawdown = max(peak_to_trough["dd"], static_dd["dd"])
+    sp = [round(point["equity"] - initial_balance, 2) for point in equity_points[1:]]
     spd = sp[-20:] if len(sp) >= 20 else sp
     max_consecutive_losses = 0; _streak = 0
     for _ct, _n in seq:
@@ -330,17 +395,19 @@ def get_dashboard_data(
     opn = _apply_scope(
         db.query(Trade).filter(Trade.is_deleted == False), sc
     ).filter(Trade.close_time.is_(None)).count()
-    # ── ۳) منحنی اکوییتی روزانه ──
+    # ── ۳) منحنی Equity و Drawdown با موتور دامنه‌ای ──
     daily_pnl = defaultdict(float)
-    for _ct, _n in seq:
-        if _ct is None:
-            continue
-        daily_pnl[_ct.astimezone(timezone.utc).date().isoformat()] += _n
-    equity_curve = []
-    _cum = 0.0
-    for dkey in sorted(daily_pnl.keys()):
-        _cum += daily_pnl[dkey]
-        equity_curve.append({"date": dkey, "equity": round(_cum, 2)})
+    for point in equity_points:
+        if point["date"] is not None:
+            day = point["date"].astimezone(timezone.utc).date().isoformat()
+            daily_pnl[day] += point["pnl"]
+    daily_equity = []
+    cumulative_daily_pnl = 0.0
+    for day in sorted(daily_pnl):
+        cumulative_daily_pnl += daily_pnl[day]
+        daily_equity.append({"date": day, "equity": round(cumulative_daily_pnl, 2)})
+    equity_curve = daily_equity
+    md = max_drawdown
 
     # ── ۴) توزیع PnL (یک کوئری GROUP BY) ──
     _bucket_defs = [
@@ -570,22 +637,45 @@ def get_risk_metrics(
         _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None), Trade.is_deleted == False), sc)
         .with_entities(
             Trade.close_time, _net.label("net"), Trade.r_multiple,
-            Trade.personal_trading_account_id,
+            Trade.personal_trading_account_id, Trade.prop_stage_id,
         )
-        .order_by(Trade.id.asc())
+        .order_by(Trade.close_time.asc(), Trade.id.asc())
         .all()
     )
     closed_trades = []
-    account_ids = set()
-    for _ct, _n, _r, _aid in _rows:
+    personal_account_ids = set()
+    prop_stage_ids = set()
+    for _ct, _n, _r, _personal_id, _stage_id in _rows:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
         closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r})
-        if _aid is not None:
-            account_ids.add(_aid)
+        if _personal_id is not None:
+            personal_account_ids.add(_personal_id)
+        if _stage_id is not None:
+            prop_stage_ids.add(_stage_id)
     returns = [c["net"] for c in closed_trades]
-    # فاز ۵۳.۲: مبنای سرمایه بر اساس scope (نه همهٔ حساب‌ها)
-    avg_b = _scope_avg_balance(db, sc, account_ids)
+    initial_balance = _scope_initial_balance(
+        db, sc, personal_account_ids, prop_stage_ids
+    )
+    equity_trades = [_equity_trade(c["close_time"], c["net"]) for c in closed_trades]
+    equity_points = calculate_equity_curve(initial_balance, equity_trades)
+    peak_to_trough = calculate_peak_to_trough_dd(equity_points)
+    static_dd = calculate_static_dd(initial_balance, equity_points)
+    drawdown_duration = calculate_drawdown_duration(equity_points)
+    # Preserve the response's existing duration-in-trades unit. The domain
+    # engine determines the longest underwater interval; count its underwater
+    # trade points (excluding the recovery point) for the legacy API field.
+    drawdown_trade_count = 0
+    if drawdown_duration["start_date"] is not None:
+        point_drawdowns = calculate_drawdown_curve(equity_points)
+        drawdown_trade_count = sum(
+            point["date"] is not None
+            and drawdown_duration["start_date"] <= point["date"] <= drawdown_duration["end_date"]
+            and drawdown["drawdown"] > 0
+            for point, drawdown in zip(equity_points, point_drawdowns)
+        )
+    # فاز ۵۳.۲: مبنای سرمایه برای risk of ruin و open risk بر اساس scope
+    avg_b = _scope_avg_balance(db, sc, personal_account_ids)
     ar = (sum(returns) / len(returns)) if returns else 0   # میانگین هر معامله (مبنای expectancy)
     # فاز ۵۳.۲: Sharpe/Sortino روی بازده **روزانه** و **بدون** سالانه‌سازی (√252 حذف شد)
     sharpe, sortino = _sharpe_sortino(_daily_returns(closed_trades))
@@ -609,15 +699,8 @@ def get_risk_metrics(
     for r in returns:
         if r < 0: streak += 1; ms = max(ms, streak)
         elif r > 0: streak = 0
-    eq = 0; pk = 0; dd_d = 0; md = 0; cd = 0
-    for c in sorted(closed_trades, key=lambda c: c["close_time"]):
-        eq += c["net"]
-        if eq > pk: pk = eq; cd = 0
-        elif eq < pk:
-            d = pk - eq
-            if d > dd_d: dd_d = d
-            cd += 1
-            if cd > md: md = cd
+    dd_d = max(peak_to_trough["dd"], static_dd["dd"])
+    md = drawdown_trade_count
     status = "danger" if (sharpe < 0.5 or ror > 0.1 or orp > 20) else ("warning" if (sharpe < 1.0 or ror > 0.05 or orp > 10) else "safe")
     return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
             "profit_factor": round((sum(wins) / abs(sum(losses))) if losses else (100 if wins else 0), 2),
@@ -668,19 +751,22 @@ def get_risk_advanced(
         .filter(Trade.close_time.isnot(None))
         .with_entities(
             Trade.close_time, _net.label("net"), Trade.r_multiple,
-            Trade.personal_trading_account_id,
+            Trade.personal_trading_account_id, Trade.prop_stage_id,
         )
         .order_by(Trade.close_time.asc(), Trade.id.asc())
         .all()
     )
     closed = []
-    account_ids = set()
-    for _ct, _n, _r, _aid in _rows:
+    personal_account_ids = set()
+    prop_stage_ids = set()
+    for _ct, _n, _r, _personal_id, _stage_id in _rows:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
         closed.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r})
-        if _aid is not None:
-            account_ids.add(_aid)
+        if _personal_id is not None:
+            personal_account_ids.add(_personal_id)
+        if _stage_id is not None:
+            prop_stage_ids.add(_stage_id)
 
     returns = [c["net"] for c in closed]
     total = len(returns)
@@ -699,23 +785,25 @@ def get_risk_advanced(
     sharpe, sortino = _sharpe_sortino(_daily_returns(closed))
 
     # ── Equity / Drawdown / Ulcer ──
-    equity = 0.0
-    peak = 0.0
-    max_dd = 0.0
+    initial_balance = _scope_initial_balance(
+        db, sc, personal_account_ids, prop_stage_ids, currency
+    )
+    equity_trades = [_equity_trade(c["close_time"], c["net"]) for c in closed]
+    equity_points = calculate_equity_curve(initial_balance, equity_trades)
+    peak_to_trough = calculate_peak_to_trough_dd(equity_points)
+    static_dd = calculate_static_dd(initial_balance, equity_points)
+    drawdown_duration = calculate_drawdown_duration(equity_points)
+    max_dd = max(peak_to_trough["dd"], static_dd["dd"])
     ulcer_acc = 0.0
     drawdown_curve = []
-    for idx, c in enumerate(closed):
-        equity += c["net"]
-        if equity > peak:
-            peak = equity
-        dd_abs = peak - equity
-        dd_pct = (dd_abs / peak * 100) if peak > 0 else 0.0
-        if dd_abs > max_dd:
-            max_dd = dd_abs
+    point_drawdowns = calculate_drawdown_curve(equity_points)
+    for idx, (point, drawdown) in enumerate(zip(equity_points[1:], point_drawdowns[1:])):
+        dd_abs = drawdown["drawdown"]
+        dd_pct = drawdown["drawdown_pct"]
         ulcer_acc += dd_pct ** 2
         drawdown_curve.append({
             "index": idx + 1,
-            "date": c["close_time"].date().isoformat(),
+            "date": point["date"].date().isoformat(),
             "drawdown": round(dd_abs, 2),
             "drawdown_pct": round(dd_pct, 2),
         })
@@ -765,7 +853,7 @@ def get_risk_advanced(
     kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
 
     # ── Risk of Ruin (فاز ۵۳.۲: مبنای سرمایه بر اساس scope، نه همهٔ حساب‌ها) ──
-    avg_b = _scope_avg_balance(db, sc, account_ids)
+    avg_b = _scope_avg_balance(db, sc, personal_account_ids)
     if wr > 0 and rr > 0:
         p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1.0
         units = (avg_b / avg_loss) if avg_loss > 0 else 100.0

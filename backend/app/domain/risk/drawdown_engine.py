@@ -1,6 +1,25 @@
 """Static, peak-to-trough, and elapsed-time drawdown calculations."""
 
 
+def calculate_drawdown_curve(equity_curve: list[dict]) -> list[dict]:
+    """Return point-wise peak-to-trough drawdown values for an equity curve."""
+    peak = equity_curve[0]["equity"] if equity_curve else 0.0
+    result = []
+    for point in equity_curve:
+        equity = point["equity"]
+        if equity > peak:
+            peak = equity
+        drawdown = max(0.0, peak - equity)
+        result.append(
+            {
+                "date": point.get("date"),
+                "drawdown": drawdown,
+                "drawdown_pct": (drawdown / peak * 100) if peak else 0.0,
+            }
+        )
+    return result
+
+
 def calculate_static_dd(
     initial_balance: float,
     equity_curve: list[dict],

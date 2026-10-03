@@ -3,6 +3,7 @@ from datetime import datetime, timedelta, timezone
 import pytest
 
 from app.domain.risk.drawdown_engine import (
+    calculate_drawdown_curve,
     calculate_drawdown_duration,
     calculate_peak_to_trough_dd,
     calculate_static_dd,
@@ -37,6 +38,20 @@ def test_peak_to_trough_dd():
         "dd_percent": pytest.approx(33.3333333333),
         "peak": 12000.0,
     }
+
+
+def test_drawdown_curve_uses_equity_peak():
+    curve = [
+        {"date": None, "equity": 20000.0},
+        _point(1, 21000.0),
+        _point(2, 19500.0),
+    ]
+
+    assert calculate_drawdown_curve(curve) == [
+        {"date": None, "drawdown": 0.0, "drawdown_pct": 0.0},
+        {"date": _point(1, 0)["date"], "drawdown": 0.0, "drawdown_pct": 0.0},
+        {"date": _point(2, 0)["date"], "drawdown": 1500.0, "drawdown_pct": pytest.approx(1500 / 21000 * 100)},
+    ]
 
 
 def test_drawdown_duration_days():

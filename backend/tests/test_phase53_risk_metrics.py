@@ -9,6 +9,7 @@
 from datetime import datetime, timezone
 
 from app.models.finance import Currency
+from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
 from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
 from app.models.trading import Broker, PersonalTradingAccount
 
@@ -38,10 +39,11 @@ def _pta(db, label="R53", balance=10000.0):
     return a
 
 
-def _trade(db, version_id, pnl, *, day, pta_id=None, test_type=TestType.REAL_PERSONAL):
+def _trade(db, version_id, pnl, *, day, pta_id=None, prop_stage_id=None, test_type=TestType.REAL_PERSONAL):
     t = Trade(
         version_id=version_id,
         personal_trading_account_id=pta_id,
+        prop_stage_id=prop_stage_id,
         symbol="XAUUSD",
         direction="buy",
         open_time=datetime(2025, 7, day, 9, 0, tzinfo=timezone.utc),
@@ -139,3 +141,58 @@ def test_risk_metrics_backtest_assumed_balance(client, db_session):
     assert "position_sizing" not in body
     assert "suggested_lots" not in str(body)
     assert "risk_of_ruin" in body["risk_metrics"]
+
+
+def test_analytics_drawdown_uses_account_initial_balance(client, db_session):
+    """Analytics drawdown starts at the referenced account's opening balance."""
+    version = _version(db_session)
+    account = _pta(db_session, label="equity-base", balance=20000.0)
+    _trade(db_session, version.id, 1000.0, day=4, pta_id=account.id)
+    _trade(db_session, version.id, -1500.0, day=5, pta_id=account.id)
+    db_session.commit()
+
+    risk = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
+    advanced = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+    dashboard = client.get(
+        "/api/analytics/dashboard", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    assert risk["risk_metrics"]["max_drawdown_depth"] == 1500.0
+    assert advanced["max_drawdown"] == 1500.0
+    assert advanced["drawdown_curve"][-1]["drawdown_pct"] == 7.14
+    assert dashboard["summary"]["max_dd"] == 1500.0
+    # Dashboard response retains its legacy cumulative-PnL equity curve contract.
+    assert dashboard["equity_curve"] == [
+        {"date": "2025-07-04", "equity": 1000.0},
+        {"date": "2025-07-05", "equity": -500.0},
+    ]
+
+
+def test_risk_advanced_drawdown_uses_prop_stage_initial_balance(client, db_session):
+    version = _version(db_session)
+    firm = PropFirm(name="Equity Prop Firm")
+    db_session.add(firm)
+    db_session.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label="Equity Prop")
+    db_session.add(account)
+    db_session.flush()
+    stage = PropStage(
+        prop_account_id=account.id,
+        stage_type=StageType.FUNDED_REAL,
+        status=StageStatus.ACTIVE,
+        initial_balance=20000.0,
+    )
+    db_session.add(stage)
+    db_session.flush()
+    _trade(db_session, version.id, 1000.0, day=6, prop_stage_id=stage.id, test_type=TestType.REAL_PROP)
+    _trade(db_session, version.id, -1500.0, day=7, prop_stage_id=stage.id, test_type=TestType.REAL_PROP)
+    db_session.commit()
+
+    advanced = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    assert advanced["max_drawdown"] == 1500.0
+    assert advanced["drawdown_curve"][-1]["drawdown_pct"] == 7.14
