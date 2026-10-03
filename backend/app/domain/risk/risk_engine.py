@@ -133,6 +133,35 @@ class RiskEngine:
         return returns
 
     @staticmethod
+    def _daily_returns_from_trades(trades: list, initial_balance: float) -> list[float]:
+        """Aggregate trade net PnL by close date and return each day's opening-equity return.
+
+        Accepts either trade ORM/data objects (``close_time`` and ``pnl`` fields) or
+        analytics projections (``close_time`` and ``net`` mapping keys).
+        """
+        daily_pnl = defaultdict(float)
+        for trade in trades:
+            close_time = (
+                trade.get("close_time") if isinstance(trade, dict)
+                else getattr(trade, "close_time", None)
+            )
+            if close_time is None:
+                continue
+            net = (
+                trade.get("net", trade.get("pnl", 0.0)) if isinstance(trade, dict)
+                else getattr(trade, "net", getattr(trade, "pnl", 0.0))
+            )
+            daily_pnl[close_time.date()] += float(net or 0.0)
+
+        balance = float(initial_balance)
+        daily_returns = []
+        for day in sorted(daily_pnl):
+            net = daily_pnl[day]
+            daily_returns.append(net / balance if balance else 0.0)
+            balance += net
+        return daily_returns
+
+    @staticmethod
     def _sharpe(returns: list[float]) -> float:
         """Population Sharpe ratio over daily returns, without annualization."""
         if len(returns) < 2:

@@ -71,15 +71,15 @@ def _seed_daily(db):
     return v, pta
 
 
-# مقادیر مرجع دستی برای سری روزانهٔ [100, -100, 300]
-_DAILY = [100.0, -100.0, 300.0]
-_MEAN = sum(_DAILY) / len(_DAILY)                                 # 100.0
+# مقادیر مرجع بازده درصدی روزانه برای PnLهای [100, -100, 300] روی equity آغازین 10000.
+_DAILY = [100.0 / 10000.0, -100.0 / 10100.0, 300.0 / 10000.0]
+_MEAN = sum(_DAILY) / len(_DAILY)
 _STD = (sum((x - _MEAN) ** 2 for x in _DAILY) / len(_DAILY)) ** 0.5
 _DDEV = (sum(x ** 2 for x in _DAILY if x < 0) / len(_DAILY)) ** 0.5
 
 
 def test_sharpe_no_annualization(client, db_session):
-    """Sharpe = mean/std بازده روزانه، **بدون** √252 — در هر دو endpoint."""
+    """Sharpe = mean/std بازده درصدی روزانه، **بدون** √252 — در هر دو endpoint."""
     _seed_daily(db_session)
     expected = round(_MEAN / _STD, 2)
 
@@ -96,7 +96,7 @@ def test_sharpe_no_annualization(client, db_session):
 
 
 def test_sortino_no_annualization(client, db_session):
-    """Sortino = mean/downside-deviation بازده روزانه، **بدون** √252 — هر دو endpoint."""
+    """Sortino = mean/downside-deviation بازده درصدی روزانه، **بدون** √252 — هر دو endpoint."""
     _seed_daily(db_session)
     expected = round(_MEAN / _DDEV, 2)
 

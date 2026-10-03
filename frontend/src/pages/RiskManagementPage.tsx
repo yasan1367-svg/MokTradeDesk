@@ -74,9 +74,11 @@ export default function RiskManagementPage() {
             <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-input)] flex items-center justify-center text-lg">💀</div>
             <span className="text-[12px] text-[var(--text-secondary)] font-bold">Risk of Ruin</span>
           </div>
-          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">{(risk_metrics.risk_of_ruin * 100).toFixed(2)}٪</div>
-          <div className={`text-[11px] font-bold mt-1 ${risk_metrics.risk_of_ruin < 0.05 ? 'text-[var(--profit)]' : risk_metrics.risk_of_ruin < 0.2 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-            {risk_metrics.risk_of_ruin < 0.05 ? '🟢 کم' : risk_metrics.risk_of_ruin < 0.2 ? '🟡 متوسط' : '🔴 زیاد'}
+          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">
+            {risk_metrics.risk_of_ruin == null ? '—' : `${(risk_metrics.risk_of_ruin * 100).toFixed(2)}٪`}
+          </div>
+          <div className={`text-[11px] font-bold mt-1 ${risk_metrics.risk_of_ruin == null ? 'text-[var(--text-secondary)]' : risk_metrics.risk_of_ruin < 0.05 ? 'text-[var(--profit)]' : risk_metrics.risk_of_ruin < 0.2 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+            {risk_metrics.risk_of_ruin == null ? 'دادهٔ R کافی نیست' : risk_metrics.risk_of_ruin < 0.05 ? '🟢 کم' : risk_metrics.risk_of_ruin < 0.2 ? '🟡 متوسط' : '🔴 زیاد'}
           </div>
         </div>
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 shadow-md">
@@ -105,6 +107,8 @@ export default function RiskManagementPage() {
             <RiskRow label="عمق Drawdown" value={`USDT ${risk_metrics.max_drawdown_depth.toFixed(2)}`} status={risk_metrics.max_drawdown_depth > 2000 ? 'danger' : risk_metrics.max_drawdown_depth > 1000 ? 'warning' : 'safe'} />
             <RiskRow label="مدت Drawdown" value={`${risk_metrics.max_drawdown_duration} معامله`} status={risk_metrics.max_drawdown_duration > 10 ? 'danger' : risk_metrics.max_drawdown_duration > 5 ? 'warning' : 'safe'} />
             <RiskRow label="Exposure باز" value={`USDT ${risk_metrics.open_exposure.toFixed(2)} (${risk_metrics.open_risk_percent.toFixed(1)}٪)`} status={risk_metrics.open_risk_percent > 20 ? 'danger' : risk_metrics.open_risk_percent > 10 ? 'warning' : 'safe'} />
+            <RiskRow label="VaR 95%" value={`USDT ${risk_metrics.var_95.toFixed(2)} (${risk_metrics.var_95_percent.toFixed(2)}٪)`} status={risk_metrics.var_95_percent > 5 ? 'danger' : risk_metrics.var_95_percent > 2 ? 'warning' : 'safe'} />
+            <RiskRow label="CVaR 95%" value={`USDT ${risk_metrics.cvar_95.toFixed(2)} (${risk_metrics.cvar_95_percent.toFixed(2)}٪)`} status={risk_metrics.cvar_95_percent > 5 ? 'danger' : risk_metrics.cvar_95_percent > 2 ? 'warning' : 'safe'} />
           </div>
         </div>
       </div>

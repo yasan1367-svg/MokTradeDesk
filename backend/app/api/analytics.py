@@ -1,4 +1,5 @@
 from fastapi import APIRouter, Depends, HTTPException, Query
+import math
 from sqlalchemy.orm import Session
 from sqlalchemy import func, case, and_, or_
 from typing import List, Optional
@@ -28,6 +29,8 @@ from ..domain.risk.drawdown_engine import (
     calculate_static_dd,
 )
 from ..domain.risk.equity_engine import calculate_equity_curve
+from ..domain.risk.r_engine import calculate_expectancy_r
+from ..domain.risk.risk_engine import RiskEngine
 
 router = APIRouter()
 
@@ -676,21 +679,39 @@ def get_risk_metrics(
         )
     # فاز ۵۳.۲: مبنای سرمایه برای risk of ruin و open risk بر اساس scope
     avg_b = _scope_avg_balance(db, sc, personal_account_ids)
+    r_multiples = [c["r_multiple"] for c in closed_trades]
+    expectancy_r = calculate_expectancy_r(r_multiples)
     ar = (sum(returns) / len(returns)) if returns else 0   # میانگین هر معامله (مبنای expectancy)
-    # فاز ۵۳.۲: Sharpe/Sortino روی بازده **روزانه** و **بدون** سالانه‌سازی (√252 حذف شد)
-    sharpe, sortino = _sharpe_sortino(_daily_returns(closed_trades))
+    # Return-based Sharpe/Sortino on daily PnL divided by opening equity.
+    daily_returns = RiskEngine._daily_returns_from_trades(closed_trades, initial_balance)
+    sharpe = RiskEngine._sharpe(daily_returns)
+    sortino = RiskEngine._sortino(daily_returns)
     wins = [r for r in returns if r > 0]; losses = [r for r in returns if r < 0]
     wr = len(wins) / len(returns) if returns else 0
     aw = sum(wins) / len(wins) if wins else 0
     al = abs(sum(losses) / len(losses)) if losses else 0
     rr = (aw / al) if al > 0 else 1
-    bu = avg_b / al if al > 0 else 100
-    if wr > 0 and rr > 0:
-        p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1
-        ror = min(p ** bu, 1) if rr * wr > 1 - wr else 0
-    else: ror = 0.5
-    rv = [c["r_multiple"] for c in closed_trades if c["r_multiple"] and c["r_multiple"] != 0]
-    arm = sum(rv) / len(rv) if rv else 0
+    valid_r = [r for r in r_multiples if r is not None]
+    r_wins = [r for r in valid_r if r > 0]
+    r_losses = [r for r in valid_r if r < 0]
+    r_outcomes = len(r_wins) + len(r_losses)
+    r_win_rate = len(r_wins) / r_outcomes if r_outcomes else 0.0
+    avg_win_r = sum(r_wins) / len(r_wins) if r_wins else 0.0
+    avg_loss_r = abs(sum(r_losses) / len(r_losses)) if r_losses else 0.0
+    ror = (
+        calculate_risk_of_ruin(r_win_rate, avg_win_r, avg_loss_r, 0.01)
+        if r_outcomes >= 2 else None
+    )
+    arm = expectancy_r
+    sorted_ret = sorted(returns)
+    var_95_threshold = _percentile(sorted_ret, 0.05)
+    var_95_dollar = max(0.0, -var_95_threshold)
+    tail_losses = [r for r in sorted_ret if r <= var_95_threshold]
+    cvar_95_dollar = max(
+        0.0, -sum(tail_losses) / len(tail_losses)
+    ) if tail_losses else var_95_dollar
+    var_95_percent = var_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
+    cvar_95_percent = cvar_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
     oe = float(_apply_scope(
         db.query(func.sum(func.abs(_net_expr()))).filter(Trade.close_time.is_(None), Trade.is_deleted == False), sc
     ).scalar() or 0.0)
@@ -701,13 +722,16 @@ def get_risk_metrics(
         elif r > 0: streak = 0
     dd_d = max(peak_to_trough["dd"], static_dd["dd"])
     md = drawdown_trade_count
-    status = "danger" if (sharpe < 0.5 or ror > 0.1 or orp > 20) else ("warning" if (sharpe < 1.0 or ror > 0.05 or orp > 10) else "safe")
+    status = "danger" if (sharpe < 0.5 or (ror is not None and ror > 0.1) or orp > 20) else ("warning" if (sharpe < 1.0 or (ror is not None and ror > 0.05) or orp > 10) else "safe")
     return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
             "profit_factor": round((sum(wins) / abs(sum(losses))) if losses else (100 if wins else 0), 2),
             "win_rate": round(wr * 100, 2), "avg_r_multiple": round(arm, 2),
-            "expectancy": round((ar) if returns else 0, 2), "expectancy_r": round((ar / al) if al > 0 else 0, 2),
+            "expectancy": round((ar) if returns else 0, 2), "expectancy_r": round(expectancy_r, 2),
             "avg_win": round(aw, 2), "avg_loss": round(al, 2), "rr_ratio": round(rr, 2)},
-        "risk_metrics": {"risk_of_ruin": round(ror, 4), "max_consecutive_losses": ms,
+        "risk_metrics": {"risk_of_ruin": round(ror, 4) if ror is not None else None,
+            "var_95": round(var_95_dollar, 2), "var_95_percent": round(var_95_percent, 4),
+            "cvar_95": round(cvar_95_dollar, 2), "cvar_95_percent": round(cvar_95_percent, 4),
+            "max_consecutive_losses": ms,
             "max_drawdown_depth": round(dd_d, 2), "max_drawdown_duration": md,
             "open_exposure": round(oe, 2), "open_risk_percent": round(orp, 2), "total_trades": len(returns)},
         "status": status}
@@ -729,6 +753,46 @@ def _percentile(sorted_vals, p: float) -> float:
     if f == k:
         return float(sorted_vals[f])
     return float(sorted_vals[f] + (sorted_vals[c] - sorted_vals[f]) * (k - f))
+
+
+def calculate_risk_of_ruin(
+    win_rate: float,
+    avg_win_r: float,
+    avg_loss_r: float,
+    risk_per_trade: float,
+    ruin_threshold: float = 0.5,
+) -> float | None:
+    """Estimate risk of losing ``ruin_threshold`` of equity using R-multiples.
+
+    Returns ``None`` when the inputs do not describe a meaningful two-outcome
+    strategy. ``risk_per_trade`` and ``ruin_threshold`` are equity fractions.
+    """
+    values = (win_rate, avg_win_r, avg_loss_r, risk_per_trade, ruin_threshold)
+    if not all(isinstance(value, (int, float)) for value in values):
+        return None
+    if not all(math.isfinite(value) for value in values):
+        return None
+    if not 0.0 <= win_rate <= 1.0 or avg_win_r < 0 or avg_loss_r < 0:
+        return None
+    if risk_per_trade <= 0 or risk_per_trade >= 1.0 or not 0.0 < ruin_threshold < 1.0:
+        return None
+    if win_rate == 1.0 and avg_win_r > 0:
+        return 0.0
+    if win_rate == 0.0 and avg_loss_r > 0:
+        return 1.0
+    if avg_win_r <= 0 or avg_loss_r <= 0:
+        return None
+
+    loss_probability = 1.0 - win_rate
+    win_probability = win_rate
+    odds = (win_probability * avg_win_r) / (loss_probability * avg_loss_r)
+    if odds <= 1.0:
+        return 1.0
+
+    # Classical gambler's-ruin approximation: odds against recovery raised to
+    # the number of fixed-risk units between current equity and the ruin floor.
+    units_to_ruin = math.log(ruin_threshold) / math.log1p(-risk_per_trade)
+    return min(1.0, (1.0 / odds) ** units_to_ruin)
 
 
 @router.get("/risk-advanced")
@@ -779,20 +843,17 @@ def get_risk_advanced(
     avg_loss = (abs(sum(losses) / len(losses))) if losses else 0.0
     rr = (avg_win / avg_loss) if avg_loss > 0 else 0.0
     net = sum(returns)
-    mean_ret = (net / total) if total else 0.0
-
-    # ── Sharpe / Sortino (فاز ۵۳.۲: بازده روزانه، بدون سالانه‌سازی) ──
-    sharpe, sortino = _sharpe_sortino(_daily_returns(closed))
-
     # ── Equity / Drawdown / Ulcer ──
     initial_balance = _scope_initial_balance(
         db, sc, personal_account_ids, prop_stage_ids, currency
     )
+    daily_returns = RiskEngine._daily_returns_from_trades(closed, initial_balance)
+    sharpe = RiskEngine._sharpe(daily_returns)
+    sortino = RiskEngine._sortino(daily_returns)
     equity_trades = [_equity_trade(c["close_time"], c["net"]) for c in closed]
     equity_points = calculate_equity_curve(initial_balance, equity_trades)
     peak_to_trough = calculate_peak_to_trough_dd(equity_points)
     static_dd = calculate_static_dd(initial_balance, equity_points)
-    drawdown_duration = calculate_drawdown_duration(equity_points)
     max_dd = max(peak_to_trough["dd"], static_dd["dd"])
     ulcer_acc = 0.0
     drawdown_curve = []
@@ -820,9 +881,14 @@ def get_risk_advanced(
 
     # ── VaR / CVaR 95% ──
     sorted_ret = sorted(returns)
-    var_95 = _percentile(sorted_ret, 0.05)
-    tail = [r for r in sorted_ret if r <= var_95]
-    cvar_95 = (sum(tail) / len(tail)) if tail else var_95
+    var_95_threshold = _percentile(sorted_ret, 0.05)
+    var_95_dollar = max(0.0, -var_95_threshold)
+    tail_losses = [r for r in sorted_ret if r <= var_95_threshold]
+    cvar_95_dollar = (
+        max(0.0, -sum(tail_losses) / len(tail_losses)) if tail_losses else var_95_dollar
+    )
+    var_95_percent = var_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
+    cvar_95_percent = cvar_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
 
     # ── برد/باخت متوالی ──
     max_cl = 0
@@ -845,21 +911,25 @@ def get_risk_advanced(
             cur_w = 0
 
     # ── R-Multiple ──
-    rv = [c["r_multiple"] for c in closed if c["r_multiple"] is not None and c["r_multiple"] != 0]
-    avg_r = (sum(rv) / len(rv)) if rv else 0.0
-    expectancy_r = (mean_ret / avg_loss) if avg_loss > 0 else 0.0
+    r_multiples = [c["r_multiple"] for c in closed]
+    valid_r = [r for r in r_multiples if r is not None]
+    expectancy_r = calculate_expectancy_r(r_multiples)
+    avg_r = expectancy_r
 
     # ── Kelly Criterion ──
     kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
 
-    # ── Risk of Ruin (فاز ۵۳.۲: مبنای سرمایه بر اساس scope، نه همهٔ حساب‌ها) ──
-    avg_b = _scope_avg_balance(db, sc, personal_account_ids)
-    if wr > 0 and rr > 0:
-        p = (1 - wr) / (rr * wr) if (rr * wr) > 0 else 1.0
-        units = (avg_b / avg_loss) if avg_loss > 0 else 100.0
-        ror = min(p ** units, 1.0) if rr * wr > 1 - wr else 0.0
-    else:
-        ror = 0.5
+    # ── Risk of Ruin from valid R outcomes (1% assumed risk per trade) ──
+    r_wins = [r for r in valid_r if r > 0]
+    r_losses = [r for r in valid_r if r < 0]
+    r_outcomes = len(r_wins) + len(r_losses)
+    r_win_rate = len(r_wins) / r_outcomes if r_outcomes else 0.0
+    avg_win_r = sum(r_wins) / len(r_wins) if r_wins else 0.0
+    avg_loss_r = abs(sum(r_losses) / len(r_losses)) if r_losses else 0.0
+    ror = (
+        calculate_risk_of_ruin(r_win_rate, avg_win_r, avg_loss_r, 0.01)
+        if r_outcomes >= 2 else None
+    )
 
     # ── توزیع R-Multiple ──
     _buckets = [
@@ -872,7 +942,7 @@ def get_risk_advanced(
         ("> 3R", lambda x: x >= 3),
     ]
     r_distribution = [
-        {"range": label, "count": sum(1 for v in rv if fn(v))}
+        {"range": label, "count": sum(1 for v in valid_r if fn(v))}
         for label, fn in _buckets
     ]
 
@@ -882,9 +952,11 @@ def get_risk_advanced(
         "sharpe_ratio": round(sharpe, 3),
         "sortino_ratio": round(sortino, 3),
         "calmar_ratio": round(calmar, 3),
-        "risk_of_ruin": round(ror, 4),
-        "var_95": round(var_95, 2),
-        "cvar_95": round(cvar_95, 2),
+        "risk_of_ruin": round(ror, 4) if ror is not None else None,
+        "var_95": round(var_95_dollar, 2),
+        "var_95_percent": round(var_95_percent, 4),
+        "cvar_95": round(cvar_95_dollar, 2),
+        "cvar_95_percent": round(cvar_95_percent, 4),
         "max_consecutive_losses": max_cl,
         "max_consecutive_wins": max_cw,
         "avg_r_multiple": round(avg_r, 3),
