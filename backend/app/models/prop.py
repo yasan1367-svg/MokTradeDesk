@@ -178,9 +178,10 @@ class PropStage(Base):
     # ── فاز ۴۷.۱ / 47a ──
     # dd_mode: در فاز 47a همیشه static است (گزینهٔ trailing کنار گذاشته شد).
     dd_mode = Column(String(20), default="static", nullable=False, server_default="static")
-    # فاز 47a: dd_basis حذف شد (همیشه balance = فقط ترید بسته). ستون DB دست‌نخورده
-    # می‌ماند (migration جدید زده نشد) و SQLAlchemy آن را نادیده می‌گیرد.
-    # dd_basis = Column(String(20), default="balance", nullable=False, server_default="balance")
+    # فاز ۵۸: `dd_mode` legacy حفظ می‌شود؛ سه تنظیم زیر مبنای فعال ارزیابی هستند.
+    dd_basis = Column(String(20), default="balance", nullable=False, server_default="balance")
+    daily_dd_mode = Column(String(20), default="static", nullable=False, server_default="static")
+    total_dd_mode = Column(String(20), default="static", nullable=False, server_default="static")
     # مرز روز برای Daily DD (دقیقه نسبت به UTC؛ پیش‌فرض 0 = 00:00 UTC)
     day_boundary_utc_offset = Column(Integer, default=0, nullable=False, server_default="0")
     failure_reason = Column(Enum(FailureReason), nullable=True)

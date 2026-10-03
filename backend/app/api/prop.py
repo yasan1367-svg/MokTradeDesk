@@ -82,6 +82,14 @@ class StageRules(BaseModel):
     min_trading_days: Optional[int] = None
     initial_balance: Optional[float] = None
     profit_share_percentage: Optional[float] = None
+    dd_basis: Optional[str] = None
+    daily_dd_mode: Optional[str] = None
+    total_dd_mode: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_drawdown_modes(self):
+        _validate_drawdown_modes(self)
+        return self
 
 
 class StageRulesUpdate(BaseModel):
@@ -91,6 +99,26 @@ class StageRulesUpdate(BaseModel):
     min_trading_days: Optional[int] = None
     initial_balance: Optional[float] = None
     profit_share_percentage: Optional[float] = None
+    dd_basis: Optional[str] = None
+    daily_dd_mode: Optional[str] = None
+    total_dd_mode: Optional[str] = None
+
+    @model_validator(mode="after")
+    def validate_drawdown_modes(self):
+        _validate_drawdown_modes(self)
+        return self
+
+
+def _validate_drawdown_modes(model) -> None:
+    allowed = {
+        "dd_basis": {"balance", "equity"},
+        "daily_dd_mode": {"static", "trailing"},
+        "total_dd_mode": {"static", "trailing"},
+    }
+    for field, values in allowed.items():
+        value = getattr(model, field)
+        if value is not None and value not in values:
+            raise ValueError(f"{field} must be one of {sorted(values)}")
 
 
 class PassStageWithRulesRequest(BaseModel):
@@ -322,6 +350,9 @@ def get_account_detail(account_id: int, db: Session = Depends(get_db)):
                 "max_total_dd": s.max_total_dd,
                 "min_trading_days": s.min_trading_days,
                 "initial_balance": s.initial_balance,
+                "dd_basis": s.dd_basis,
+                "daily_dd_mode": s.daily_dd_mode,
+                "total_dd_mode": s.total_dd_mode,
                 "final_balance": s.final_balance,
                 "current_profit": s.current_profit,
                 "total_withdrawn": s.total_withdrawn,
@@ -442,6 +473,9 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
             max_total_dd=rules.max_total_dd,
             min_trading_days=rules.min_trading_days,
             profit_share_percentage=rules.profit_share_percentage if next_stage_type == StageType.FUNDED_REAL else None,
+            dd_basis=rules.dd_basis or stage.dd_basis or "balance",
+            daily_dd_mode=rules.daily_dd_mode or stage.daily_dd_mode or "static",
+            total_dd_mode=rules.total_dd_mode or stage.total_dd_mode or "static",
         )
         db.add(next_stage)
         db.commit()
@@ -493,6 +527,12 @@ def update_stage_rules(stage_id: int, rules: StageRulesUpdate, db: Session = Dep
         stage.initial_balance = rules.initial_balance
     if rules.profit_share_percentage is not None:
         stage.profit_share_percentage = rules.profit_share_percentage
+    if rules.dd_basis is not None:
+        stage.dd_basis = rules.dd_basis
+    if rules.daily_dd_mode is not None:
+        stage.daily_dd_mode = rules.daily_dd_mode
+    if rules.total_dd_mode is not None:
+        stage.total_dd_mode = rules.total_dd_mode
 
     db.commit()
     db.refresh(stage)

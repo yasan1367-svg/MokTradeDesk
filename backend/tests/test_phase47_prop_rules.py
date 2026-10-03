@@ -60,6 +60,13 @@ def test_prop_stage_default_dd_mode_static(db_session):
     assert _stage(db_session).dd_mode == "static"
 
 
+def test_prop_stage_new_drawdown_defaults(db_session):
+    stage = _stage(db_session)
+    assert stage.dd_basis == "balance"
+    assert stage.daily_dd_mode == "static"
+    assert stage.total_dd_mode == "static"
+
+
 def test_prop_stage_default_day_boundary_utc(db_session):
     assert _stage(db_session).day_boundary_utc_offset == 0
 
@@ -213,4 +220,153 @@ def test_stage_with_no_limits_warns(db_session):
     assert any("Daily DD" in m for m in res["violations"])
     assert any("Max DD" in m for m in res["violations"])
     assert any("هدف سود" in m for m in res["violations"])
+
+
+def test_equity_basis_includes_floating_loss_and_blocks_pass(db_session):
+    from app.models.prop import RuleType, Severity
+
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=100, max_daily_dd=500,
+        max_total_dd=1000, min_trading_days=0, dd_basis="equity",
+    )
+    db_session.add(_trade(version.id, stage.id, -1200, close=False))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    equity_check = next(c for c in result["rule_checks"] if c["rule_type"] == RuleType.EQUITY_BALANCE)
+    floating_check = next(c for c in result["rule_checks"] if c["rule_type"] == RuleType.FLOATING_PNL)
+    assert result["equity"] == pytest.approx(8800)
+    assert equity_check["severity"] == Severity.VIOLATION
+    assert floating_check["severity"] == Severity.VIOLATION
+    assert result["ready_to_pass"] is False
+
+
+def test_balance_basis_ignores_floating_for_drawdown_and_pass(db_session):
+    from app.models.prop import RuleType, Severity
+
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=100, max_daily_dd=500,
+        max_total_dd=1000, min_trading_days=0, dd_basis="balance",
+    )
+    db_session.add(_trade(version.id, stage.id, -1200, close=False))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    checks = {c["rule_type"]: c for c in result["rule_checks"]}
+    assert result["equity"] == pytest.approx(8800)
+    assert result["balance"] == pytest.approx(10000)
+    assert checks[RuleType.FLOATING_PNL]["severity"] == Severity.PASS
+    assert result["max_total_dd"] == pytest.approx(0)
+    assert result["ready_to_pass"] is False  # Profit target has not been reached.
+
+
+@pytest.mark.parametrize("mode,expected", [("static", 0), ("trailing", 300)])
+def test_daily_drawdown_modes(mode, expected, db_session):
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=1000, max_daily_dd=1000,
+        max_total_dd=5000, min_trading_days=0, daily_dd_mode=mode, dd_basis="equity",
+    )
+    db_session.add_all([
+        _trade(version.id, stage.id, 500, day=datetime(2025, 1, 1, 9, tzinfo=timezone.utc)),
+        _trade(version.id, stage.id, -300, day=datetime(2025, 1, 1, 10, tzinfo=timezone.utc)),
+    ])
+    db_session.commit()
+    assert PropRuleEngine.evaluate_stage(db_session, stage.id)["max_daily_loss"] == pytest.approx(expected)
+
+
+@pytest.mark.parametrize("mode,expected", [("static", 0), ("trailing", 300)])
+def test_total_drawdown_modes(mode, expected, db_session):
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=1000, max_daily_dd=5000,
+        max_total_dd=1000, min_trading_days=0, total_dd_mode=mode,
+    )
+    db_session.add_all([
+        _trade(version.id, stage.id, 500, day=datetime(2025, 1, 1, 9, tzinfo=timezone.utc)),
+        _trade(version.id, stage.id, -300, day=datetime(2025, 1, 2, 9, tzinfo=timezone.utc)),
+    ])
+    db_session.commit()
+    assert PropRuleEngine.evaluate_stage(db_session, stage.id)["max_total_dd"] == pytest.approx(expected)
+
+
+def test_ready_to_pass_requires_target_days_and_no_violations(db_session):
+    from app.models.prop import StageStatus
+
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=100, max_daily_dd=500,
+        max_total_dd=1000, min_trading_days=0,
+    )
+    stage.status = StageStatus.FAILED
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    assert result["ready_to_pass"] is False
+    assert result["overall_severity"] == "violation"
+
+
+def test_invalid_mode_fails_closed(db_session):
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=100, max_daily_dd=500,
+        max_total_dd=1000, daily_dd_mode="unsupported",
+    )
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    assert result["unconfigured"] is True
+    assert result["ready_to_pass"] is False
+
+
+def test_ready_to_pass_is_false_until_profit_target_reached(db_session):
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=500, max_daily_dd=1000,
+        max_total_dd=2000, min_trading_days=0,
+    )
+    db_session.add(_trade(version.id, stage.id, 499))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    assert result["target_reached"] is False
+    assert result["ready_to_pass"] is False
+
+
+def test_ready_to_pass_is_false_until_minimum_days_reached(db_session):
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=100, max_daily_dd=500,
+        max_total_dd=1000, min_trading_days=2,
+    )
+    db_session.add(_trade(version.id, stage.id, 500))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    assert result["target_reached"] is True
+    assert result["days_met"] is False
+    assert result["ready_to_pass"] is False
+
+
+def test_equity_basis_open_floating_drawdown_fails_total_rule(db_session):
+    from app.models.prop import RuleType, Severity
+
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=500, max_daily_dd=2000,
+        max_total_dd=1000, min_trading_days=0, dd_basis="equity",
+    )
+    db_session.add(_trade(version.id, stage.id, -1200, close=False))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    checks = {check["rule_type"]: check for check in result["rule_checks"]}
+    assert result["max_total_dd"] == pytest.approx(1200)
+    assert result["total_dd_violated"] is True
+    assert checks[RuleType.MAX_DRAWDOWN]["severity"] == Severity.VIOLATION
+
+
+def test_equity_basis_open_floating_loss_counts_daily_dd(db_session):
+    version = _version(db_session)
+    stage = _stage(
+        db_session, initial_balance=10000, profit_target=500, max_daily_dd=500,
+        max_total_dd=2000, min_trading_days=0, dd_basis="equity",
+    )
+    db_session.add(_trade(version.id, stage.id, -700, close=False))
+    db_session.commit()
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    assert result["max_daily_loss"] == pytest.approx(700)
+    assert result["daily_dd_violated"] is True
 

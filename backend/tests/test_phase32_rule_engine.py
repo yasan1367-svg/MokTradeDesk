@@ -244,3 +244,35 @@ def test_evaluate_endpoint_missing_stage(client, db_session):
     assert r.status_code == 404
 
 
+def test_stage_rules_endpoint_updates_modes_and_rejects_invalid_mode(client, db_session):
+    stage = _make_stage(db_session)
+    response = client.patch(
+        f"/api/prop/stages/{stage.id}/rules",
+        json={"dd_basis": "equity", "daily_dd_mode": "trailing", "total_dd_mode": "static"},
+    )
+    assert response.status_code == 200
+    db_session.refresh(stage)
+    assert stage.dd_basis == "equity"
+    assert stage.daily_dd_mode == "trailing"
+    assert stage.total_dd_mode == "static"
+
+    invalid = client.patch(
+        f"/api/prop/stages/{stage.id}/rules", json={"daily_dd_mode": "invalid"}
+    )
+    assert invalid.status_code == 422
+
+
+def test_account_detail_exposes_drawdown_modes(client, db_session):
+    stage = _make_stage(db_session)
+    stage.dd_basis = "equity"
+    stage.daily_dd_mode = "trailing"
+    db_session.commit()
+    account_id = stage.prop_account_id
+    response = client.get(f"/api/prop/accounts/{account_id}")
+    assert response.status_code == 200
+    stage_data = response.json()["stages"][0]
+    assert stage_data["dd_basis"] == "equity"
+    assert stage_data["daily_dd_mode"] == "trailing"
+    assert stage_data["total_dd_mode"] == "static"
+
+

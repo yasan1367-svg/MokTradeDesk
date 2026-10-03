@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from datetime import timedelta, timezone
+from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Tuple
 
 from sqlalchemy.orm import Session
@@ -14,6 +16,14 @@ from ..models.prop import (
 )
 from ..models.strategy import Trade
 from . import metrics
+from ..domain.risk.drawdown_engine import (
+    calculate_peak_to_trough_dd,
+    calculate_static_dd,
+)
+from ..domain.risk.equity_engine import (
+    calculate_equity_curve,
+    calculate_equity_with_floating,
+)
 
 
 class PropRuleEngine:
@@ -99,36 +109,69 @@ class PropRuleEngine:
         # ── مبالغ پایه (دلار) ──
         # فاز ۴۳: کل محاسبات PnL روی net_pnl (= pnl + commission + swap) انجام می‌شود.
         initial = stage.initial_balance or 10000.0
-        total_pnl = sum(metrics.net_pnl(t) for t in trades)
-        equity = initial + total_pnl
-
-        # ── فاز 47a: DD فقط «static + balance» (همه محاسبات روی تریدهای بسته) ──
         day_offset = int(stage.day_boundary_utc_offset or 0)
         closed_trades = [t for t in trades if t.close_time is not None]
-        ordered_closed = sorted(
-            closed_trades, key=lambda t: t.close_time or t.open_time
-        )
+        open_trades = [t for t in trades if t.close_time is None]
+        ordered_closed = sorted(closed_trades, key=lambda t: t.close_time or t.open_time)
+        closed_pnl = sum(metrics.net_pnl(t) for t in ordered_closed)
+        floating_pnl = sum(metrics.net_pnl(t) for t in open_trades)
+        total_pnl = closed_pnl + floating_pnl
 
-        # ── Daily DD: بدترین روز (دلار) ──
+        dd_basis = stage.dd_basis or "balance"
+        daily_dd_mode = stage.daily_dd_mode or "static"
+        total_dd_mode = stage.total_dd_mode or "static"
+        valid_dd_basis = dd_basis in {"balance", "equity"}
+        valid_daily_mode = daily_dd_mode in {"static", "trailing"}
+        valid_total_mode = total_dd_mode in {"static", "trailing"}
+        modes_configured = valid_dd_basis and valid_daily_mode and valid_total_mode
+        dd_basis = dd_basis if valid_dd_basis else "balance"
+        daily_dd_mode = daily_dd_mode if valid_daily_mode else "static"
+        total_dd_mode = total_dd_mode if valid_total_mode else "static"
+
+        # dd_basis selects the series used by both Total DD modes.
+        equity_curve = (
+            calculate_equity_with_floating(initial, ordered_closed, open_trades)
+            if dd_basis == "equity"
+            else calculate_equity_curve(initial, ordered_closed)
+        )
+        balance = equity_curve[-1]["balance"]
+        equity = balance + floating_pnl
+
+        # Daily static measures the net day result; trailing measures the largest
+        # peak-to-trough move within each day. Open PnL is included only for equity basis.
+        daily_losses = PropRuleEngine._daily_drawdowns(
+            ordered_closed,
+            day_offset,
+            daily_dd_mode,
+            floating_pnl if dd_basis == "equity" else 0.0,
+        )
         daily_pnl = PropRuleEngine._group_daily_pnl(closed_trades, day_offset)
-        # فاز ۳۲: فقط روزهای منفی به‌عنوان زیان شمرده می‌شوند.
-        # پیش‌تر `abs(min(...))` حتی روز پرسود را «زیان» می‌شمرد (باگ).
-        max_daily_loss = (
-            max(0.0, -min(daily_pnl.values())) if daily_pnl else 0.0
-        )  # مقدار مثبت
-
-        # ── Total DD: Static — افت از کف ثابت (initial − max_total_dd) ──
-        max_total_dd, equity_floor, total_dd_violated = PropRuleEngine._total_drawdown(
-            ordered_closed, initial, stage.max_total_dd or 0.0
-        )
-
-        # ── روزهای معاملاتی ──
+        if dd_basis == "equity" and open_trades:
+            current_day = (datetime.now(timezone.utc) + timedelta(minutes=day_offset)).date().isoformat()
+            daily_pnl.setdefault(current_day, 0.0)
         trading_days = len(daily_pnl)
+        max_daily_loss = max(daily_losses.values(), default=0.0)
+
+        # ── Total DD: static floor or running-peak drawdown ──
+        max_total_dd_limit = stage.max_total_dd or 0.0
+        if total_dd_mode == "trailing":
+            total_dd_result = calculate_peak_to_trough_dd(equity_curve)
+            max_total_dd = total_dd_result["dd"]
+            equity_floor = (
+                total_dd_result["peak"] - max_total_dd_limit
+                if max_total_dd_limit > 0 else initial
+            )
+        else:
+            total_dd_result = calculate_static_dd(initial, equity_curve)
+            max_total_dd = total_dd_result["dd"]
+            equity_floor = initial - max_total_dd_limit if max_total_dd_limit > 0 else initial
+        total_dd_violated = (
+            max_total_dd > max_total_dd_limit if max_total_dd_limit > 0 else False
+        )
 
         # ── قوانین مرحله (دلار) ──
         profit_target = stage.profit_target or 0.0
         max_daily_dd_limit = stage.max_daily_dd or 0.0
-        max_total_dd_limit = stage.max_total_dd or 0.0
         min_days = stage.min_trading_days or 0
 
         # ── فاز 47a.2: Fail-closed — نبودِ حد ⇒ unconfigured (نه «آماده پاس») ──
@@ -143,6 +186,9 @@ class PropRuleEngine:
         if profit_target <= 0:
             violations.append("هدف سود تنظیم نشده")
             unconfigured = True
+        if not modes_configured:
+            violations.append("حالت محاسبهٔ Drawdown نامعتبر است")
+            unconfigured = True
 
         # ── بررسی نقض قوانین (مقایسه‌ی دلار با دلار) ──
         daily_dd_violated = (
@@ -150,9 +196,8 @@ class PropRuleEngine:
             if max_daily_dd_limit > 0
             else False
         )
-        target_reached = (
-            total_pnl >= profit_target if profit_target > 0 else True
-        )
+        target_pnl = total_pnl
+        target_reached = target_pnl >= profit_target if profit_target > 0 else True
         min_days_met = trading_days >= min_days if min_days > 0 else True
 
         # ── violations: نقض واقعی ──
@@ -201,7 +246,7 @@ class PropRuleEngine:
             round(total_pnl / initial * 100, 2) if initial > 0 else 0.0
         )
         profit_progress_percent = (
-            round(total_pnl / profit_target * 100, 2)
+            round(target_pnl / profit_target * 100, 2)
             if profit_target > 0
             else 0.0
         )
@@ -219,12 +264,14 @@ class PropRuleEngine:
         # ── فاز ۳۲: Rule Evaluation ساختاریافته (Pipeline) ──
         # هر قاعده یک نتیجه‌ی {rule_type, actual_value, limit_value, severity, message}
         # تولید می‌کند؛ severity ∈ {PASS, WARNING, VIOLATION}.
-        floating_pnl = sum(metrics.net_pnl(t) for t in trades if t.close_time is None)
         rule_checks = PropRuleEngine._build_rule_checks(
             stage=stage,
             initial=initial,
             equity=equity,
-            total_pnl=total_pnl,
+            dd_basis_value=equity if dd_basis == "equity" else balance,
+            dd_basis=dd_basis,
+            floating_enabled=(dd_basis == "equity"),
+            total_pnl=target_pnl,
             max_daily_loss=max_daily_loss,
             max_daily_dd_limit=max_daily_dd_limit,
             max_total_dd=max_total_dd,
@@ -236,6 +283,26 @@ class PropRuleEngine:
             floating_pnl=floating_pnl,
         )
         overall_severity = PropRuleEngine._overall_severity(rule_checks)
+        # ready_to_pass must agree with every rule check, including stage status.
+        ready_to_pass = (
+            not is_funded
+            and not unconfigured
+            and target_reached
+            and min_days_met
+            and all(check["severity"] != Severity.VIOLATION for check in rule_checks)
+        )
+        if not is_funded:
+            if ready_to_pass:
+                suggested_status = "ready_to_pass"
+            elif not unconfigured and not daily_dd_violated and not total_dd_violated:
+                suggested_status = "in_progress"
+        if any(check["severity"] == Severity.VIOLATION for check in rule_checks):
+            violations.extend(
+                check["message"]
+                for check in rule_checks
+                if check["severity"] == Severity.VIOLATION
+                and check["message"] not in violations
+            )
 
         return {
             "stage_id": stage.id,
@@ -244,6 +311,7 @@ class PropRuleEngine:
 
             # موجودی و سود (دلار)
             "initial_balance": round(initial, 2),
+            "balance": round(balance, 2),
             "equity": round(equity, 2),
             "current_profit": round(total_pnl, 2),
             "current_profit_percent": current_profit_percent,
@@ -266,6 +334,9 @@ class PropRuleEngine:
             # فاز 47a — کف مجاز (static) و وضعیت پیکربندی
             "equity_floor": round(equity_floor, 2),
             "unconfigured": unconfigured,
+            "dd_basis": dd_basis,
+            "daily_dd_mode": daily_dd_mode,
+            "total_dd_mode": total_dd_mode,
 
             # روزهای معاملاتی
             "trading_days": trading_days,
@@ -386,6 +457,9 @@ class PropRuleEngine:
         stage: PropStage,
         initial: float,
         equity: float,
+        dd_basis_value: float,
+        dd_basis: str,
+        floating_enabled: bool,
         total_pnl: float,
         max_daily_loss: float,
         max_daily_dd_limit: float,
@@ -438,22 +512,23 @@ class PropRuleEngine:
             Severity.PASS if (min_days <= 0 or trading_days >= min_days) else Severity.WARNING,
             f"روزهای معاملاتی: {trading_days} از حداقل {min_days}",
         )
-        # ۵) Equity Balance — کف مجاز (فاز ۴۷.۲: mode-aware از `_total_drawdown`)
-        if equity < equity_floor:
+        # ۵) Balance / Equity rule according to the configured basis.
+        if dd_basis_value < equity_floor:
             eq_sev = Severity.VIOLATION
-        elif equity < initial:
+        elif dd_basis_value < initial:
             eq_sev = Severity.WARNING
         else:
             eq_sev = Severity.PASS
         add(
-            RuleType.EQUITY_BALANCE, equity, equity_floor, eq_sev,
-            f"موجودی: {equity:.2f}USDT  (کف مجاز {equity_floor:.2f}USDT )",
+            RuleType.EQUITY_BALANCE, dd_basis_value, equity_floor, eq_sev,
+            f"موجودی مبنا ({dd_basis}): {dd_basis_value:.2f}USDT  (کف مجاز {equity_floor:.2f}USDT )",
         )
         # ۶) Floating PnL (معاملات باز) — زیان شناور مثبت
         floating_loss = max(-floating_pnl, 0.0)
         add(
             RuleType.FLOATING_PNL, floating_loss, max_daily_dd_limit,
-            PropRuleEngine._grade_loss(floating_loss, max_daily_dd_limit),
+            PropRuleEngine._grade_loss(floating_loss, max_daily_dd_limit)
+            if floating_enabled else Severity.PASS,
             f"زیان شناور: {floating_loss:.2f}USDT  از حد {max_daily_dd_limit:.2f}USDT ",
         )
         # ۷) Stage Status — ارزیابی فقط روی مرحله فعال مجاز است
@@ -514,6 +589,61 @@ class PropRuleEngine:
             day_key = local.date().isoformat()
             daily[day_key] = daily.get(day_key, 0.0) + metrics.net_pnl(t)
         return daily
+
+    @staticmethod
+    def _daily_drawdowns(
+        ordered_trades: List[Trade],
+        day_boundary_offset_minutes: int,
+        mode: str,
+        floating_pnl: float = 0.0,
+    ) -> Dict[str, float]:
+        """Calculate each day's static loss or largest intraday peak-to-trough loss."""
+        from datetime import timedelta, timezone
+
+        daily_trades: Dict[str, List[Trade]] = {}
+        for trade in ordered_trades:
+            if trade.close_time is None:
+                continue
+            closed_at = trade.close_time
+            if closed_at.tzinfo is None:
+                closed_at = closed_at.replace(tzinfo=timezone.utc)
+            day = (closed_at + timedelta(minutes=day_boundary_offset_minutes or 0)).date().isoformat()
+            daily_trades.setdefault(day, []).append(trade)
+
+        drawdowns: Dict[str, float] = {}
+        for day, trades in daily_trades.items():
+            pnl_values = [metrics.net_pnl(trade) for trade in trades]
+            if mode == "trailing":
+                peak = 0.0
+                equity = 0.0
+                max_dd = 0.0
+                for pnl in pnl_values:
+                    equity += pnl
+                    peak = max(peak, equity)
+                    max_dd = max(max_dd, peak - equity)
+                drawdowns[day] = max_dd
+            else:
+                drawdowns[day] = max(0.0, -sum(pnl_values))
+
+        if floating_pnl:
+            now = datetime.now(timezone.utc)
+            day = (now + timedelta(minutes=day_boundary_offset_minutes or 0)).date().isoformat()
+            if mode == "trailing":
+                # A floating equity snapshot is the latest point in today's curve.
+                trades = daily_trades.get(day, [])
+                running = 0.0
+                peak = 0.0
+                max_dd = 0.0
+                for trade in trades:
+                    running += metrics.net_pnl(trade)
+                    peak = max(peak, running)
+                    max_dd = max(max_dd, peak - running)
+                current_equity = running + floating_pnl
+                drawdowns[day] = max(drawdowns.get(day, 0.0), peak - current_equity, 0.0)
+            else:
+                realized = sum(metrics.net_pnl(trade) for trade in daily_trades.get(day, []))
+                drawdowns[day] = max(0.0, -(realized + floating_pnl))
+        return drawdowns
 
     @staticmethod
     def _total_drawdown(

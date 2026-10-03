@@ -386,6 +386,9 @@ export const passStageWithRules = (
     min_trading_days?: number;
     initial_balance?: number;
     profit_share_percentage?: number;
+    dd_basis?: 'balance' | 'equity';
+    daily_dd_mode?: 'static' | 'trailing';
+    total_dd_mode?: 'static' | 'trailing';
   }
 ) =>
   api.post(`/api/prop/stages/${stageId}/pass`, {
@@ -402,6 +405,9 @@ export const updateStageRules = (
     min_trading_days?: number;
     initial_balance?: number;
     profit_share_percentage?: number;
+    dd_basis?: 'balance' | 'equity';
+    daily_dd_mode?: 'static' | 'trailing';
+    total_dd_mode?: 'static' | 'trailing';
   }
 ) => api.patch(`/api/prop/stages/${stageId}/rules`, data);
 

@@ -48,6 +48,9 @@ interface Stage {
   max_total_dd: number | null;
   min_trading_days: number | null;
   initial_balance: number | null;
+  dd_basis: 'balance' | 'equity';
+  daily_dd_mode: 'static' | 'trailing';
+  total_dd_mode: 'static' | 'trailing';
   final_balance: number | null;
   current_profit: number;
   total_withdrawn: number;
@@ -117,6 +120,9 @@ export default function PropPage() {
   min_trading_days: '',
   initial_balance: '',
   profit_share_percentage: '',
+  dd_basis: 'balance' as 'balance' | 'equity',
+  daily_dd_mode: 'static' as 'static' | 'trailing',
+  total_dd_mode: 'static' as 'static' | 'trailing',
 });
 const [showProgressModal, setShowProgressModal] = useState(false);
 const [progressStage, setProgressStage] = useState<Stage | null>(null);
@@ -129,6 +135,9 @@ const [stageProgressData, setStageProgressData] = useState<any>(null);
     min_trading_days: '',
     initial_balance: '',
     profit_share_percentage: '',
+    dd_basis: 'balance' as 'balance' | 'equity',
+    daily_dd_mode: 'static' as 'static' | 'trailing',
+    total_dd_mode: 'static' as 'static' | 'trailing',
   });
 
   const [showFailModal, setShowFailModal] = useState(false);
@@ -297,6 +306,9 @@ const loadAlerts = async (stageId?: number) => {
         min_trading_days: '',
         initial_balance: (stage.final_balance || stage.initial_balance || 10000).toString(),
         profit_share_percentage: stage.stage_type === 'stage_2' ? '80' : '',
+        dd_basis: 'balance',
+        daily_dd_mode: 'static',
+        total_dd_mode: 'static',
       });
       setShowPassModal(true);
     } catch (err: any) {
@@ -338,6 +350,9 @@ await passStageWithRules(
     min_trading_days: nextStageRules.min_trading_days ? parseInt(nextStageRules.min_trading_days) : undefined,
     initial_balance: nextStageRules.initial_balance ? parseFloat(nextStageRules.initial_balance) : undefined,
     profit_share_percentage: nextStageRules.profit_share_percentage ? parseFloat(nextStageRules.profit_share_percentage) : undefined,
+    dd_basis: nextStageRules.dd_basis,
+    daily_dd_mode: nextStageRules.daily_dd_mode,
+    total_dd_mode: nextStageRules.total_dd_mode,
   }
 );
       setSuccessMessage('مرحله با موفقیت پاس شد. مرحله‌ی بعدی ایجاد شد.');
@@ -385,6 +400,9 @@ await passStageWithRules(
       min_trading_days: stage.min_trading_days?.toString() || '',
       initial_balance: stage.initial_balance?.toString() || '',
       profit_share_percentage: stage.profit_share_percentage?.toString() || '',
+      dd_basis: stage.dd_basis || 'balance',
+      daily_dd_mode: stage.daily_dd_mode || 'static',
+      total_dd_mode: stage.total_dd_mode || 'static',
     });
   };
 
@@ -410,6 +428,9 @@ await passStageWithRules(
         min_trading_days: editRules.min_trading_days ? parseInt(editRules.min_trading_days) : undefined,
         initial_balance: editRules.initial_balance ? parseFloat(editRules.initial_balance) : undefined,
         profit_share_percentage: editRules.profit_share_percentage ? parseFloat(editRules.profit_share_percentage) : undefined,
+        dd_basis: editRules.dd_basis,
+        daily_dd_mode: editRules.daily_dd_mode,
+        total_dd_mode: editRules.total_dd_mode,
       });
       setSuccessMessage('قوانین مرحله ذخیره شد');
       setEditingStage(null);
@@ -945,6 +966,33 @@ await passStageWithRules(
                                 onChange={(e) => setEditRules({ ...editRules, initial_balance: e.target.value })}
                                 className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--purple)] focus:outline-none" />
                             </div>
+                            <div>
+                              <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مبنای DD</label>
+                              <select value={editRules.dd_basis}
+                                onChange={(e) => setEditRules({ ...editRules, dd_basis: e.target.value as 'balance' | 'equity' })}
+                                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold">
+                                <option value="balance">Balance — معاملات بسته</option>
+                                <option value="equity">Equity — با سود/زیان شناور</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مدل DD روزانه</label>
+                              <select value={editRules.daily_dd_mode}
+                                onChange={(e) => setEditRules({ ...editRules, daily_dd_mode: e.target.value as 'static' | 'trailing' })}
+                                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold">
+                                <option value="static">Static — خالص زیان روز</option>
+                                <option value="trailing">Trailing — افت از سقف روز</option>
+                              </select>
+                            </div>
+                            <div>
+                              <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مدل DD کلی</label>
+                              <select value={editRules.total_dd_mode}
+                                onChange={(e) => setEditRules({ ...editRules, total_dd_mode: e.target.value as 'static' | 'trailing' })}
+                                className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2 text-[var(--text-primary)] text-sm font-bold">
+                                <option value="static">Static — از موجودی اولیه</option>
+                                <option value="trailing">Trailing — از سقف حساب</option>
+                              </select>
+                            </div>
                             {stage.stage_type === 'funded_real' && (
                               <div>
                                 <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">درصد سهم کاربر</label>
@@ -1240,6 +1288,33 @@ await passStageWithRules(
                         onChange={(e) => setNextStageRules({ ...nextStageRules, initial_balance: e.target.value })}
                         className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--profit)] focus:outline-none" />
                     </div>
+                    <div>
+                      <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مبنای DD</label>
+                      <select value={nextStageRules.dd_basis}
+                        onChange={(e) => setNextStageRules({ ...nextStageRules, dd_basis: e.target.value as 'balance' | 'equity' })}
+                        className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold">
+                        <option value="balance">Balance — معاملات بسته</option>
+                        <option value="equity">Equity — با شناور</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مدل DD روزانه</label>
+                      <select value={nextStageRules.daily_dd_mode}
+                        onChange={(e) => setNextStageRules({ ...nextStageRules, daily_dd_mode: e.target.value as 'static' | 'trailing' })}
+                        className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold">
+                        <option value="static">Static</option>
+                        <option value="trailing">Trailing</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">مدل DD کلی</label>
+                      <select value={nextStageRules.total_dd_mode}
+                        onChange={(e) => setNextStageRules({ ...nextStageRules, total_dd_mode: e.target.value as 'static' | 'trailing' })}
+                        className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[10px] px-3 py-2.5 text-[var(--text-primary)] text-sm font-bold">
+                        <option value="static">Static</option>
+                        <option value="trailing">Trailing</option>
+                      </select>
+                    </div>
                     {passingStage.stage_type === 'stage_2' && (
                       <div>
                         <label className="text-[11px] text-[var(--text-secondary)] font-bold block mb-1.5">درصد سهم کاربر</label>
@@ -1254,7 +1329,7 @@ await passStageWithRules(
 
               <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
                 <button onClick={handleConfirmPass}
-                  disabled={passProgress.suggested_status === 'failed_daily_dd' || passProgress.suggested_status === 'failed_total_dd'}
+                  disabled={!passProgress.ready_to_pass}
                   className="flex-1 text-white py-3 rounded-[12px] font-extrabold text-sm shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
                   style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
                   ✅ تأیید و پاس
