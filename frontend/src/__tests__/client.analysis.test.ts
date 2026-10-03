@@ -6,12 +6,21 @@ import {
   getVersionAnalysis,
   getAnalysisVersion,
   analyzeVersionScoped,
+  TRADE_SOURCES,
+  TRADE_TEST_TYPES,
 } from '../api/client';
 
 const okResponse = { data: {} } as AxiosResponse;
 
 afterEach(() => {
   vi.restoreAllMocks();
+});
+
+describe('Phase 59 — canonical Trade enum contract', () => {
+  it('matches the lowercase Trade API values accepted by the backend', () => {
+    expect(TRADE_TEST_TYPES).toEqual(['backtest', 'forward', 'real_personal', 'real_prop']);
+    expect(TRADE_SOURCES).toEqual(['mt4_import', 'soft4x_import', 'manual']);
+  });
 });
 
 /**

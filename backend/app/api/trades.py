@@ -1,6 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
+from sqlalchemy.exc import IntegrityError
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -14,7 +15,7 @@ from ..models.prop import PropAccount, PropStage
 from ..models.trading import PersonalTradingAccount
 from ..models.finance import Currency
 from ..utils.trade_metrics import calculate_r_multiple
-from ..utils.trade_validator import TradeValidator
+from ..utils.trade_validator import TradeReferenceNotFound, TradeValidator
 from ..utils.uploads import read_upload_limited
 from ..utils.time_utils import to_utc
 from ..utils.date_range import filter_by_range
@@ -56,6 +57,13 @@ class TradeUpdate(BaseModel):
     pnl: Optional[float] = None
     commission: Optional[float] = None
     swap: Optional[float] = None
+
+
+def _parse_test_type(value: str) -> TestType:
+    try:
+        return TestType(value)
+    except ValueError as exc:
+        raise HTTPException(status_code=400, detail="نوع تست نامعتبر") from exc
 
 
 class ManualTradeCreate(BaseModel):
@@ -110,6 +118,27 @@ def _parse_iso_datetime(
         return to_utc(dt, offset_minutes)
     except Exception:
         raise HTTPException(status_code=400, detail=f"فرمت {field_name} نامعتبر است")
+
+
+def _validate_trade_references(
+    db: Session, version_id, personal_account_id, prop_stage_id
+) -> None:
+    try:
+        TradeValidator.validate_fk(db, version_id, personal_account_id, prop_stage_id)
+    except TradeReferenceNotFound as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+def _commit_trade(db: Session) -> None:
+    """Map persistence errors to stable API responses and leave the session usable."""
+    try:
+        db.commit()
+    except IntegrityError as exc:
+        db.rollback()
+        raise HTTPException(status_code=409, detail="Trade conflicts with existing data") from exc
+    except ValueError as exc:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
 
 
 def _resolve_trade_server_offset(
@@ -403,19 +432,32 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
-    # ── ۱. تعیین مقادیر نهایی برای validation ──
-    new_test_type = data.test_type if data.test_type is not None else (
-        trade.test_type.value if trade.test_type else "backtest"
+    payload = data.model_dump(exclude_unset=True)
+    for required_field in ("test_type", "version_id", "symbol", "direction", "open_time", "open_price", "size"):
+        if required_field in payload and payload[required_field] is None:
+            raise HTTPException(status_code=400, detail=f"{required_field} cannot be null")
+
+    # Explicit null is the API's instruction to clear nullable values. A target
+    # unrelated to a newly selected trade type is cleared automatically.
+    new_test_type = payload.get("test_type", trade.test_type.value if trade.test_type else "backtest")
+    if new_test_type is None:
+        new_test_type = trade.test_type.value if trade.test_type else "backtest"
+    new_version_id = payload.get("version_id", trade.version_id)
+    new_personal_trading_account_id = payload.get(
+        "personal_trading_account_id", trade.personal_trading_account_id
     )
-    new_version_id = data.version_id if data.version_id is not None else trade.version_id
-    new_personal_trading_account_id = (
-        data.personal_trading_account_id
-        if data.personal_trading_account_id is not None
-        else trade.personal_trading_account_id
-    )
-    new_prop_stage_id = (
-        data.prop_stage_id if data.prop_stage_id is not None else trade.prop_stage_id
-    )
+    new_prop_stage_id = payload.get("prop_stage_id", trade.prop_stage_id)
+    previous_test_type = trade.test_type.value if trade.test_type else "backtest"
+    if new_test_type != previous_test_type:
+        if new_test_type in ("backtest", "forward"):
+            if "personal_trading_account_id" not in payload:
+                new_personal_trading_account_id = None
+            if "prop_stage_id" not in payload:
+                new_prop_stage_id = None
+        elif new_test_type == "real_personal" and "prop_stage_id" not in payload:
+            new_prop_stage_id = None
+        elif new_test_type == "real_prop" and "personal_trading_account_id" not in payload:
+            new_personal_trading_account_id = None
 
     # ── ۲. validation Classification ──
     is_valid, error_message = TradeValidator.validate_classification(
@@ -427,13 +469,17 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
 
+    _validate_trade_references(
+        db, new_version_id, new_personal_trading_account_id, new_prop_stage_id
+    )
+
     # ── ۳. validation اعداد (اگه تغییر کردن) ──
     is_valid, error_message = TradeValidator.validate_numbers(
-        size=data.size if data.size is not None else trade.size,
-        open_price=data.open_price if data.open_price is not None else trade.open_price,
-        close_price=data.close_price if data.close_price is not None else trade.close_price,
-        sl=data.sl if data.sl is not None else trade.sl,
-        tp=data.tp if data.tp is not None else trade.tp,
+        size=payload.get("size", trade.size),
+        open_price=payload.get("open_price", trade.open_price),
+        close_price=payload.get("close_price", trade.close_price),
+        sl=payload.get("sl", trade.sl),
+        tp=payload.get("tp", trade.tp),
     )
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
@@ -441,73 +487,41 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     # ── ۴. validation تاریخ‌ها ──
     new_open_time = trade.open_time
     new_close_time = trade.close_time
-    if data.open_time is not None:
-        new_open_time = _parse_iso_datetime(data.open_time, "زمان باز شدن")
-    if data.close_time is not None:
-        new_close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن")
+    if "open_time" in payload:
+        new_open_time = _parse_iso_datetime(payload["open_time"], "زمان باز شدن")
+    if "close_time" in payload:
+        new_close_time = _parse_iso_datetime(payload["close_time"], "زمان بسته شدن")
 
     is_valid, error_message = TradeValidator.validate_dates(new_open_time, new_close_time)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
+    if "direction" in payload and (
+        payload["direction"] is None or payload["direction"].lower() not in ("buy", "sell")
+    ):
+        raise HTTPException(status_code=400, detail="جهت باید buy یا sell باشد")
 
-    # ── ۵. اعمال تغییرات ──
-    if data.note is not None:
-        trade.note = data.note
+    # ── ۵. اعمال فقط فیلدهای ارسال‌شده (null صریح برای nullable معتبر است) ──
+    if "test_type" in payload:
+        trade.test_type = _parse_test_type(new_test_type)
+    trade.version_id = new_version_id
+    trade.personal_trading_account_id = new_personal_trading_account_id
+    trade.prop_stage_id = new_prop_stage_id
 
-    # Classification
-    if data.test_type is not None:
-        test_type_map = {
-            "backtest": TestType.BACKTEST,
-            "forward": TestType.FORWARD,
-            "real_personal": TestType.REAL_PERSONAL,
-            "real_prop": TestType.REAL_PROP,
-        }
-        new_tt = test_type_map.get(data.test_type)
-        if not new_tt:
-            raise HTTPException(status_code=400, detail="نوع تست نامعتبر")
-        trade.test_type = new_tt
-    if data.version_id is not None:
-        trade.version_id = data.version_id
-    if data.personal_trading_account_id is not None:
-        trade.personal_trading_account_id = data.personal_trading_account_id or None
-    if data.prop_stage_id is not None:
-        trade.prop_stage_id = data.prop_stage_id or None
-
-    # Execution
-    if data.symbol is not None:
-        trade.symbol = data.symbol
-    if data.direction is not None:
-        direction = data.direction.lower()
-        if direction not in ["buy", "sell"]:
-            raise HTTPException(status_code=400, detail="جهت باید buy یا sell باشد")
-        trade.direction = direction
-    if data.open_time is not None:
+    for field in (
+        "note", "symbol", "open_price", "close_price", "size", "sl", "tp",
+        "pnl", "commission", "swap",
+    ):
+        if field in payload:
+            setattr(trade, field, payload[field])
+    if "direction" in payload:
+        trade.direction = payload["direction"].lower()
+    if "open_time" in payload:
         trade.open_time = new_open_time
-    if data.close_time is not None:
+    if "close_time" in payload:
         trade.close_time = new_close_time
-    if data.open_price is not None:
-        trade.open_price = data.open_price
-    if data.close_price is not None:
-        trade.close_price = data.close_price
-    if data.size is not None:
-        trade.size = data.size
-
-    # Risk
-    if data.sl is not None:
-        trade.sl = data.sl
-    if data.tp is not None:
-        trade.tp = data.tp
-
-    # Financial
-    if data.pnl is not None:
-        trade.pnl = data.pnl
-    if data.commission is not None:
-        trade.commission = data.commission
-    if data.swap is not None:
-        trade.swap = data.swap
 
     # ✅ محاسبه‌ی مجدد R-Multiple اگه SL/قیمت‌ها تغییر کرده
-    if any(x is not None for x in [data.sl, data.open_price, data.close_price, data.direction]):
+    if any(field in payload for field in ("sl", "open_price", "close_price", "direction")):
         trade.r_multiple = calculate_r_multiple(
             trade.direction,
             trade.open_price,
@@ -518,7 +532,7 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     # فاز ۴۰.۵: تغییرات باید persist شوند.
     # پیش‌تر `db.commit()` گم شده بود و `db.refresh()` زیر، تغییرات commit‌نشده را
     # دور می‌ریخت ⇒ PATCH هیچ‌وقت ذخیره نمی‌شد (باگ کشف‌شده در رگرسیون فاز ۴۰).
-    db.commit()
+    _commit_trade(db)
     db.refresh(trade)
 
     # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
@@ -650,15 +664,11 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     if direction not in ["buy", "sell"]:
         raise HTTPException(status_code=400, detail="جهت باید buy یا sell باشد")
 
-    test_type_map = {
-        "backtest": TestType.BACKTEST,
-        "forward": TestType.FORWARD,
-        "real_personal": TestType.REAL_PERSONAL,
-        "real_prop": TestType.REAL_PROP,
-    }
-    test_type = test_type_map.get(data.test_type)
-    if not test_type:
-        raise HTTPException(status_code=400, detail="نوع تست نامعتبر")
+    test_type = _parse_test_type(data.test_type)
+
+    _validate_trade_references(
+        db, data.version_id, data.personal_trading_account_id, data.prop_stage_id
+    )
 
     # ✅ Validation Classification
     is_valid, error_message = TradeValidator.validate_classification(
@@ -714,7 +724,7 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     )
 
     db.add(trade)
-    db.commit()
+    _commit_trade(db)
     db.refresh(trade)
 
     # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).

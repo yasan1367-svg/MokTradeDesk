@@ -1,9 +1,27 @@
 from typing import Optional, Tuple
-from ..models.strategy import TestType
+from ..models.strategy import StrategyVersion, TestType
+from ..models.prop import PropStage
+from ..models.trading import PersonalTradingAccount
+
+
+class TradeReferenceNotFound(LookupError):
+    """Raised when a trade references a missing related domain record."""
 
 
 class TradeValidator:
     """اعتبارسنجی Trade Contract"""
+
+    @staticmethod
+    def validate_fk(db, version_id, personal_account_id, prop_stage_id) -> None:
+        """Ensure every supplied trade foreign key references an existing row."""
+        if version_id is not None and db.get(StrategyVersion, version_id) is None:
+            raise TradeReferenceNotFound("Version not found")
+        if personal_account_id is not None and db.get(
+            PersonalTradingAccount, personal_account_id
+        ) is None:
+            raise TradeReferenceNotFound("Personal Account not found")
+        if prop_stage_id is not None and db.get(PropStage, prop_stage_id) is None:
+            raise TradeReferenceNotFound("Prop Stage not found")
 
     @staticmethod
     def validate_classification(

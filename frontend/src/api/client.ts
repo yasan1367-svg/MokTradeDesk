@@ -10,6 +10,33 @@ export const api = axios.create({
   },
 });
 
+// Canonical Trade API enum values. SQLAlchemy persists enum member names;
+// request/response JSON uses these lowercase values.
+export const TRADE_TEST_TYPES = ['backtest', 'forward', 'real_personal', 'real_prop'] as const;
+export type TradeTestType = (typeof TRADE_TEST_TYPES)[number];
+export const TRADE_SOURCES = ['mt4_import', 'soft4x_import', 'manual'] as const;
+export type TradeSource = (typeof TRADE_SOURCES)[number];
+
+export interface TradeUpdateRequest {
+  note?: string | null;
+  test_type?: TradeTestType;
+  version_id?: number;
+  personal_trading_account_id?: number | null;
+  prop_stage_id?: number | null;
+  symbol?: string;
+  direction?: 'buy' | 'sell';
+  open_time?: string;
+  close_time?: string | null;
+  open_price?: number;
+  close_price?: number | null;
+  size?: number;
+  sl?: number | null;
+  tp?: number | null;
+  pnl?: number | null;
+  commission?: number | null;
+  swap?: number | null;
+}
+
 // ─────────────────────────────────────────────
 // Strategies
 // ─────────────────────────────────────────────
@@ -478,7 +505,7 @@ export const getTrades = (params?: {
 export const getTrade = (tradeId: number) =>
   api.get(`/api/trades/${tradeId}`);
 
-export const updateTrade = (tradeId: number, data: { note?: string }) =>
+export const updateTrade = (tradeId: number, data: TradeUpdateRequest) =>
   api.patch(`/api/trades/${tradeId}`, data);
 
 // فاز ۲۵: حذف نرم (Soft Delete) پیش‌فرض است. برای حذف کامل (ادمین) hard=true بدهید.
@@ -507,7 +534,7 @@ export const createManualTrade = (data: {
   // قرارداد Trade (فاز ۲۷): REAL_PERSONAL ⇒ personal_trading_account_id، REAL_PROP ⇒ prop_stage_id
   personal_trading_account_id?: number;
   prop_stage_id?: number;
-  test_type?: string;
+  test_type?: TradeTestType;
   note?: string;
 }) => api.post('/api/trades/manual', data);
 

@@ -9,6 +9,7 @@ import {
   deleteTrade,
   batchDeleteTrades,
   createManualTrade,
+  type TradeTestType,
   uploadTradeScreenshot,
   getTradeScreenshots,
   deleteScreenshot,
@@ -75,7 +76,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     sl: '',
     tp: '',
     pnl: '',
-    test_type: 'backtest',
+    test_type: 'backtest' as TradeTestType,
     note: '',
     version_id: '',
     prop_stage_id: '',
@@ -949,7 +950,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 <label className="text-[var(--text-secondary)] text-xs block mb-1">نوع تست</label>
                 <select
                   value={manualTrade.test_type}
-                  onChange={(e) => setManualTrade({ ...manualTrade, test_type: e.target.value })}
+                  onChange={(e) => setManualTrade({ ...manualTrade, test_type: e.target.value as TradeTestType })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
                   <option value="backtest">🧪 بک‌تست</option>
