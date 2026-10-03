@@ -23,7 +23,7 @@ export default function RiskManagementPage() {
   if (error) return <div className="text-center py-16 text-[var(--loss)]">❌ {error}</div>;
   if (!data) return null;
 
-  const { position_sizing, performance_ratios, risk_metrics, status } = data;
+  const { performance_ratios, risk_metrics, status } = data;
   const ss = getStatusStyle(status);
 
   return (
@@ -90,33 +90,7 @@ export default function RiskManagementPage() {
           </div>
         </div>
       </div>
-<div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Position Sizing */}
-        <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
-          <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
-            <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">📐</div>
-            <div>
-              <h3 className="text-base font-extrabold text-[var(--text-primary)]">Position Sizing</h3>
-              <p className="text-[12px] text-[var(--text-secondary)]">میانگین موجودی: ${position_sizing.avg_balance.toLocaleString()}</p>
-            </div>
-          </div>
-          <div className="space-y-4">
-            {position_sizing.suggestions.map((s: any) => (
-              <div key={s.risk_percent} className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[14px] p-4">
-                <div className="flex justify-between items-center mb-3">
-                  <span className="font-extrabold text-[var(--text-primary)]">{s.risk_percent}٪ ریسک</span>
-                  <span className="text-[var(--loss)] font-bold">${s.risk_amount}</span>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div><div className="text-[10px] text-[var(--text-secondary)] font-bold">میانگین SL</div><div className="text-[13px] font-bold text-[var(--text-primary)]">{s.avg_sl_percent}٪</div></div>
-                  <div><div className="text-[10px] text-[var(--text-secondary)] font-bold">حجم پیشنهادی</div><div className="text-[13px] font-bold text-[var(--accent)]">{s.suggested_size.toFixed(2)}</div></div>
-                  <div><div className="text-[10px] text-[var(--text-secondary)] font-bold">لات پیشنهادی</div><div className="text-[13px] font-bold text-[var(--purple)]">{s.suggested_lots.toFixed(2)}</div></div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </div>
-
+      <div className="grid grid-cols-1 gap-6">
         {/* Risk Metrics */}
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">

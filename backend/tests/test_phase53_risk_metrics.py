@@ -120,8 +120,11 @@ def test_risk_metrics_uses_scope(client, db_session):
     db_session.commit()
 
     body = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
-    # قبل از fix: میانگین همه = (20000+1000)/2 = 10500
-    assert body["position_sizing"]["avg_balance"] == 20000.0
+    # توازن scope همچنان در محاسبات ریسک استفاده می‌شود، اما دیگر به‌عنوان sizing افشا نمی‌شود.
+    assert "position_sizing" not in body
+    assert "suggested_lots" not in str(body)
+    assert "risk_of_ruin" in body["risk_metrics"]
+    assert "open_risk_percent" in body["risk_metrics"]
 
 
 def test_risk_metrics_backtest_assumed_balance(client, db_session):
@@ -133,5 +136,6 @@ def test_risk_metrics_backtest_assumed_balance(client, db_session):
     db_session.commit()
 
     body = client.get("/api/analytics/risk-metrics", params={"scope": "backtest"}).json()
-    # قبل از fix: ۲۰۰۰۰ (میانگین همهٔ حساب‌ها)
-    assert body["position_sizing"]["avg_balance"] == 10000.0
+    assert "position_sizing" not in body
+    assert "suggested_lots" not in str(body)
+    assert "risk_of_ruin" in body["risk_metrics"]

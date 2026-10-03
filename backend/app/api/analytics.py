@@ -564,36 +564,28 @@ def get_risk_metrics(
     """محاسبه شاخص‌های مدیریت ریسک — فاز ۱۵.۳: SQL + واکشی ستونی · فاز ۴۴.۱: scope · فاز ۵۳.۲: بازده روزانه + مبنای scope"""
     sc = normalize_scope(scope)
 
-    # فاز ۱۵.۳: فقط ۵ ستون لازم، به ترتیب id (معادل ترتیب قبلی .all())
+    # فاز ۱۵.۳: فقط ستون‌های لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
     _rows = (
         _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None), Trade.is_deleted == False), sc)
         .with_entities(
             Trade.close_time, _net.label("net"), Trade.r_multiple,
-            Trade.sl, Trade.open_price, Trade.personal_trading_account_id,
+            Trade.personal_trading_account_id,
         )
         .order_by(Trade.id.asc())
         .all()
     )
     closed_trades = []
     account_ids = set()
-    for _ct, _n, _r, _sl, _op, _aid in _rows:
+    for _ct, _n, _r, _aid in _rows:
         if _ct is not None and _ct.tzinfo is None:
             _ct = _ct.replace(tzinfo=timezone.utc)
-        closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r, "sl": _sl, "open_price": _op})
+        closed_trades.append({"close_time": _ct, "net": float(_n or 0.0), "r_multiple": _r})
         if _aid is not None:
             account_ids.add(_aid)
     returns = [c["net"] for c in closed_trades]
     # فاز ۵۳.۲: مبنای سرمایه بر اساس scope (نه همهٔ حساب‌ها)
     avg_b = _scope_avg_balance(db, sc, account_ids)
-    ps = []
-    for rp in [1, 2, 3]:
-        ra = avg_b * rp / 100
-        st = [c for c in closed_trades if c["sl"] and c["open_price"] and c["sl"] > 0]
-        asp = sum(abs((c["sl"] - c["open_price"]) / c["open_price"]) * 100 for c in st) / len(st) if st else 0
-        ss = ra / (asp / 100 * avg_b) if asp > 0 else 0
-        ps.append({"risk_percent": rp, "risk_amount": round(ra, 2), "avg_sl_percent": round(asp, 2),
-            "suggested_size": round(ss, 4), "suggested_lots": round(ss * 10, 2)})
     ar = (sum(returns) / len(returns)) if returns else 0   # میانگین هر معامله (مبنای expectancy)
     # فاز ۵۳.۲: Sharpe/Sortino روی بازده **روزانه** و **بدون** سالانه‌سازی (√252 حذف شد)
     sharpe, sortino = _sharpe_sortino(_daily_returns(closed_trades))
@@ -627,8 +619,7 @@ def get_risk_metrics(
             cd += 1
             if cd > md: md = cd
     status = "danger" if (sharpe < 0.5 or ror > 0.1 or orp > 20) else ("warning" if (sharpe < 1.0 or ror > 0.05 or orp > 10) else "safe")
-    return {"position_sizing": {"avg_balance": round(avg_b, 2), "suggestions": ps},
-        "performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
+    return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
             "profit_factor": round((sum(wins) / abs(sum(losses))) if losses else (100 if wins else 0), 2),
             "win_rate": round(wr * 100, 2), "avg_r_multiple": round(arm, 2),
             "expectancy": round((ar) if returns else 0, 2), "expectancy_r": round((ar / al) if al > 0 else 0, 2),
