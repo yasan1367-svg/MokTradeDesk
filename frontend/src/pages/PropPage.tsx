@@ -494,7 +494,7 @@ await passStageWithRules(
         <button
           onClick={() => setShowFirmForm(!showFirmForm)}
           className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+          style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
         >
           ➕ شرکت پراپ جدید
         </button>
@@ -502,7 +502,7 @@ await passStageWithRules(
           onClick={() => setShowAccountForm(!showAccountForm)}
           disabled={firms.length === 0}
           className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:shadow-[0_10px_24px_rgba(19,174,129,0.4)] hover:-translate-y-0.5 disabled:opacity-40 disabled:cursor-not-allowed"
-          style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
+          style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
         >
           ➕ اکانت پراپ جدید
         </button>
@@ -554,7 +554,7 @@ await passStageWithRules(
         <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               🏢
             </div>
             <div>
@@ -578,7 +578,7 @@ await passStageWithRules(
             <button
               onClick={handleCreateFirm}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold"
-              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
             >
               💾 ذخیره
             </button>
@@ -597,7 +597,7 @@ await passStageWithRules(
         <div className="bg-[var(--bg-card)] border-2 border-[var(--profit)] rounded-[22px] p-6 shadow-lg">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               🏦
             </div>
             <div>
@@ -704,7 +704,7 @@ await passStageWithRules(
           <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
             <button onClick={handleCreateAccount}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold"
-              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               💾 ذخیره اکانت
             </button>
             <button onClick={() => setShowAccountForm(false)}
@@ -764,7 +764,7 @@ await passStageWithRules(
                                   onClick={() => handleSelectAccount(acc)}
                                   className={`w-full text-right p-3 rounded-[12px] transition-all ${
                                     isSelected
-                                      ? 'bg-[#3F7CFF] text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
+                                      ? 'bg-[var(--accent)] text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                                       : 'bg-[var(--bg-input)] border border-[var(--border-subtle)] hover:border-[var(--border-accent)]'
                                   }`}
                                 >
@@ -795,7 +795,7 @@ await passStageWithRules(
               <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
               <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>🔍</div>
+                  style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>🔍</div>
                 <div>
                   <h3 className="text-base font-extrabold text-[var(--text-primary)]">
                     {accountDetail.account_label} — {accountDetail.firm_name}
@@ -841,14 +841,14 @@ await passStageWithRules(
       <button
         onClick={() => handleOpenPassModal(stage)}
         className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold shadow-[0_4px_12px_rgba(19,174,129,0.3)]"
-        style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
+        style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
       >
         ✅ بررسی و پاس
       </button>
       <button
         onClick={() => handleOpenFailModal(stage)}
         className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold shadow-[0_4px_12px_rgba(228,93,114,0.3)]"
-        style={{ background: 'linear-gradient(135deg, #E45D72, #F0A6B2)' }}
+        style={{ background: 'linear-gradient(135deg, var(--loss), var(--loss-border))' }}
       >
         ❌ فیل
       </button>
@@ -859,14 +859,14 @@ await passStageWithRules(
       <button
         onClick={() => handleWithdraw(stage)}
         className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold shadow-[0_4px_12px_rgba(63,124,255,0.3)]"
-        style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+        style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
       >
         💰 برداشت
       </button>
       <button
         onClick={() => handleOpenFailModal(stage)}
         className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold"
-        style={{ background: 'linear-gradient(135deg, #E45D72, #F0A6B2)' }}
+        style={{ background: 'linear-gradient(135deg, var(--loss), var(--loss-border))' }}
       >
         ❌ فیل
       </button>
@@ -1005,7 +1005,7 @@ await passStageWithRules(
                           <div className="flex gap-2">
                             <button onClick={() => handleSaveStageRules(stage.id)}
                               className="text-white px-5 py-2.5 rounded-[10px] text-[12px] font-extrabold"
-                              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
+                              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
                               💾 ذخیره
                             </button>
                             <button onClick={cancelEditStage}
@@ -1026,7 +1026,7 @@ await passStageWithRules(
                     <span className="text-base">🔔</span>
                     <h3 className="text-base font-extrabold text-[var(--text-primary)]">هشدارها</h3>
                     {alerts.filter(a => !a.is_read).length > 0 && (
-                      <span className="bg-[#E45D72] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
+                      <span className="bg-[var(--loss)] text-white text-[10px] font-bold px-2 py-0.5 rounded-full">
                         {alerts.filter(a => !a.is_read).length}
                       </span>
                     )}
@@ -1034,7 +1034,7 @@ await passStageWithRules(
                   <div className="flex gap-2">
                     <button
                       onClick={() => { loadAlerts(); setShowAlerts(true); }}
-                      className="bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[#3F7CFF] hover:text-white px-4 py-2 rounded-[10px] text-[12px] font-bold transition-all"
+                      className="bg-[var(--accent-soft)] text-[var(--accent)] hover:bg-[var(--accent)] hover:text-white px-4 py-2 rounded-[10px] text-[12px] font-bold transition-all"
                     >
                       🔄 بارگذاری
                     </button>
@@ -1045,7 +1045,7 @@ await passStageWithRules(
                           await loadAlerts();
                         } catch { /* silent */ }
                       }}
-                      className="bg-[var(--warning-soft-alt)] text-[var(--warning)] hover:bg-[#D99B25] hover:text-white px-4 py-2 rounded-[10px] text-[12px] font-bold transition-all"
+                      className="bg-[var(--warning-soft-alt)] text-[var(--warning)] hover:bg-[var(--warning)] hover:text-white px-4 py-2 rounded-[10px] text-[12px] font-bold transition-all"
                     >
                       ⚡ بررسی خودکار
                     </button>
@@ -1162,7 +1162,7 @@ await passStageWithRules(
             <div className="flex justify-between items-center p-6 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>✅</div>
+                  style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>✅</div>
                 <div>
                   <h3 className="text-base font-extrabold text-[var(--text-primary)]">
                     بررسی و پاس مرحله {passingStage.stage_type === 'stage_1' ? 'اول' : 'دوم'}
@@ -1206,7 +1206,7 @@ await passStageWithRules(
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${passProgress.target_reached ? 'bg-gradient-to-r from-[#13AE81] to-[#4DD9A9]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    <div className={`h-full rounded-full ${passProgress.target_reached ? 'bg-gradient-to-r from-[var(--profit)] to-[var(--profit-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                       style={{ width: `${Math.min(passProgress.profit_progress_percent, 100)}%` }} />
                   </div>
                 </div>
@@ -1219,7 +1219,7 @@ await passStageWithRules(
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${passProgress.daily_dd_violated ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    <div className={`h-full rounded-full ${passProgress.daily_dd_violated ? 'bg-gradient-to-r from-[var(--loss)] to-[var(--loss-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                       style={{ width: `${Math.min(passProgress.daily_dd_progress_percent, 100)}%` }} />
                   </div>
                 </div>
@@ -1232,7 +1232,7 @@ await passStageWithRules(
                     </span>
                   </div>
                   <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
-                    <div className={`h-full rounded-full ${passProgress.total_dd_violated ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    <div className={`h-full rounded-full ${passProgress.total_dd_violated ? 'bg-gradient-to-r from-[var(--loss)] to-[var(--loss-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                       style={{ width: `${Math.min(passProgress.total_dd_progress_percent, 100)}%` }} />
                   </div>
                 </div>
@@ -1331,7 +1331,7 @@ await passStageWithRules(
                 <button onClick={handleConfirmPass}
                   disabled={!passProgress.ready_to_pass}
                   className="flex-1 text-white py-3 rounded-[12px] font-extrabold text-sm shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
                   ✅ تأیید و پاس
                 </button>
                 <button onClick={() => setShowPassModal(false)}
@@ -1351,7 +1351,7 @@ await passStageWithRules(
             <div className="flex justify-between items-center p-6 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #E45D72, #F0A6B2)' }}>❌</div>
+                  style={{ background: 'linear-gradient(135deg, var(--loss), var(--loss-border))' }}>❌</div>
                 <div>
                   <h3 className="text-base font-extrabold text-[var(--text-primary)]">فیل کردن مرحله</h3>
                   <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">دلیل را انتخاب کنید</p>
@@ -1392,7 +1392,7 @@ await passStageWithRules(
               <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
                 <button onClick={handleConfirmFail}
                   className="flex-1 text-white py-3 rounded-[12px] font-extrabold text-sm"
-                  style={{ background: 'linear-gradient(135deg, #E45D72, #F0A6B2)' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--loss), var(--loss-border))' }}>
                   ❌ تأیید فیل
                 </button>
                 <button onClick={() => setShowFailModal(false)}
@@ -1413,7 +1413,7 @@ await passStageWithRules(
             <div className="flex justify-between items-center p-6 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
                   📊
                 </div>
                 <div>
@@ -1467,7 +1467,7 @@ await passStageWithRules(
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${stageProgressData.target_reached ? 'bg-gradient-to-r from-[#13AE81] to-[#4DD9A9]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    className={`h-full rounded-full ${stageProgressData.target_reached ? 'bg-gradient-to-r from-[var(--profit)] to-[var(--profit-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                     style={{ width: `${Math.min(stageProgressData.profit_progress_percent, 100)}%` }}
                   />
                 </div>
@@ -1483,7 +1483,7 @@ await passStageWithRules(
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${stageProgressData.daily_dd_violated ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    className={`h-full rounded-full ${stageProgressData.daily_dd_violated ? 'bg-gradient-to-r from-[var(--loss)] to-[var(--loss-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                     style={{ width: `${Math.min(stageProgressData.daily_dd_progress_percent, 100)}%` }}
                   />
                 </div>
@@ -1499,7 +1499,7 @@ await passStageWithRules(
                 </div>
                 <div className="h-2 bg-[var(--bg-card)] rounded-full overflow-hidden">
                   <div
-                    className={`h-full rounded-full ${stageProgressData.total_dd_violated ? 'bg-gradient-to-r from-[#E45D72] to-[#F0A6B2]' : 'bg-gradient-to-r from-[#3F7CFF] to-[#5B8DEF]'}`}
+                    className={`h-full rounded-full ${stageProgressData.total_dd_violated ? 'bg-gradient-to-r from-[var(--loss)] to-[var(--loss-border)]' : 'bg-gradient-to-r from-[var(--accent)] to-[var(--accent-strong)]'}`}
                     style={{ width: `${Math.min(stageProgressData.total_dd_progress_percent, 100)}%` }}
                   />
                 </div>
@@ -1536,7 +1536,7 @@ await passStageWithRules(
             <div className="flex justify-between items-center p-6 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
                   💰
                 </div>
                 <div>
@@ -1624,7 +1624,7 @@ await passStageWithRules(
               <button
                 onClick={handleConfirmWithdraw}
                 className="flex-1 text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)]"
-                style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+                style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
               >
                 💾 ثبت برداشت
               </button>

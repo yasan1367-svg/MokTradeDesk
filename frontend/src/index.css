@@ -19,6 +19,7 @@
 
   --accent: #3F7CFF;
   --accent-soft: #EDF3FF;
+  --accent-dim: #2C63D6;
   --profit: #13AE81;
   --profit-soft: #E5F8F1;
   --loss: #E45D72;
@@ -39,7 +40,7 @@
 
   /* 🆕 فاز ۸ — رنگ‌های خاص */
   --warning-strong: #946A1E;
-  --accent-strong: #2C63D6;
+  --accent-strong: #2563EB;
   --accent-light: #DCE8FF;
   --purple-light: #A78BFA;
   --sidebar-text: #B9C8DE;
@@ -53,49 +54,54 @@
   --shadow-md: 0 6px 16px rgba(25, 50, 85, 0.08), 0 2px 4px rgba(25, 50, 85, 0.04);
 }
 
-/* ── Dark Mode ── */
+/* ── Dark Mode (فاز ۱۰-الف: پالت  فیگما — مشکی با ته‌رنگ سبز) ── */
 .dark {
-  --bg-base: #0F1923;
-  --bg-card: #1A2736;
-  --bg-card-translucent: rgba(26, 39, 54, 0.7);
-  --bg-input: #1E2F41;
-  --bg-elevated: #243447;
-  --bg-sidebar: #0A131C;
-  --bg-sidebar-hover: #152238;
+  --bg-base: #0A0E0F;
+  --bg-card: #111718;
+  --bg-card-translucent: rgba(17, 23, 24, 0.7);
+  --bg-elevated: #151C1E;
+  --bg-input: #0F1416;
+  --bg-sidebar: #080B0C;
+  --bg-sidebar-hover: #141B1D;
 
-  --text-primary: #E0E8F0;
-  --text-secondary: #8DA2C1;
-  --text-muted: #5A7290;
+  --text-primary: #E8EDEE;
+  --text-secondary: #7A8488;
+  --text-muted: #4A5256;
 
-  --accent-soft: #1A2E4D;
-  --profit-soft: #0D2E22;
-  --loss-soft: #2D151E;
+  --accent: #00E5A0;
+  --accent-soft: rgba(0, 229, 160, 0.12);
+  --accent-dim: #00B37D;
+  --accent-strong: #00CCA0;
+  --accent-light: rgba(0, 229, 160, 0.20);
 
-  /* 🆕 فاز ۶ — نسخه تاریک رنگ‌های بدون variant */
-  --purple-soft: #2A1F4A;
-  --warning-soft: #3D2F1A;
-  --warning-soft-alt: #3D2F1A;
-  --purple-border: #4A3A6A;
-  --warning-border: #5A4A2A;
+  --profit: #00E5A0;
+  --profit-soft: rgba(0, 229, 160, 0.10);
+  --profit-border: rgba(0, 229, 160, 0.25);
 
-  /* 🆕 فاز ۶.۱ — نسخه تاریک */
-  --profit-border: #1E5945;
-  --loss-border: #5C2A34;
+  --loss: #FF5C5C;
+  --loss-soft: rgba(255, 92, 92, 0.10);
+  --loss-border: rgba(255, 92, 92, 0.25);
 
-  /* 🆕 فاز ۸ — نسخه تاریک */
-  --warning-strong: #E8C46A;
-  --accent-strong: #7FA8FF;
-  --accent-light: #1E3A6B;
+  --warning: #F5B942;
+  --warning-soft: rgba(245, 185, 66, 0.12);
+  --warning-soft-alt: rgba(245, 185, 66, 0.08);
+  --warning-strong: #F5B942;
+  --warning-border: rgba(245, 185, 66, 0.25);
+
+  --purple: #A78BFA;
+  --purple-soft: rgba(167, 139, 250, 0.12);
   --purple-light: #C4B5FD;
+  --purple-border: rgba(167, 139, 250, 0.25);
+
   --sidebar-text: #B9C8DE;
-  --sidebar-text-muted: #8DA2C1;
+  --sidebar-text-muted: #7A8488;
 
-  --border-subtle: #2A3E54;
-  --border-medium: #3A5068;
-  --border-accent: #2A4A7A;
+  --border-subtle: rgba(255, 255, 255, 0.06);
+  --border-medium: rgba(255, 255, 255, 0.10);
+  --border-accent: rgba(0, 229, 160, 0.30);
 
-  --shadow-card: 0 6px 16px rgba(0, 0, 0, 0.3);
-  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.4), 0 2px 4px rgba(0, 0, 0, 0.3);
+  --shadow-card: 0 6px 16px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
 }
 
 * {

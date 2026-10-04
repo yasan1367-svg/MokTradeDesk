@@ -59,20 +59,20 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
         <div className="px-5 pb-7 flex items-center gap-3">
           <div
             className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl text-white shadow-[0_8px_20px_rgba(63,124,255,0.4)] shrink-0"
-            style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
           >
             ⚡
           </div>
           <div>
             <div className="text-2xl font-extrabold text-white leading-tight">MokTradeDesk</div>
-            <div className="text-[12px] text-[#8DA2C1] tracking-wider mt-0.5">Analyze • Improve • Grow</div>
+            <div className="text-[12px] text-[var(--sidebar-text-muted)] tracking-wider mt-0.5">Analyze • Improve • Grow</div>
           </div>
         </div>
       )}
 
       {NAV_GROUPS.map((group) => (
         <div key={group.label} className="mb-2">
-          <div className="px-5 py-3 pb-1 text-[12px] text-[#8DA2C1] uppercase tracking-widest font-bold">
+          <div className="px-5 py-3 pb-1 text-[12px] text-[var(--sidebar-text-muted)] uppercase tracking-widest font-bold">
             {group.label}
           </div>
           {group.items.map((item) => {
@@ -83,12 +83,12 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
                 onClick={() => handleNavigate(item.key)}
                 className={`flex items-center gap-3 mx-3 px-5 py-3.5 rounded-[10px] cursor-pointer text-[17px] transition-all relative ${
                   isActive
-                    ? 'text-white bg-[#1E2F4D] font-bold shadow-[0_4px_12px_rgba(0,0,0,0.15)]'
-                    : 'text-[#B9C8DE] hover:text-white hover:bg-[#1E2F4D]'
+                    ? 'text-[var(--accent)] bg-gradient-to-r from-[var(--accent-soft)] to-transparent font-bold shadow-[0_4px_12px_rgba(0,0,0,0.15)]'
+                    : 'text-[var(--sidebar-text)] hover:text-[var(--accent)] hover:bg-[var(--bg-sidebar-hover)]'
                 }`}
               >
                 {isActive && (
-                  <div className="absolute right-[-12px] top-2.5 bottom-2.5 w-[3px] bg-[#76A4FF] rounded-r-sm" />
+                  <div className="absolute right-[-12px] top-2.5 bottom-2.5 w-[3px] bg-[var(--accent)] rounded-r-sm" />
                 )}
                 <span className="text-xl w-6 text-center">{item.icon}</span>
                 <span>{item.label}</span>
@@ -100,14 +100,14 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
 
       <div className="mt-auto px-5 py-4 border-t border-white/[0.08] flex items-center gap-3">
         <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-[#3563BE] shadow-[0_4px_10px_rgba(0,0,0,0.15)] shrink-0"
-          style={{ background: 'linear-gradient(135deg, #DCE8FF, #C5D9FF)' }}
+          className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-[var(--accent-strong)] shadow-[0_4px_10px_rgba(0,0,0,0.15)] shrink-0"
+          style={{ background: 'linear-gradient(135deg, var(--accent-light), var(--accent-light))' }}
         >
           ی‌م
         </div>
         <div>
           <div className="text-[16px] font-bold text-white">یوسف مکاری</div>
-          <div className="text-[12px] text-[#8DA2C1]">Pro Trader</div>
+          <div className="text-[12px] text-[var(--sidebar-text-muted)]">Pro Trader</div>
         </div>
       </div>
     </>
@@ -118,14 +118,14 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {/* همبرگر موبایل */}
       <button
         onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 right-4 z-50 lg:hidden w-10 h-10 rounded-xl bg-[#152238] border border-[#2A3F5E] flex items-center justify-center text-white text-lg shadow-lg"
+        className="fixed top-4 right-4 z-50 lg:hidden w-10 h-10 rounded-xl bg-[var(--bg-sidebar)] border border-[var(--border-medium)] flex items-center justify-center text-white text-lg shadow-lg"
         aria-label="منو"
       >
         {mobileOpen ? '✕' : '☰'}
       </button>
 
       {/* سایدبرگ دسکتاپ */}
-      <aside className="hidden lg:flex w-[260px] bg-[#152238] text-[#B9C8DE] flex-col py-5 overflow-y-auto shadow-[4px_0_24px_rgba(21,34,56,0.15)] z-10 shrink-0">
+      <aside className="hidden lg:flex w-[260px] bg-[var(--bg-sidebar)] text-[var(--sidebar-text)] flex-col py-5 overflow-y-auto shadow-[4px_0_24px_rgba(21,34,56,0.15)] z-10 shrink-0">
         {navContent({})}
       </aside>
 
@@ -133,12 +133,12 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside
-            className="w-[280px] h-full bg-[#152238] text-[#B9C8DE] flex flex-col py-5 overflow-y-auto shadow-xl"
+            className="w-[280px] h-full bg-[var(--bg-sidebar)] text-[var(--sidebar-text)] flex flex-col py-5 overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center px-5 pb-3">
-              <span className="text-[#8DA2C1] text-xs font-bold">📋 منوی ناوبری</span>
-              <button onClick={() => setMobileOpen(false)} className="text-[#B9C8DE] hover:text-white text-xl">✕</button>
+              <span className="text-[var(--sidebar-text-muted)] text-xs font-bold">📋 منوی ناوبری</span>
+              <button onClick={() => setMobileOpen(false)} className="text-[var(--sidebar-text)] hover:text-white text-xl">✕</button>
             </div>
             {navContent({ isMobile: true })}
           </aside>

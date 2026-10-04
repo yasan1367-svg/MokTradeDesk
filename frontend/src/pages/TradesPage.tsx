@@ -565,14 +565,14 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
           </button>
           <button
             onClick={() => downloadExport(exportTradesCsv, 'csv')}
-            className="bg-[#13AE81] hover:bg-[#13AE81]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
+            className="bg-[var(--profit)] hover:bg-[var(--profit)]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
             title="دانلود CSV"
           >
             📥 CSV
           </button>
           <button
             onClick={() => downloadExport(exportTradesPdf, 'pdf')}
-            className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
+            className="bg-[var(--loss)] hover:bg-[var(--loss)]/80 text-white px-4 py-2 rounded-xl text-sm flex items-center gap-1"
             title="دانلود PDF"
           >
             📄 PDF
@@ -672,14 +672,14 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         {/* صفحه‌بندی */}
         {total > pageSize && (
           <div className="flex items-center justify-between mt-4 px-2 pb-2" dir="ltr">
-            <span className="text-[12px] text-[#6B7A94] font-medium">
+            <span className="text-[12px] text-[var(--text-secondary)] font-medium">
               {total > 0 ? `نمایش ${(currentPage - 1) * pageSize + 1}–${Math.min(currentPage * pageSize, total)} از ${total} معامله` : ''}
             </span>
             <div className="flex items-center gap-1.5">
               <button
                 onClick={() => setCurrentPage(Math.max(1, currentPage - 1))}
                 disabled={currentPage <= 1}
-                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[#E5EBF3] hover:bg-[#EDF3FF] text-[#6B7A94] hover:text-[#3F7CFF]"
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--border-subtle)] hover:bg-[var(--accent-soft)] text-[var(--text-secondary)] hover:text-[var(--accent)]"
               >
                 ‹ قبلی
               </button>
@@ -702,9 +702,9 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                     className={`min-w-[32px] h-[32px] rounded-lg text-[12px] font-bold transition-all ${
                       currentPage === pageNum
                         ? 'text-white shadow-[0_4px_10px_rgba(63,124,255,0.3)]'
-                        : 'text-[#6B7A94] border border-[#E5EBF3] hover:bg-[#EDF3FF] hover:text-[#3F7CFF]'
+                        : 'text-[var(--text-secondary)] border border-[var(--border-subtle)] hover:bg-[var(--accent-soft)] hover:text-[var(--accent)]'
                     }`}
-                    style={currentPage === pageNum ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+                    style={currentPage === pageNum ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
                   >
                     {pageNum}
                   </button>
@@ -714,7 +714,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <button
                 onClick={() => setCurrentPage(Math.min(totalPages, currentPage + 1))}
                 disabled={currentPage >= totalPages}
-                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[#E5EBF3] hover:bg-[#EDF3FF] text-[#6B7A94] hover:text-[#3F7CFF]"
+                className="px-3 py-1.5 rounded-lg text-[12px] font-bold transition-all disabled:opacity-30 disabled:cursor-not-allowed border border-[var(--border-subtle)] hover:bg-[var(--accent-soft)] text-[var(--text-secondary)] hover:text-[var(--accent)]"
               >
                 بعدی ›
               </button>
@@ -1078,7 +1078,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         >
           <button
             onClick={() => setLightboxImage(null)}
-            className="absolute top-4 right-4 bg-white/20 hover:bg-white/30 text-white w-10 h-10 rounded-full flex items-center justify-center text-2xl transition-all"
+            className="absolute top-4 right-4 bg-[var(--bg-card)]/20 hover:bg-[var(--bg-card)]/30 text-white w-10 h-10 rounded-full flex items-center justify-center text-2xl transition-all"
           >
             ✕
           </button>

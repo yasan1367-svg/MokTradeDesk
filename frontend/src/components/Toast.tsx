@@ -51,7 +51,7 @@ export default function Toast({
     >
       <span className="text-lg shrink-0">{isSuccess ? '✅' : '❌'}</span>
       <span
-        className={`text-sm font-bold ${isSuccess ? 'text-[#13AE81]' : 'text-[#E45D72]'}`}
+        className={`text-sm font-bold ${isSuccess ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
       >
         {message}
       </span>

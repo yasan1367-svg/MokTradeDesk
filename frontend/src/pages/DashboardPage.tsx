@@ -149,8 +149,8 @@ const MINI_TOOLTIP = {
 
 function MiniPie({ wins, losses, height = 80 }: { wins: number; losses: number; height?: number }) {
   const data = [
-    { name: 'برد', value: wins, color: '#13AE81' },
-    { name: 'باخت', value: losses, color: '#E45D72' },
+    { name: 'برد', value: wins, color: 'var(--profit)' },
+    { name: 'باخت', value: losses, color: 'var(--loss)' },
   ];
   if (wins + losses === 0) {
     return <div className="text-[11px] text-[var(--text-muted)] text-center py-4">داده نیست</div>;
@@ -404,7 +404,7 @@ const [payouts, setPayouts] = useState<any>(null);
           </InfoTooltip>
           <button
             onClick={handleExportPdf}
-            className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-1 transition-all"
+            className="bg-[var(--loss)] hover:bg-[var(--loss)]/80 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-1 transition-all"
           >
             📄 گزارش PDF
           </button>
@@ -424,7 +424,7 @@ const [payouts, setPayouts] = useState<any>(null);
                   ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
               }`}
-              style={rangeKey === f.key ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+              style={rangeKey === f.key ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
             >
               {f.icon} {f.label}
             </button>
@@ -455,7 +455,7 @@ const [payouts, setPayouts] = useState<any>(null);
               key={value}
               onClick={() => setCurrency(value)}
               className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${currency === value ? 'text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'}`}
-              style={currency === value ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+              style={currency === value ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
             >
               {value}
             </button>
@@ -573,7 +573,7 @@ const [payouts, setPayouts] = useState<any>(null);
                   { label: 'شخصی', value: Math.abs(yesterday.by_source?.personal?.pnl ?? 0) },
                   { label: 'شبیه‌سازی', value: Math.abs(yesterday.by_source?.simulation?.pnl ?? 0) },
                 ]}
-                colors={['#3F7CFF', '#7959D6', '#13AE81']}
+                colors={['var(--accent)', 'var(--purple)', 'var(--profit)']}
                 height={120}
                 currency={currency}
               />
@@ -639,7 +639,7 @@ const [payouts, setPayouts] = useState<any>(null);
                   onClick={handleQuickBackup}
                   disabled={backupBusy}
                   className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
+                  style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
                 >
                   {backupBusy ? '⏳ …' : '➕ ساخت Backup'}
                 </button>
@@ -800,7 +800,7 @@ const [payouts, setPayouts] = useState<any>(null);
               { label: 'بزرگترین ضرر', value: summary.largest_loss ?? 0 },
               { label: 'حداکثر افت', value: summary.max_dd ?? 0 },
             ]}
-            colors={['#E45D72', '#F0A6B2']}
+            colors={['var(--loss)', 'var(--loss-border)']}
             currency={currency}
           />}
         />
@@ -816,7 +816,7 @@ const [payouts, setPayouts] = useState<any>(null);
               { label: 'سود ناخالص', value: summary.gross_profit ?? 0 },
               { label: 'زیان ناخالص', value: summary.gross_loss ?? 0 },
             ]}
-            colors={['#13AE81', '#E45D72']}
+            colors={['var(--profit)', 'var(--loss)']}
             currency={currency}
           />}
         />
@@ -1019,7 +1019,7 @@ const [payouts, setPayouts] = useState<any>(null);
                       <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} معامله`, 'تعداد']} />
                       <Bar dataKey="count" radius={[6, 6, 0, 0]}>
                         {risk.r_multiple_distribution.map((_: any, i: number) => (
-                          <Cell key={i} fill={i < 3 ? '#E45D72' : i === 3 ? '#9AA8BF' : '#13AE81'} />
+                          <Cell key={i} fill={i < 3 ? 'var(--loss)' : i === 3 ? 'var(--text-muted)' : 'var(--profit)'} />
                         ))}
                       </Bar>
                     </BarChart>
@@ -1035,15 +1035,15 @@ const [payouts, setPayouts] = useState<any>(null);
                     <AreaChart data={risk.drawdown_curve} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
                       <defs>
                         <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#E45D72" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="#E45D72" stopOpacity={0} />
+                          <stop offset="5%" stopColor="var(--loss)" stopOpacity={0.35} />
+                          <stop offset="95%" stopColor="var(--loss)" stopOpacity={0} />
                         </linearGradient>
                       </defs>
                       <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
                       <XAxis dataKey="index" stroke="var(--text-secondary)" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
                       <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
                       <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} ${currency} `, 'افت']} labelFormatter={(l: any) => `معامله #${l}`} />
-                      <Area type="monotone" dataKey="drawdown" stroke="#E45D72" strokeWidth={2} fill="url(#ddGradient)" />
+                      <Area type="monotone" dataKey="drawdown" stroke="var(--loss)" strokeWidth={2} fill="url(#ddGradient)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 ) : (
@@ -1084,8 +1084,8 @@ const [payouts, setPayouts] = useState<any>(null);
               <BarChart data={finance.cashflow.slice(-6)}>
                 <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
                 <Tooltip contentStyle={MINI_TOOLTIP} />
-                <Bar dataKey="income" fill="#13AE81" radius={[4, 4, 0, 0]} name="درآمد" />
-                <Bar dataKey="expense" fill="#E45D72" radius={[4, 4, 0, 0]} name="هزینه" />
+                <Bar dataKey="income" fill="var(--profit)" radius={[4, 4, 0, 0]} name="درآمد" />
+                <Bar dataKey="expense" fill="var(--loss)" radius={[4, 4, 0, 0]} name="هزینه" />
               </BarChart>
             </ResponsiveContainer>
           ) : (

@@ -7,7 +7,7 @@ interface SkeletonProps {
 }
 
 export default function Skeleton({ className = '', variant = 'text', width, height, count = 1 }: SkeletonProps) {
-  const baseClass = 'bg-[#1E2F4D]/20 dark:bg-[#2A3F5E]/30 rounded animate-pulse';
+  const baseClass = 'bg-[var(--bg-sidebar)]/20 rounded animate-pulse';
   const variants: Record<string, string> = {
     text: 'h-4 w-full rounded',
     card: 'h-32 w-full rounded-[22px]',
@@ -34,7 +34,7 @@ export function DashboardSkeleton() {
       <Skeleton variant="text" className="w-48 h-6" />
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
         {Array.from({ length: 4 }, (_, i) => (
-          <div key={i} className="bg-white dark:bg-[#152238] border border-[#E5EBF3] dark:border-[#2A3F5E] rounded-[22px] p-5">
+          <div key={i} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
             <Skeleton variant="text" className="w-24 h-4 mb-3" />
             <Skeleton variant="text" className="w-32 h-8 mb-2" />
             <Skeleton variant="text" className="w-16 h-3" />
@@ -73,7 +73,7 @@ export function CalendarSkeleton() {
       <Skeleton variant="text" className="w-48 h-6" />
       <div className="flex gap-6">
         <div className="flex-1">
-          <div className="bg-[#1E2F4D]/10 dark:bg-[#2A3F5E]/20 rounded-[22px] p-6">
+          <div className="bg-[var(--bg-card)]/50 rounded-[22px] p-6">
             <div className="grid grid-cols-7 gap-2 mb-2">
               {Array.from({ length: 7 }, (_, i) => <Skeleton key={i} variant="text" className="h-4" />)}
             </div>

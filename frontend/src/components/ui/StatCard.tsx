@@ -14,43 +14,43 @@ interface StatCardProps {
 
 const COLOR_CONFIG = {
   profit: {
-    value: 'text-[#13AE81]',
-    icon: 'bg-[#E5F8F1] shadow-[0_4px_12px_rgba(19,174,129,0.15)]',
-    bar: 'bg-gradient-to-b from-[#13AE81] to-[#4DD9A9]',
-    top: 'from-[#13AE81] to-[#4DD9A9]',
-    glow: 'rgba(19,174,129,0.08)',
+    value: 'text-[var(--profit)]',
+    icon: 'bg-[var(--profit-soft)]',
+    bar: 'bg-gradient-to-b from-[var(--profit)] to-[var(--profit-border)]',
+    top: 'from-[var(--profit)] to-[var(--profit-border)]',
+    glow: 'var(--profit)',
     hoverShadow: '0 20px 40px rgba(19,174,129,0.15), 0 8px 16px rgba(25,50,85,0.08)',
   },
   loss: {
-    value: 'text-[#E45D72]',
-    icon: 'bg-[#FFEDF0] shadow-[0_4px_12px_rgba(228,93,114,0.15)]',
-    bar: 'bg-gradient-to-b from-[#E45D72] to-[#F0A6B2]',
-    top: 'from-[#E45D72] to-[#F0A6B2]',
-    glow: 'rgba(228,93,114,0.08)',
+    value: 'text-[var(--loss)]',
+    icon: 'bg-[var(--loss-soft)]',
+    bar: 'bg-gradient-to-b from-[var(--loss)] to-[var(--loss-border)]',
+    top: 'from-[var(--loss)] to-[var(--loss-border)]',
+    glow: 'var(--loss)',
     hoverShadow: '0 20px 40px rgba(228,93,114,0.15), 0 8px 16px rgba(25,50,85,0.08)',
   },
   accent: {
-    value: 'text-[#1A2B47]',
-    icon: 'bg-[#EDF3FF] shadow-[0_4px_12px_rgba(63,124,255,0.12)]',
-    bar: 'bg-gradient-to-b from-[#3F7CFF] to-[#5B8DEF]',
-    top: 'from-[#3F7CFF] to-[#7959D6]',
-    glow: 'rgba(63,124,255,0.08)',
+    value: 'text-[var(--text-primary)]',
+    icon: 'bg-[var(--accent-soft)]',
+    bar: 'bg-gradient-to-b from-[var(--accent)] to-[var(--accent-strong)]',
+    top: 'from-[var(--accent)] to-[var(--accent-strong)]',
+    glow: 'var(--accent)',
     hoverShadow: '0 20px 40px rgba(63,124,255,0.15), 0 8px 16px rgba(25,50,85,0.08)',
   },
   purple: {
-    value: 'text-[#7959D6]',
-    icon: 'bg-[#F1ECFF] shadow-[0_4px_12px_rgba(121,89,214,0.15)]',
-    bar: 'bg-gradient-to-b from-[#7959D6] to-[#A78BFA]',
-    top: 'from-[#7959D6] to-[#A78BFA]',
-    glow: 'rgba(121,89,214,0.08)',
+    value: 'text-[var(--purple)]',
+    icon: 'bg-[var(--purple-soft)]',
+    bar: 'bg-gradient-to-b from-[var(--purple)] to-[var(--purple-border)]',
+    top: 'from-[var(--purple)] to-[var(--purple-border)]',
+    glow: 'var(--purple)',
     hoverShadow: '0 20px 40px rgba(121,89,214,0.15), 0 8px 16px rgba(25,50,85,0.08)',
   },
   warning: {
-    value: 'text-[#D99B25]',
-    icon: 'bg-[#FFF5DB] shadow-[0_4px_12px_rgba(217,155,37,0.15)]',
-    bar: 'bg-gradient-to-b from-[#D99B25] to-[#F0BE5C]',
-    top: 'from-[#D99B25] to-[#F0BE5C]',
-    glow: 'rgba(217,155,37,0.08)',
+    value: 'text-[var(--warning)]',
+    icon: 'bg-[var(--warning-soft)]',
+    bar: 'bg-gradient-to-b from-[var(--warning)] to-[var(--warning-border)]',
+    top: 'from-[var(--warning)] to-[var(--warning-border)]',
+    glow: 'var(--warning)',
     hoverShadow: '0 20px 40px rgba(217,155,37,0.15), 0 8px 16px rgba(25,50,85,0.08)',
   },
 };
@@ -78,16 +78,16 @@ export default function StatCard({
 
   const changeBadgeClass =
     changeType === 'up'
-      ? 'bg-[#E5F8F1] text-[#13AE81]'
+      ? 'bg-[var(--profit-soft)] text-[var(--profit)]'
       : changeType === 'down'
-        ? 'bg-[#FFEDF0] text-[#E45D72]'
-        : 'bg-[#F1F4F9] text-[#6B7A94]';
+        ? 'bg-[var(--loss-soft)] text-[var(--loss)]'
+        : 'bg-[var(--bg-elevated)] text-[var(--text-secondary)]';
 
   const changeArrow = changeType === 'up' ? '▲' : changeType === 'down' ? '▼' : '–';
 
   return (
     <div
-      className="group bg-white border border-[#E5EBF3] rounded-[22px] p-5 relative overflow-hidden cursor-pointer transition-all duration-300 shadow-md hover:-translate-y-1.5 hover:border-[#A9C1FA]"
+      className="group bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 relative overflow-hidden cursor-pointer transition-all duration-300 shadow-md hover:-translate-y-1.5 hover:border-[var(--border-accent)]"
       onMouseEnter={(e) => { e.currentTarget.style.boxShadow = cfg.hoverShadow; }}
       onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ''; }}
     >
@@ -109,7 +109,7 @@ export default function StatCard({
         )}
       </div>
 
-      <div className="text-xs text-[#6B7A94] mb-1.5 font-medium relative">{label}</div>
+      <div className="text-xs text-[var(--text-secondary)] mb-1.5 font-medium relative">{label}</div>
       <div className={`text-[30px] font-extrabold tracking-tight leading-tight ${cfg.value} relative`}>
         {value}
       </div>

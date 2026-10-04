@@ -26,12 +26,12 @@ export function applyTheme(theme: Theme, notify = true): void {
   if (notify) window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: theme }));
 }
 
-/** theme اولیه: localStorage → system preference → light. */
+/** theme اولیه: localStorage → system preference → dark (فاز ۱۰-الف: پیش‌فرض تاریک). */
 export function resolveInitialTheme(): Theme {
   const stored = readStoredTheme();
   if (stored) return stored;
   if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     return 'dark';
   }
-  return 'light';
+  return 'dark';
 }

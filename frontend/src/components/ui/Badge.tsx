@@ -5,10 +5,10 @@ interface BadgeProps {
 
 export default function Badge({ children, variant = 'success' }: BadgeProps) {
   const variants = {
-    success: 'bg-[#E5F8F1] text-[#13AE81]',
-    danger: 'bg-[#FFEDF0] text-[#E45D72]',
-    info: 'bg-[#EDF3FF] text-[#3F7CFF]',
-    warning: 'bg-[#FFF5DB] text-[#D99B25]',
+    success: 'bg-[var(--profit-soft)] text-[var(--profit)]',
+    danger: 'bg-[var(--loss-soft)] text-[var(--loss)]',
+    info: 'bg-[var(--accent-soft)] text-[var(--accent)]',
+    warning: 'bg-[var(--warning-soft)] text-[var(--warning)]',
   };
 
   return (
