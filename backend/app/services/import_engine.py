@@ -32,7 +32,7 @@ from ..models.imports import (
     ImportSourceFormat,
     ImportStatus,
 )
-from ..models.prop import PropStage, StageType
+from ..models.prop import PropStage, StageStatus, StageType
 from ..models.strategy import SymbolMapping, StrategyVersion, TestType, Trade, TradeSource
 from ..models.trading import PersonalTradingAccount
 from ..utils.import_identity import build_identity_hash, compute_trade_hash, normalize_utc
@@ -806,6 +806,10 @@ def sync_prop_stage_profit(db: Session, prop_stage_id: int) -> None:
 
     stage = db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
     if not stage:
+        return
+
+    # فاز ۵: فقط مراحل فعال به‌روزرسانی می‌شوند (تاریخچهٔ مراحل پاس‌شده فریز می‌ماند)
+    if stage.status != StageStatus.ACTIVE:
         return
 
     trades = db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()

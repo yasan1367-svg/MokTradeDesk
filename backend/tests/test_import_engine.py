@@ -20,7 +20,7 @@ from app.models.imports import (
     ImportRowStatus,
     ImportStatus,
 )
-from app.models.prop import PropAccount, PropFirm, PropStage, StageType
+from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
 from app.models.strategy import Strategy, StrategyVersion, Trade, TestType
 from app.models.trading import Broker, PersonalTradingAccount
 from app.services.import_engine import ImportEngine, normalize_test_type
@@ -576,3 +576,53 @@ def test_legacy_soft4x_real_prop_updates_stage(client, db_session):
 
 
 
+def test_sync_prop_stage_profit_skips_non_active_stages(client, db_session):
+    """فاز ۵: sync_prop_stage_profit نباید `current_profit` مراحل غیرفعال را تغییر دهد."""
+    version = _version(db_session)
+    stage = _stage(db_session)  # stage_1, ACTIVE
+
+    # ایمپورت اول به stage فعال → current_profit به‌روزرسانی شود
+    preview = _preview_soft4x(
+        client, test_type="real_prop", version_id=version.id, prop_stage_id=stage.id
+    ).json()
+    assert _commit(client, preview["batch_id"]).status_code == 200
+    db_session.expire_all()
+    profit_after_first_import = db_session.query(PropStage).one().current_profit
+
+    # اکنون مرحله را PASSED کنیم
+    stage.status = StageStatus.PASSED
+    db_session.commit()
+
+    # ایمپورت دوم به همان stage (اکنون PASSED) → current_profit نباید تغییر کند
+    preview2 = _preview_soft4x(
+        client, test_type="real_prop", version_id=version.id, prop_stage_id=stage.id
+    ).json()
+    assert _commit(client, preview2["batch_id"]).status_code == 200
+    db_session.expire_all()
+    profit_after_second_import = db_session.query(PropStage).one().current_profit
+
+    assert profit_after_second_import == profit_after_first_import, \
+        "current_profit نباید بعد از PASSED شدن تغییر کند"
+
+
+def test_sync_prop_stage_profit_still_updates_active(client, db_session):
+    """فاز ۵: sync_prop_stage_profit همچنان برای مراحل فعال کار می‌کند (نه skip)."""
+    from app.services.import_engine import sync_prop_stage_profit
+
+    version = _version(db_session)
+    stage = _stage(db_session)  # stage_1, ACTIVE
+
+    # ایمپورت اول
+    preview = _preview_soft4x(
+        client, test_type="real_prop", version_id=version.id, prop_stage_id=stage.id
+    ).json()
+    assert _commit(client, preview["batch_id"]).status_code == 200
+    db_session.expire_all()
+    profit_after_import = db_session.query(PropStage).one().current_profit
+    assert profit_after_import == 9.0  # net_pnl = 10 + (-1) + 0
+
+    # مرحله فعال بمانده — فراخوانی مستقیم sync_prop_stage_profit باید به‌روز کند
+    sync_prop_stage_profit(db_session, stage.id)
+    db_session.expire_all()
+    profit_after_sync = db_session.query(PropStage).one().current_profit
+    assert profit_after_sync == 9.0  # همان مقدار (تغییری در معاملات نکرده)
