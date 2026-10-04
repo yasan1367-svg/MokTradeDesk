@@ -57,6 +57,7 @@ class TradeUpdate(BaseModel):
     pnl: Optional[float] = None
     commission: Optional[float] = None
     swap: Optional[float] = None
+    initial_sl: Optional[float] = None
 
 
 def _parse_test_type(value: str) -> TestType:
@@ -80,6 +81,7 @@ class ManualTradeCreate(BaseModel):
     r_multiple: Optional[float] = None  # اگه خالی بمونه و SL وارد شده باشه، خودکار محاسبه می‌شه
     commission: Optional[float] = 0.0
     swap: Optional[float] = 0.0
+    initial_sl: Optional[float] = None
 
     # Classification
     test_type: str = "backtest"
@@ -91,13 +93,8 @@ class ManualTradeCreate(BaseModel):
 
 
 class BatchDeleteRequest(BaseModel):
-    """حذف گروهی معاملات (فاز ۲۵)
-
-    - trade_ids: لیست شناسه‌های معاملات
-    - hard: در حالت پیش‌فرض (False) حذف نرم است؛ اگر True باشد حذف کامل (فقط ادمین).
-    """
+    """حذف گروهی دائمی معاملات."""
     trade_ids: List[int]
-    hard: bool = False
 
 
 # ═════════════════════════════════════════════
@@ -204,6 +201,10 @@ def _serialize_trade_summary(t: Trade, screenshots_count: int) -> dict:
         "pnl": t.pnl,
         "commission": t.commission,
         "swap": t.swap,
+        "initial_sl": t.initial_sl,
+        "net_pnl": t.net_pnl,
+        "is_win": t.is_win,
+        "is_loss": t.is_loss,
         "source": t.source.value if t.source else None,
         "test_type": t.test_type.value if t.test_type else None,
         "note": t.note,
@@ -239,6 +240,11 @@ def _serialize_trade_detail(t: Trade, screenshots: List[Screenshot]) -> dict:
         "pnl": t.pnl,
         "commission": t.commission,
         "swap": t.swap,
+        "initial_sl": t.initial_sl,
+        "net_pnl": t.net_pnl,
+        "is_win": t.is_win,
+        "is_loss": t.is_loss,
+        "is_breakeven": t.is_breakeven,
         "r_multiple": t.r_multiple,
         "source": t.source.value if t.source else None,
         "test_type": t.test_type.value if t.test_type else None,
@@ -290,9 +296,6 @@ def get_trades(
 ):
     """لیست معاملات با فیلترهای پیشرفته و صفحه‌بندی"""
     query = db.query(Trade)
-
-    # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در لیست نمایش داده نمی‌شوند
-    query = query.filter(Trade.is_deleted == False)
 
     if currency is not None:
         query = (
@@ -405,7 +408,7 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
             joinedload(Trade.version).joinedload(StrategyVersion.strategy),
             joinedload(Trade.personal_trading_account),
         )
-        .filter(Trade.id == trade_id, Trade.is_deleted == False)
+        .filter(Trade.id == trade_id)
         .first()
     )
     if not trade:
@@ -425,10 +428,7 @@ def get_trade(trade_id: int, db: Session = Depends(get_db)):
 @router.patch("/{trade_id}")
 def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)):
     """ویرایش کنترل‌شده‌ی معامله (Classification + Execution + note)"""
-    # فاز ۲۵: معامله‌ی حذف‌شده قابل ویرایش نیست
-    trade = db.query(Trade).filter(
-        Trade.id == trade_id, Trade.is_deleted == False
-    ).first()
+    trade = db.query(Trade).filter(Trade.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
@@ -509,7 +509,7 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
 
     for field in (
         "note", "symbol", "open_price", "close_price", "size", "sl", "tp",
-        "pnl", "commission", "swap",
+        "pnl", "commission", "swap", "initial_sl",
     ):
         if field in payload:
             setattr(trade, field, payload[field])
@@ -521,13 +521,20 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         trade.close_time = new_close_time
 
     # ✅ محاسبه‌ی مجدد R-Multiple اگه SL/قیمت‌ها تغییر کرده
+    warnings = []
     if any(field in payload for field in ("sl", "open_price", "close_price", "direction")):
+        effective_sl = trade.initial_sl if trade.initial_sl is not None else trade.sl
         trade.r_multiple = calculate_r_multiple(
             trade.direction,
             trade.open_price,
             trade.close_price,
-            trade.sl,
+            effective_sl,
         )
+        # هشدار: اگه قیمت ورود یا جهت تغییر کرده و initial_sl هم‌راستا ارسال نشده
+        if "initial_sl" not in payload and any(
+            field in payload for field in ("open_price", "direction")
+        ):
+            warnings.append("initial_sl_may_be_stale")
 
     # فاز ۴۰.۵: تغییرات باید persist شوند.
     # پیش‌تر `db.commit()` گم شده بود و `db.refresh()` زیر، تغییرات commit‌نشده را
@@ -540,107 +547,88 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         from ..services.finance_sync_service import FinanceSyncService
         FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
 
-    return {"message": "معامله به‌روزرسانی شد"}
+    return {"message": "معامله به‌روزرسانی شد", "warnings": warnings}
 
 
 # ═════════════════════════════════════════════
-# Delete Trade (soft delete — Phase 25)
+# Permanent Trade Delete
 # ═════════════════════════════════════════════
 def _hard_delete_trade(db: Session, trade: Trade) -> None:
-    """حذف کامل معامله + اسکرین‌شات‌ها (فقط برای ادمین).
+    """حذف دائمی معامله، هویت‌های import و screenshotهای مرتبط.
 
-    این تابع فایل‌های فیزیکی اسکرین‌شات را هم پاک می‌کند و بازگشت‌پذیر نیست.
+    Screenshot.entity_id ارجاع چندریختی و بدون FK به trades است، پس ردیف‌ها و
+    فایل‌ها باید صریحاً حذف شوند. حذف ORM معامله نیز reviews و import identities
+    را با cascade="all, delete-orphan" پاک می‌کند. تراکنش‌های مالی تاریخی لینک
+    nullable را از دست می‌دهند تا FK مانع حذف معامله نشود.
     """
-    screenshots = db.query(Screenshot).filter(
-        Screenshot.entity_type == "trade",
-        Screenshot.entity_id == trade.id,
-    ).all()
-    for s in screenshots:
-        if s.file_path and os.path.exists(s.file_path):
+    review_ids = [review.id for review in trade.reviews]
+    screenshot_query = db.query(Screenshot).filter(
+        or_(
+            and_(Screenshot.entity_type == "trade", Screenshot.entity_id == trade.id),
+            Screenshot.review_id.in_(review_ids) if review_ids else False,
+        )
+    )
+    screenshots = screenshot_query.all()
+    for screenshot in screenshots:
+        if screenshot.file_path and os.path.exists(screenshot.file_path):
             try:
-                os.remove(s.file_path)
-            except Exception:
+                os.remove(screenshot.file_path)
+            except OSError:
+                # DB row cleanup remains mandatory even if an external file was
+                # already removed or the filesystem refuses unlink.
                 pass
-        db.delete(s)
+        db.delete(screenshot)
 
+    # This nullable historical FK is not configured for ON DELETE SET NULL.
+    from ..models.finance import FinancialTransaction
+    db.query(FinancialTransaction).filter(
+        FinancialTransaction.related_trade_id == trade.id
+    ).update({FinancialTransaction.related_trade_id: None}, synchronize_session=False)
+
+    # Remove duplicate identity explicitly, in addition to ORM delete-orphan,
+    # before deleting its referenced Trade rows.
+    from ..models.imports import ImportIdentity
+    db.query(ImportIdentity).filter(ImportIdentity.trade_id == trade.id).delete(
+        synchronize_session=False
+    )
     db.delete(trade)
 
 
 @router.delete("/{trade_id}")
-def delete_trade(
-    trade_id: int,
-    hard: bool = False,
-    db: Session = Depends(get_db),
-):
-    """حذف معامله (همه‌ی منابع) — پیش‌فرض: Soft Delete.
-
-    فاز ۲۵:
-    - محدودیت `source == manual` برداشته شد؛ همه‌ی معاملات قابل حذف‌اند.
-    - پیش‌فرض حذف نرم است (`is_deleted = True`) و داده حفظ می‌شود.
-    - با `?hard=true` حذف کامل (بازگشت‌ناپذیر) انجام می‌شود — فقط ادمین.
-    """
+def delete_trade(trade_id: int, db: Session = Depends(get_db)):
+    """حذف دائمی معامله و داده‌های وابسته‌ی آن."""
     trade = db.query(Trade).filter(Trade.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
-    if hard:
-        _hard_delete_trade(db, trade)
-        db.commit()
-        return {"message": "معامله برای همیشه حذف شد", "hard": True, "count": 1}
-
-    # ── Soft Delete ──
-    if trade.is_deleted:
-        # قبلاً حذف شده؛ پاسخ idempotent
-        return {"message": "این معامله قبلاً حذف شده بود", "hard": False, "count": 0}
-
-    trade.is_deleted = True
+    _hard_delete_trade(db, trade)
     db.commit()
-    return {"message": "معامله حذف شد", "hard": False, "count": 1}
+    return {"message": "معامله برای همیشه حذف شد", "count": 1}
 
 
 # ═════════════════════════════════════════════
-# Batch Delete Trades (Phase 25)
+# Batch Permanent Trade Delete
 # ═════════════════════════════════════════════
 @router.post("/batch-delete")
 def batch_delete_trades(data: BatchDeleteRequest, db: Session = Depends(get_db)):
-    """حذف گروهی معاملات — پیش‌فرض: Soft Delete.
-
-    - همه‌ی `trade_ids` بدون توجه به `source` قابل حذف‌اند.
-    - با `hard=true` حذف کامل انجام می‌شود (بازگشت‌ناپذیر).
-    - شناسه‌های ناموجود یا قبلاً حذف‌شده در پاسخ با `skipped` گزارش می‌شوند.
-    """
+    """حذف دائمی گروهی معاملات؛ شناسه‌های ناموجود در `skipped` گزارش می‌شوند."""
     if not data.trade_ids:
         raise HTTPException(status_code=400, detail="لیست معاملات خالی است")
 
-    # حفظ ترتیب و حذف تکراری‌ها
     unique_ids = list(dict.fromkeys(data.trade_ids))
+    trades = db.query(Trade).filter(Trade.id.in_(unique_ids)).all()
+    found_ids = {trade.id for trade in trades}
+    skipped = [trade_id for trade_id in unique_ids if trade_id not in found_ids]
 
-    trades = (
-        db.query(Trade)
-        .filter(Trade.id.in_(unique_ids))
-        .all()
-    )
-    found_ids = {t.id for t in trades}
-    skipped = [tid for tid in unique_ids if tid not in found_ids]
-
-    deleted_count = 0
     for trade in trades:
-        if data.hard:
-            _hard_delete_trade(db, trade)
-            deleted_count += 1
-        else:
-            if trade.is_deleted:
-                skipped.append(trade.id)
-            else:
-                trade.is_deleted = True
-                deleted_count += 1
+        _hard_delete_trade(db, trade)
 
     db.commit()
+    deleted_count = len(trades)
     return {
-        "message": f"{deleted_count} معامله حذف شد",
+        "message": f"{deleted_count} معامله برای همیشه حذف شد",
         "deleted": deleted_count,
         "skipped": skipped,
-        "hard": data.hard,
     }
 
 
@@ -696,9 +684,11 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
 
+    initial_sl = data.initial_sl if data.initial_sl is not None else data.sl
+
     r_multiple = data.r_multiple
     if r_multiple is None:
-        r_multiple = calculate_r_multiple(direction, data.open_price, data.close_price, data.sl)
+        r_multiple = calculate_r_multiple(direction, data.open_price, data.close_price, data.sl, initial_sl)
 
     trade = Trade(
         symbol=data.symbol,
@@ -709,6 +699,7 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         close_price=data.close_price,
         size=data.size,
         sl=data.sl,
+        initial_sl=initial_sl,
         tp=data.tp,
         pnl=data.pnl,
         r_multiple=r_multiple,
@@ -746,10 +737,7 @@ async def upload_screenshot(
     db: Session = Depends(get_db),
 ):
     """آپلود اسکرین‌شات برای معامله"""
-    # فاز ۲۵: برای معامله‌ی حذف‌شده نمی‌توان اسکرین‌شات آپلود کرد
-    trade = db.query(Trade).filter(
-        Trade.id == trade_id, Trade.is_deleted == False
-    ).first()
+    trade = db.query(Trade).filter(Trade.id == trade_id).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 

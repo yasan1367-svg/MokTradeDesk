@@ -441,7 +441,7 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     from ..models.strategy import Trade
     # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در محاسبه‌ی موجودی نهایی لحاظ نمی‌شوند
     trades = db.query(Trade).filter(
-        Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+        Trade.prop_stage_id == stage_id
     ).all()
     total_pnl = sum(metrics.net_pnl(t) for t in trades)
     final_balance = (stage.initial_balance or 0) + total_pnl
@@ -545,7 +545,7 @@ def get_stage_trades(stage_id: int, db: Session = Depends(get_db)):
     from ..models.strategy import Trade
     # فاز ۲۵: معاملات حذف‌شده نمایش داده نمی‌شوند
     trades = db.query(Trade).filter(
-        Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+        Trade.prop_stage_id == stage_id
     ).all()
     return [
         {

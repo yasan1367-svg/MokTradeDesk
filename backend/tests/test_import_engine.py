@@ -377,7 +377,7 @@ def test_import_never_creates_financial_account(client, db_session):
 
     # سود مرحله‌ی پراپ هم پس از import به‌روزرسانی شده است
     db_session.expire_all()
-    assert db_session.query(PropStage).one().current_profit == 10.0
+    assert db_session.query(PropStage).one().current_profit == 9.0
 
 
 # ═════════════════════════════════════════════
@@ -571,7 +571,7 @@ def test_legacy_soft4x_real_prop_updates_stage(client, db_session):
     db_session.expire_all()
     trade = db_session.query(Trade).one()
     assert trade.test_type == TestType.REAL_PROP
-    assert db_session.query(PropStage).one().current_profit == 40.0
+    assert db_session.query(PropStage).one().current_profit == 39.0  # net_pnl = pnl(40) + commission(-1) + swap(0)
 
 
 

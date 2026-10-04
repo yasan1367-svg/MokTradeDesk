@@ -41,7 +41,7 @@ def _target_label(test_type, prop_stage_id, personal_trading_account_id) -> str:
         return "حساب شخصی"
     return "استراتژی"
 def _legacy_response(result: dict, raw_rows: list, target_label: str = "") -> dict:
-    """پاسخ سازگار با UI فاز قبل (+ batch_id و شمارنده‌های فاز ۳۰/۳۱)."""
+    """پاسخ سازگار با UI فعلی (+ batch_id و شمارنده‌های Import)."""
     imported = result.get("imported", 0)
     duplicates = result.get("duplicate", 0)
     counts = result.get("counts", {})

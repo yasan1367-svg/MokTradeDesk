@@ -252,70 +252,115 @@ def test_manual_trade_backtest_rejects_personal_account(client, db_session):
 
 
 # ═════════════════════════════════════════════
-# Phase 25 — Soft Delete + Batch Delete
+# Permanent Delete + Batch Delete
 # ═════════════════════════════════════════════
-def test_soft_delete_mt4_trade(client, db_session):
-    """معامله‌ی MT4 (که قبلاً غیرقابل‌حذف بود) اکنون Soft Delete می‌شود."""
+def test_normal_delete_permanently_removes_trade(client, db_session):
+    """DELETE عادی باید معامله را از DB و GET حذف کند."""
     t = _mk_trade(db_session, source=TradeSource.MT4_IMPORT)
+    trade_id = t.id
 
-    r = client.delete(f"/api/trades/{t.id}")
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["hard"] is False
-    assert body["count"] == 1
+    response = client.delete(f"/api/trades/{trade_id}")
+    assert response.status_code == 200, response.text
+    assert response.json()["count"] == 1
 
-    # داده در دیتابیس باقی می‌ماند ولی is_deleted=True
-    db_session.refresh(t)
-    assert t.is_deleted is True
-
-    # از لیست و جزئیات پنهان می‌شود
-    listing = client.get("/api/trades/").json()
-    assert all(x["id"] != t.id for x in listing["trades"])
-    assert client.get(f"/api/trades/{t.id}").status_code == 404
+    db_session.expire_all()
+    assert db_session.get(Trade, trade_id) is None
+    assert client.get(f"/api/trades/{trade_id}").status_code == 404
+    assert client.get("/api/trades/").json()["total"] == 0
 
 
-def test_soft_delete_soft4x_trade(client, db_session):
-    """معامله‌ی Soft4X اکنون Soft Delete می‌شود."""
-    t = _mk_trade(db_session, source=TradeSource.SOFT4X_IMPORT, symbol="DJIUSD")
+def test_delete_removes_import_identity_and_allows_reimport(client, db_session):
+    """DELETE عادی Identity را هم حذف می‌کند؛ همان import دیگر duplicate نیست."""
+    from app.models.imports import ImportIdentity, ImportRowStatus
+    from tests.test_import_engine import _commit, _preview_mt4, _version
 
-    r = client.delete(f"/api/trades/{t.id}")
-    assert r.status_code == 200, r.text
-    assert r.json()["hard"] is False
+    version = _version(db_session)
+    preview = _preview_mt4(client, test_type="backtest", version_id=version.id).json()
+    _commit(client, preview["batch_id"])
+    trade = db_session.query(Trade).one()
+    trade_id = trade.id
+    assert db_session.query(ImportIdentity).count() == 1
 
-    db_session.refresh(t)
-    assert t.is_deleted is True
-    assert client.get(f"/api/trades/{t.id}").status_code == 404
+    response = client.delete(f"/api/trades/{trade_id}")
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.query(ImportIdentity).count() == 0
+
+    again = _preview_mt4(client, test_type="backtest", version_id=version.id).json()
+    assert again["counts"][ImportRowStatus.NEW.value] == 1
+    assert _commit(client, again["batch_id"]).json()["imported"] == 1
 
 
-def test_soft_delete_is_idempotent(client, db_session):
-    """حذف دوباره‌ی همان معامله خطا نمی‌دهد و count=0 است."""
-    t = _mk_trade(db_session, source=TradeSource.MT4_IMPORT)
-    assert client.delete(f"/api/trades/{t.id}").json()["count"] == 1
-    second = client.delete(f"/api/trades/{t.id}")
-    assert second.status_code == 200
-    assert second.json()["count"] == 0
+def test_delete_removes_trade_screenshot_rows_and_files(client, db_session, tmp_path):
+    """Screenshot ارجاع FK به trade ندارد؛ DELETE باید ردیف و فایل را صریحاً پاک کند."""
+    from app.models.personal import Screenshot
+
+    trade = _mk_trade(db_session, source=TradeSource.SOFT4X_IMPORT, symbol="DJIUSD")
+    image = tmp_path / "trade-shot.png"
+    image.write_bytes(b"screenshot")
+    db_session.add(Screenshot(
+        entity_type="trade", entity_id=trade.id, file_path=str(image),
+    ))
+    db_session.commit()
+    screenshot_id = db_session.query(Screenshot).one().id
+
+    response = client.delete(f"/api/trades/{trade.id}")
+    assert response.status_code == 200
+    db_session.expire_all()
+    assert db_session.get(Screenshot, screenshot_id) is None
+    assert not image.exists()
 
 
-def test_batch_delete_soft(client, db_session):
-    """حذف گروهی معاملات با منابع مختلف → همه Soft Delete می‌شوند."""
+def test_delete_cleans_review_screenshots_and_financial_trade_reference(client, db_session, tmp_path):
+    """حذف review وابسته و تصاویرش بدون FK cascade مستقیم، و null کردن FK مالی nullable."""
+    from app.models.finance import AccountType, FinancialAccount, FinancialTransaction, Currency, TransactionType
+    from app.models.personal import JournalReview, Screenshot
+
+    trade = _mk_trade(db_session)
+    review = JournalReview(trade_id=trade.id, notes="review")
+    db_session.add(review)
+    db_session.flush()
+    image = tmp_path / "review-shot.png"
+    image.write_bytes(b"review screenshot")
+    shot = Screenshot(
+        entity_type="review", entity_id=review.id, review_id=review.id,
+        file_path=str(image),
+    )
+    db_session.add(shot)
+
+    account = FinancialAccount(name="Delete test account", type=AccountType.BANK, currency=Currency.USD)
+    db_session.add(account)
+    db_session.flush()
+    tx = FinancialTransaction(
+        account_id=account.id, amount=1.0, currency=Currency.USD,
+        type=TransactionType.ADJUSTMENT, related_trade_id=trade.id,
+    )
+    db_session.add(tx)
+    db_session.commit()
+    review_id, shot_id, tx_id, trade_id = review.id, shot.id, tx.id, trade.id
+
+    response = client.delete(f"/api/trades/{trade_id}")
+    assert response.status_code == 200, response.text
+    db_session.expire_all()
+    assert db_session.get(JournalReview, review_id) is None
+    assert db_session.get(Screenshot, shot_id) is None
+    assert not image.exists()
+    assert db_session.get(FinancialTransaction, tx_id).related_trade_id is None
+
+
+def test_batch_delete_permanently_removes_trades(client, db_session):
+    """حذف گروهی دائمی همه‌ی منابع معامله را حذف می‌کند."""
     a = _mk_trade(db_session, source=TradeSource.MT4_IMPORT, symbol="XAUUSD")
     b = _mk_trade(db_session, source=TradeSource.SOFT4X_IMPORT, symbol="DJIUSD")
     c = _mk_trade(db_session, source=TradeSource.MANUAL, symbol="XAUUSD")
+    ids = [a.id, b.id, c.id]
 
-    r = client.post(
-        "/api/trades/batch-delete",
-        json={"trade_ids": [a.id, b.id, c.id]},
-    )
-    assert r.status_code == 200, r.text
-    body = r.json()
-    assert body["deleted"] == 3
-    assert body["skipped"] == []
-    assert body["hard"] is False
-
-    for t in (a, b, c):
-        db_session.refresh(t)
-        assert t.is_deleted is True
-
+    response = client.post("/api/trades/batch-delete", json={"trade_ids": ids})
+    assert response.status_code == 200, response.text
+    assert response.json()["deleted"] == 3
+    assert response.json()["skipped"] == []
+    db_session.expire_all()
+    assert db_session.query(Trade).count() == 0
     assert client.get("/api/trades/").json()["total"] == 0
 
 
@@ -338,18 +383,15 @@ def test_batch_delete_empty_list_rejected(client):
 
 
 def test_hard_delete_trade(client, db_session):
-    """حذف کامل (hard=true) رکورد را از دیتابیس پاک می‌کند."""
+    """Compatibility: optional old hard=true query still performs hard delete."""
     t = _mk_trade(db_session, source=TradeSource.MT4_IMPORT)
     tid = t.id
 
     r = client.delete(f"/api/trades/{tid}?hard=true")
     assert r.status_code == 200, r.text
-    assert r.json()["hard"] is True
 
     from sqlalchemy import select
-    remaining = db_session.execute(
-        select(Trade).where(Trade.id == tid)
-    ).first()
+    remaining = db_session.execute(select(Trade).where(Trade.id == tid)).first()
     assert remaining is None
 
 

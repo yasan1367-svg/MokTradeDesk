@@ -1338,8 +1338,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
         .filter(
             PS.stage_type == StageType.FUNDED_REAL,
             PropAccount.currency == currency,
-            Trade.pnl.isnot(None),
-            Trade.is_deleted == False,  # فاز ۲۵
+            Trade.pnl.isnot(None),  # فاز ۲۵
         )
         .one()
     )
@@ -1353,8 +1352,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
         .join(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
         .filter(
             PersonalTradingAccount.currency == currency,
-            Trade.pnl.isnot(None),
-            Trade.is_deleted == False,  # فاز ۲۵
+            Trade.pnl.isnot(None),  # فاز ۲۵
         )
         .one()
     )
@@ -1652,8 +1650,7 @@ def get_financial_calendar(db: Session = Depends(get_db)):
     )
 
     for t in db.query(Trade).filter(
-        Trade.close_time.isnot(None),
-        Trade.is_deleted == False,  # فاز ۲۵
+        Trade.close_time.isnot(None),  # فاز ۲۵
     ).all():
         d = _jalali_date_str(t.close_time)
         if not d:

@@ -14,32 +14,18 @@ from ..models.strategy import Trade, TestType
 
 
 def analysis_trades_filter() -> ColumnElement:
-    """شرط SQL: فقط معاملات غیر-REAL (یعنی BACKTEST و FORWARD) و حذف‌نشده.
+    """شرط SQL: فقط معاملات غیر-REAL (یعنی BACKTEST و FORWARD).
 
     نکته: ستون `test_type` در مدل `nullable` است. ردیف‌های قدیمی که مقدار NULL دارند
     به‌عنوان «غیر-REAL» در نظر گرفته می‌شوند تا ناخواسته از تحلیل حذف نشوند
     (حفظ رفتار قبلی برای داده‌های legacy).
 
     مقدار enum در دیتابیس به‌صورت NAME ذخیره می‌شود ('REAL') نه value ('real').
-
-    فاز ۲۵: معاملات حذف‌شده (Soft Delete) از تحلیل کنار گذاشته می‌شوند.
     """
-    return and_(
-        or_(
-            Trade.test_type.is_(None),
-            Trade.test_type.notin_([TestType.REAL_PERSONAL, TestType.REAL_PROP]),
-        ),
-        Trade.is_deleted == False,
+    return or_(
+        Trade.test_type.is_(None),
+        Trade.test_type.notin_([TestType.REAL_PERSONAL, TestType.REAL_PROP]),
     )
-
-
-def not_deleted_filter() -> ColumnElement:
-    """شرط SQL: فقط معاملات حذف‌نشده (Soft Delete — فاز ۲۵).
-
-    نقطه‌ی مرکزی تا فیلتر در کوئری‌های مستقیم `Trade` (پراپ/مالی/تحلیل/گزارش)
-    فراموش نشود. معادل `Trade.is_deleted == False`.
-    """
-    return Trade.is_deleted == False
 
 
 def version_scope_key(version_id: int, test_type=None) -> str:

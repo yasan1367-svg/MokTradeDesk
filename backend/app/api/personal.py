@@ -35,7 +35,7 @@ def create_review(data: JournalReviewCreate, db: Session = Depends(get_db)):
     """ثبت مرور معامله"""
     # فاز ۲۵: برای معامله‌ی حذف‌شده نمی‌توان مرور ثبت کرد
     trade = db.query(Trade).filter(
-        Trade.id == data.trade_id, Trade.is_deleted == False
+        Trade.id == data.trade_id
     ).first()
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
@@ -147,6 +147,7 @@ def get_reviews(db: Session = Depends(get_db)):
             "trade_id": r.trade_id,
             "trade_symbol": trade.symbol if trade else "نامشخص",
             "trade_pnl": trade.pnl if trade else 0,
+            "trade_net_pnl": trade.net_pnl if trade else 0,
             "setup_quality": r.setup_quality,
             "execution_quality": r.execution_quality,
             "rule_violations": r.rule_violations,

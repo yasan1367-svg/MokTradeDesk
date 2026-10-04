@@ -61,7 +61,7 @@ class PropRuleEngine:
 
         # فاز ۲۵: معاملات حذف‌شده در ارزیابی قوانین پراپ لحاظ نمی‌شوند
         trades = db.query(Trade).filter(
-            Trade.prop_stage_id == stage_id, Trade.is_deleted == False
+            Trade.prop_stage_id == stage_id
         ).all()
 
         return PropRuleEngine._evaluate_stage_with_trades(stage, trades)
@@ -82,7 +82,7 @@ class PropRuleEngine:
 
         grouped: Dict[int, List[Trade]] = {sid: [] for sid in ids}
         rows = db.query(Trade).filter(
-            Trade.prop_stage_id.in_(ids), Trade.is_deleted == False
+            Trade.prop_stage_id.in_(ids)
         ).all()
         for t in rows:
             grouped.setdefault(t.prop_stage_id, []).append(t)

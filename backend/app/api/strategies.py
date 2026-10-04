@@ -27,7 +27,7 @@ def _trades_count_by_version(db: Session, version_ids: List[int]) -> dict:
         return {}
     rows = (
         db.query(Trade.version_id, func.count(Trade.id))
-        .filter(Trade.version_id.in_(version_ids), Trade.is_deleted == False)
+        .filter(Trade.version_id.in_(version_ids))
         .group_by(Trade.version_id)
         .all()
     )
@@ -135,7 +135,6 @@ def _check_strategy_deletable(db: Session, strategy_id: int):
         .join(StrategyVersion, Trade.version_id == StrategyVersion.id)
         .filter(
             StrategyVersion.strategy_id == strategy_id,
-            Trade.is_deleted == False,
         )
         .count()
     )
@@ -287,7 +286,7 @@ def delete_version(version_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="نسخه پیدا نشد")
 
     trades_count = db.query(Trade).filter(
-        Trade.version_id == version_id, Trade.is_deleted == False
+        Trade.version_id == version_id
     ).count()
     if trades_count > 0:
         raise HTTPException(
@@ -348,7 +347,7 @@ def fork_version(version_id: int, body: Optional[ForkRequest] = None, db: Sessio
 @router.get("/versions/{version_id}/trades")
 def get_version_trades(version_id: int, db: Session = Depends(get_db)):
     trades = db.query(Trade).filter(
-        Trade.version_id == version_id, Trade.is_deleted == False
+        Trade.version_id == version_id
     ).all()
     return [
         {
@@ -365,6 +364,9 @@ def get_version_trades(version_id: int, db: Session = Depends(get_db)):
             "pnl": t.pnl,
             "commission": t.commission,
             "swap": t.swap,
+            "net_pnl": t.net_pnl,
+            "is_win": t.is_win,
+            "is_loss": t.is_loss,
             "r_multiple": t.r_multiple,
         }
         for t in trades
@@ -599,7 +601,6 @@ def get_strategy_live_performance(
             Trade.version_id.in_(version_rows),
             Trade.test_type.in_([TestType.REAL_PERSONAL, TestType.REAL_PROP]),
             Trade.close_time.isnot(None),
-            Trade.is_deleted == False,
         )
         query = filter_by_range(query, Trade.close_time, date_from, date_to)
         for version_id, test_type, count, total_net, wins, losses, gross_wins, gross_losses in (

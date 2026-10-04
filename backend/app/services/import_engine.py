@@ -33,7 +33,7 @@ from ..models.imports import (
     ImportStatus,
 )
 from ..models.prop import PropStage, StageType
-from ..models.strategy import StrategyVersion, TestType, Trade, TradeSource
+from ..models.strategy import SymbolMapping, StrategyVersion, TestType, Trade, TradeSource
 from ..models.trading import PersonalTradingAccount
 from ..utils.import_identity import build_identity_hash, compute_trade_hash, normalize_utc
 from ..utils.trade_metrics import calculate_r_multiple
@@ -338,9 +338,15 @@ def normalize_trade(raw: Dict[str, Any], ctx: ImportContext) -> Dict[str, Any]:
     commission = _to_float(raw.get("commission"))
     swap = _to_float(raw.get("swap"))
     r_multiple = _to_float(raw.get("r_multiple"))
+
+    # فاز ۴: استاپ اولیه — اولویت: raw.initial_sl > raw_data.initial_sl > sl
+    initial_sl = _to_float(raw.get("initial_sl"))
+    if initial_sl is None and isinstance(raw_data, dict):
+        initial_sl = _to_float(raw_data.get("initial_sl"))
+    if initial_sl is None:
+        initial_sl = sl
+
     if r_multiple is None:
-        # فاز ۵۳.۳: در نبود R آماده، استاپِ اولیه (اگر در raw_data باشد) مبنای ریسک است
-        initial_sl = _to_float(raw_data.get("initial_sl")) if isinstance(raw_data, dict) else None
         r_multiple = calculate_r_multiple(direction or "", open_price, close_price, sl, initial_sl)
 
     return {
@@ -355,6 +361,7 @@ def normalize_trade(raw: Dict[str, Any], ctx: ImportContext) -> Dict[str, Any]:
         "close_price": close_price,
         "size": size,
         "sl": sl,
+        "initial_sl": initial_sl,
         "tp": tp,
         "pnl": pnl,
         "r_multiple": r_multiple,
@@ -561,7 +568,13 @@ def build_context(
         **((profile.column_mapping or {}) if profile else {}),
         **(column_mapping or {}),
     }
+    # ── فاز ۶۰.۲: Symbol Mapping از دیتابیس (پایه) + پروفایل + درخواست ──
+    # لایه‌ها به ترتیب اولویت: ۱) درخواست کاربر  ۲) پروفایل  ۳) دیتابیس
+    db_mappings: Dict[str, str] = {}
+    for m in db.query(SymbolMapping).all():
+        db_mappings[m.original_symbol] = m.canonical_symbol
     merged_symbols = {
+        **db_mappings,
         **((profile.symbol_mapping or {}) if profile else {}),
         **(symbol_mapping or {}),
     }
@@ -656,17 +669,10 @@ def classify_duplicate(
     ctx: ImportContext,
     seen: Optional[Dict[str, int]] = None,
 ) -> Tuple[ImportRowStatus, Optional[str], Optional[int]]:
-    """تشخیص وضعیت تکرار یک ردیف: NEW / DUPLICATE / POSSIBLE_DUPLICATE.
+    """تشخیص تکرار با identity hash، legacy hash و بررسی شباهت احتمالی.
 
-    ترتیب بررسی:
-    ۱. تکرار در همان فایل (`seen`).
-    ۲. هویت کامل در `import_identities` ⇒ DUPLICATE (شامل حذف‌شده‌های نرم).
-    ۳. `trade_hash` قدیمی در `trades` ⇒ DUPLICATE (سازگاری با داده‌های legacy).
-    ۴. همان شماره‌ی سفارش در همان دامنه با مشخصات دیگر ⇒ POSSIBLE_DUPLICATE.
-    ۵. همان نماد + همان زمان ورود در همان دامنه ⇒ POSSIBLE_DUPLICATE.
-
-    Soft Delete: هیچ شرطی روی `is_deleted` گذاشته نمی‌شود تا معاملات حذف‌شده
-    هم در تشخیص تکرار دیده شوند (قانون فاز ۳۱).
+    هویت‌های معاملات موجود و رکوردهای فعال بررسی می‌شوند. پس از Hard Delete
+    هویت هم حذف می‌شود تا re-import همان منبع یک معامله‌ی تازه بسازد.
     """
     if seen and staged.identity_hash in seen:
         return (
@@ -682,20 +688,19 @@ def classify_duplicate(
     )
     if identity:
         trade = db.query(Trade).filter(Trade.id == identity.trade_id).first()
-        suffix = " — این معامله حذف نرم شده است" if trade is not None and trade.is_deleted else ""
-        return (
-            ImportRowStatus.DUPLICATE,
-            f"این معامله قبلاً وارد شده است (شناسه {identity.trade_id}){suffix}",
-            identity.trade_id,
-        )
+        if trade is not None:
+            return (
+                ImportRowStatus.DUPLICATE,
+                f"این معامله قبلاً وارد شده است (شناسه {identity.trade_id})",
+                identity.trade_id,
+            )
 
     if staged.trade_hash:
         legacy = db.query(Trade).filter(Trade.trade_hash == staged.trade_hash).first()
         if legacy:
-            suffix = " — این معامله حذف نرم شده است" if legacy.is_deleted else ""
             return (
                 ImportRowStatus.DUPLICATE,
-                f"معامله‌ی هم‌ارز قبلاً ثبت شده است (شناسه {legacy.id}){suffix}",
+                f"معامله‌ی هم‌ارز قبلاً ثبت شده است (شناسه {legacy.id})",
                 legacy.id,
             )
 
@@ -797,17 +802,14 @@ def serialize_batch(
 
 def sync_prop_stage_profit(db: Session, prop_stage_id: int) -> None:
     """به‌روزرسانی `current_profit` مرحله‌ی پراپ پس از ایمپورت (منطق متمرکز)."""
+    from . import metrics as m  # net_pnl
+
     stage = db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
     if not stage:
         return
 
-    # فاز ۲۵: معاملات حذف‌شده در محاسبه‌ی سود مرحله لحاظ نمی‌شوند
-    trades = (
-        db.query(Trade)
-        .filter(Trade.prop_stage_id == prop_stage_id, Trade.is_deleted == False)  # noqa: E712
-        .all()
-    )
-    total_pnl = sum(trade.pnl or 0 for trade in trades)
+    trades = db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
+    total_pnl = sum(m.net_pnl(trade) for trade in trades)  # فاز ۳: net_pnl = pnl + commission + swap
 
     if stage.stage_type == StageType.FUNDED_REAL:
         share = (stage.profit_share_percentage or 80.0) / 100.0
@@ -1085,21 +1087,6 @@ class ImportEngine:
 
     def _blocking_error(self, blocking: List[Dict[str, Any]]) -> ImportEngineError:
         invalid = [item for item in blocking if item["status"] == "invalid"]
-        if invalid:
-            first = invalid[0]
-            return ImportEngineError(
-                f"ذخیره انجام نشد: {len(invalid)} ردیف نامعتبر است و Import اتمیک است "
-                f"(هیچ رکوردی ذخیره نشد) — ردیف {first['row_number']}: {first['message']}",
-                400,
-                blocking,
-            )
-        first = blocking[0]
-        return ImportEngineError(
-            f"ذخیره انجام نشد: {len(blocking)} ردیف مشکوک به تکرار است "
-            f"(اولین مورد ردیف {first['row_number']}) — برای ادامه تأیید صریح لازم است",
-            409,
-            blocking,
-        )
         if invalid:
             first = invalid[0]
             return ImportEngineError(

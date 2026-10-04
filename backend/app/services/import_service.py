@@ -112,6 +112,7 @@ class Soft4XImporter:
                 "close_price": close_price,
                 "size": float(self._get_value(row, column("size", "Size"), 0) or 0),
                 "sl": sl,
+                "initial_sl": initial_sl,
                 "tp": self._to_float(self._get_value(row, column("tp", "TP"))),
                 "pnl": float(self._get_value(row, column("pnl", "P/L"), 0) or 0),
                 "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl, initial_sl),
@@ -200,17 +201,66 @@ class Soft4XImporter:
 # MT4 Importer
 # ═════════════════════════════════════════════
 class MT4Importer:
-    """واردکننده فایل‌های HTML متاتریدر (فقط بخش Positions)"""
+    """واردکننده فایل‌های HTML متاتریدر — Positions + Orders برای initial_sl."""
 
     def __init__(self, db: Session, test_type: str = "backtest"):
         self.db = db
         self.test_type = TestType(test_type)
+        self._order_sl_map: Dict[str, float] = {}
+
+    def _parse_orders(self, rows: list, start_idx: int, end_idx: int) -> Dict[str, float]:
+        """Build ticket -> order_sl map from Orders section.
+
+        Orders rows considered: with State == 'filled'.
+        Columns (0-based): 0=Time, 1=Position, 2=Symbol, 3=Type,
+                           4=Volume, 5=Price, 6=S/L, 7=T/P, 8=State, ...
+        """
+        order_map: Dict[str, float] = {}
+        for i in range(start_idx, end_idx):
+            row = rows[i]
+            cells = row.find_all('td')
+            visible = [c for c in cells if 'hidden' not in (c.get('class') or [])]
+            if len(visible) < 9:
+                continue
+            state = visible[8].get_text(strip=True).lower()
+            if state != "filled":
+                continue
+            position = visible[1].get_text(strip=True)
+            try:
+                order_sl = float(visible[6].get_text(strip=True).replace(',', ''))
+                order_map[position] = order_sl
+            except (ValueError, IndexError):
+                continue
+        return order_map
 
     def parse_html(self, html_content: str) -> List[Dict[str, Any]]:
         soup = BeautifulSoup(html_content, 'html.parser')
         trades = []
         rows = soup.find_all('tr')
 
+        section_markers = []
+        for idx, row in enumerate(rows):
+            row_text = row.get_text(strip=True)
+            if 'Positions' in row_text and row.find('th'):
+                section_markers.append(('positions', idx))
+                continue
+            if ('Orders' in row_text or 'Deals' in row_text) and row.find('th'):
+                section_markers.append(('orders', idx))
+                continue
+
+        # Parse Orders first (to build initial_sl map)
+        self._order_sl_map = {}
+        for i, (stype, sidx) in enumerate(section_markers):
+            if stype == 'orders':
+                start = sidx + 2  # skip header row
+                if i + 1 < len(section_markers):
+                    end = section_markers[i + 1][1]
+                else:
+                    end = len(rows)
+                self._order_sl_map = self._parse_orders(rows, start, end)
+                break
+
+        # Parse Positions
         in_positions_section = False
         header_skipped = False
 
@@ -275,6 +325,9 @@ class MT4Importer:
             else:
                 return None
 
+            # فاز ۴: استاپ اولیه از Orders (اگر یافت نشد -> fallback به SL Positions)
+            initial_sl = self._order_sl_map.get(position, sl)
+
             return {
                 "symbol": self._apply_symbol_mapping(symbol),
                 "test_type": self.test_type,
@@ -285,9 +338,10 @@ class MT4Importer:
                 "close_price": close_price,
                 "size": volume,
                 "sl": sl,
+                "initial_sl": initial_sl,
                 "tp": tp,
                 "pnl": profit,
-                "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl),
+                "r_multiple": calculate_r_multiple(direction, open_price, close_price, sl, initial_sl),
                 "commission": commission,
                 "swap": swap,
                 "entry_sequence": 1,

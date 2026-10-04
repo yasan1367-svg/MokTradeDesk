@@ -90,8 +90,6 @@ def _apply_scope(query, scope: str):
 
 def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Optional[Currency] = None):
     """اعمال فیلتر بازه + دامنه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳ / ۴۴.۱)"""
-    # فاز ۲۵: معاملات حذف‌شده (Soft Delete) همیشه کنار گذاشته می‌شوند
-    query = query.filter(Trade.is_deleted == False)
     query = _apply_scope(query, scope)
     if currency is not None:
         query = (
@@ -226,7 +224,6 @@ def _equity_trade(close_time, net):
         pnl=net,
         commission=0.0,
         swap=0.0,
-        is_deleted=False,
     )
 
 
@@ -395,9 +392,7 @@ def get_dashboard_data(
     now = datetime.now(timezone.utc)
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
     # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
-    opn = _apply_scope(
-        db.query(Trade).filter(Trade.is_deleted == False), sc
-    ).filter(Trade.close_time.is_(None)).count()
+    opn = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None)).count()
     # ── ۳) منحنی Equity و Drawdown با موتور دامنه‌ای ──
     daily_pnl = defaultdict(float)
     for point in equity_points:
@@ -637,7 +632,7 @@ def get_risk_metrics(
     # فاز ۱۵.۳: فقط ستون‌های لازم، به ترتیب id (معادل ترتیب قبلی .all())
     _net = _net_expr()
     _rows = (
-        _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None), Trade.is_deleted == False), sc)
+        _apply_scope(db.query(Trade).filter(Trade.close_time.isnot(None)), sc)
         .with_entities(
             Trade.close_time, _net.label("net"), Trade.r_multiple,
             Trade.personal_trading_account_id, Trade.prop_stage_id,
@@ -713,7 +708,7 @@ def get_risk_metrics(
     var_95_percent = var_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
     cvar_95_percent = cvar_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
     oe = float(_apply_scope(
-        db.query(func.sum(func.abs(_net_expr()))).filter(Trade.close_time.is_(None), Trade.is_deleted == False), sc
+        db.query(func.sum(func.abs(_net_expr()))).filter(Trade.close_time.is_(None)), sc
     ).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
     streak = 0; ms = 0
@@ -985,7 +980,7 @@ def get_calendar_data(
     """Get trades grouped by day for calendar view — فاز ۴۴.۱: scope"""
     sc = normalize_scope(scope)
     query = _apply_scope(db.query(Trade).filter(
-        Trade.close_time.isnot(None), Trade.is_deleted == False
+        Trade.close_time.isnot(None)
     ), sc)
 
     # ── اگر سال و ماه شمسی داده شده ──
@@ -1114,8 +1109,6 @@ def _guard_analyzable(db, result, version_id=None, prop_stage_id=None, personal_
     """گارد سازگاری فاز ۱۹/۲۳ — تحلیل کهنه سرو نشود (فاز ۲۳: به تفکیک test_type؛ فاز ۵۳.۱: updated_at)."""
     from ..models.strategy import Trade
     q = db.query(Trade)
-    # فاز ۲۵: حذف‌شده‌ها در گارد سازگاری شمرده نمی‌شوند
-    q = q.filter(Trade.is_deleted == False)
     scope_label = "این دامنه"
     if version_id is not None:
         from ..utils.trade_scope import analysis_trades_filter

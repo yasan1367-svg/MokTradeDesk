@@ -65,7 +65,6 @@ def funded_pnl(db: Session, currency: Currency = Currency.USDT) -> float:
             Trade.test_type == TestType.REAL_PROP,
             PropStage.stage_type == StageType.FUNDED_REAL,
             PropAccount.currency == currency,
-            Trade.is_deleted == False,
         )
         .scalar()
     )
@@ -84,7 +83,6 @@ def _stage_net_pnl(db: Session, stage_id: int) -> float:
         .filter(
             Trade.prop_stage_id == stage_id,
             Trade.test_type == TestType.REAL_PROP,
-            Trade.is_deleted == False,
         )
         .scalar()
     )

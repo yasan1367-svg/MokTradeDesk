@@ -147,6 +147,7 @@ class Trade(Base):
     close_price = Column(Float, nullable=True)
     size = Column(Float, nullable=False)
     sl = Column(Float, nullable=True)
+    initial_sl = Column(Float, nullable=True)
     tp = Column(Float, nullable=True)
     pnl = Column(Float, nullable=True)
     r_multiple = Column(Float, nullable=True)
@@ -165,7 +166,7 @@ class Trade(Base):
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
     # ── فاز ۵۳.۱: زمان آخرین ویرایش (مبنای تشخیص «تحلیل کهنه») ──
-    # با هر UPDATE دوباره ست می‌شود (ویرایش/حذف نرم/بازگردانی) تا تحلیل قدیمی
+    # با هر UPDATE دوباره ست می‌شود تا تحلیل قدیمی
     # حتی وقتی تعداد معاملات تغییر نکند، کهنه شناخته شود. NULL برای رکوردهای
     # قدیمیِ قبل از مهاجرت مجاز است.
     updated_at = Column(
@@ -175,11 +176,7 @@ class Trade(Base):
         nullable=True,
     )
 
-    # ── Soft Delete (فاز ۲۵) ──
-    # حذف نرم: معامله از لیست‌ها پنهان می‌شود ولی داده‌اش حفظ می‌گردد.
-    is_deleted = Column(Boolean, default=False, nullable=False, server_default="0", index=True)
-
-        # ← Duplicate Detection
+    # ← Duplicate Detection
     trade_hash = Column(String(32), nullable=True, index=True)
 
     # ── قرارداد Classification در سطح DB (فاز ۲۷) ──
@@ -214,6 +211,32 @@ class Trade(Base):
         back_populates="trade",
         cascade="all, delete-orphan"
     )
+
+    # ══════════════════════════════════════════════
+    # فاز ۳: محاسبات خالص PnL (فیلدهای کمکی)
+    # ══════════════════════════════════════════════
+    @property
+    def net_pnl(self) -> float:
+        """سود/زیان خالص = pnl + commission + swap
+
+        فقط یک تابع محاسبه‌گر؛ هیچ تغییری در ذخیره‌سازی DB ایجاد نمی‌کند.
+        """
+        return (self.pnl or 0.0) + (self.commission or 0.0) + (self.swap or 0.0)
+
+    @property
+    def is_win(self) -> bool:
+        """آیا این معامله سودآور است؟ (net_pnl > 0)"""
+        return self.net_pnl > 0
+
+    @property
+    def is_loss(self) -> bool:
+        """آیا این معامله ضررده است؟ (net_pnl < 0)"""
+        return self.net_pnl < 0
+
+    @property
+    def is_breakeven(self) -> bool:
+        """آیا این معامله سربه‌سر است؟ (net_pnl == 0)"""
+        return self.net_pnl == 0.0
 
 
 class CustomTimeInterval(Base):

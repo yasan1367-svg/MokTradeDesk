@@ -52,10 +52,10 @@ class ImportStatus(str, enum.Enum):
 
 
 class ImportRowStatus(str, enum.Enum):
-    """وضعیت یک ردیف در Preview (فاز ۳۱).
+    """وضعیت یک ردیف در Preview (فاز ۳۱ + فاز ۶۰).
 
     - NEW                : رکورد جدید است.
-    - DUPLICATE          : همان هویت قبلاً وارد شده (شامل حذف‌شده‌های نرم).
+    - DUPLICATE          : همان هویت قبلاً وارد شده (معامله فعال).
     - POSSIBLE_DUPLICATE : شباهت قوی ولی نه هویت کامل (نیاز به تصمیم کاربر).
     - INVALID            : نقض قرارداد معامله (مانع Commit اتمیک).
     """
@@ -164,8 +164,7 @@ class ImportIdentity(Base):
     BACKTEST / FORWARD / REAL_PROP لازم است، چون `trading_account_id` ندارند
     (وگرنه یک فایل مشترک بین دو نسخه‌ی استراتژی اشتباهاً تکراری تشخیص داده می‌شد).
 
-    نکته: رکوردهای معامله‌های Soft-Deleted هم در همین جدول می‌مانند تا
-    re-import دوباره‌کاری نکند (قانون فاز ۳۱).
+    حذف Trade به‌صورت سخت انجام می‌شود و رابطه‌ی ORM هویت‌های متصل را نیز حذف می‌کند.
     """
     __tablename__ = "import_identities"
 

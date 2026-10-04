@@ -94,7 +94,7 @@ class RiskEngine:
 
     @staticmethod
     def _load_trades(db: Session, scope: str, symbol: str | None) -> list[Trade]:
-        query = db.query(Trade).filter(Trade.is_deleted.is_(False))
+        query = db.query(Trade)
         if scope == "real":
             query = query.filter(Trade.test_type.in_([TestType.REAL_PERSONAL, TestType.REAL_PROP]))
         elif scope == "backtest":

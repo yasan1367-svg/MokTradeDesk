@@ -239,7 +239,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   const handleDeleteTrade = (trade: Trade) => {
     setPendingDelete({
       ids: [trade.id],
-      message: `آیا از حذف معامله #${trade.id} (${trade.symbol}) مطمئن هستید؟ این عمل قابل بازگشت است (حذف نرم).`,
+      message: `آیا از حذف دائمی معامله #${trade.id} (${trade.symbol}) مطمئن هستید؟ این عمل قابل بازگشت نیست.`,
     });
   };
 
@@ -248,7 +248,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     if (selectedIds.length === 0) return;
     setPendingDelete({
       ids: [...selectedIds],
-      message: `آیا از حذف ${selectedIds.length} معامله‌ی انتخاب‌شده مطمئن هستید؟ این عمل قابل بازگشت است (حذف نرم).`,
+      message: `آیا از حذف دائمی ${selectedIds.length} معامله‌ی انتخاب‌شده مطمئن هستید؟ این عمل قابل بازگشت نیست.`,
     });
   };
 
@@ -606,7 +606,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                   <th className="text-right py-2">نماد</th>
                   <th className="text-right py-2">جهت</th>
                   <th className="text-right py-2">حجم</th>
-                  <th className="text-right py-2">سود/زیان</th>
+                  <th className="text-right py-2">سود خالص</th>
                   <th className="text-right py-2">منبع</th>
                   <th className="text-right py-2">نوع تست</th>
                   <th className="text-right py-2">نسخه</th>
@@ -633,8 +633,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                       {t.direction === 'buy' ? 'خرید' : 'فروش'}
                     </td>
                     <td className="py-2 text-[var(--text-primary)]">{t.size}</td>
-                    <td className={`py-2 font-bold ${(t.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                      {(t.pnl || 0) >= 0 ? '+' : ''}{t.pnl?.toFixed(2)} USDT
+                    <td className={`py-2 font-bold ${(t.net_pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                      {(t.net_pnl || 0) >= 0 ? '+' : ''}{t.net_pnl?.toFixed(2)} USDT
                     </td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getSourceLabel(t.source)}</td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getTestTypeLabel(t.test_type)}</td>
@@ -759,11 +759,18 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                   <div className="text-[var(--text-primary)]">{editingTrade.close_price || '-'}</div>
                 </div>
                 <div>
-                  <div className="text-[var(--text-secondary)] text-xs">سود/زیان</div>
-                  <div className={`font-bold ${(editingTrade.pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                    {editingTrade.pnl?.toFixed(2)} USDT
+                  <div className="text-[var(--text-secondary)] text-xs">سود خالص</div>
+                  <div className={`font-bold ${(editingTrade.net_pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                    {editingTrade.net_pnl?.toFixed(2)} USDT
                   </div>
                 </div>
+              </div>
+              <div className="flex flex-wrap gap-3 mt-2">
+                <span className="text-[10px] text-[var(--text-secondary)]">
+                  سود ناخالص: {editingTrade.pnl?.toFixed(2) || '0.00'} |
+                  کمیسیون: {editingTrade.commission?.toFixed(2) || '0.00'} |
+                  سواپ: {editingTrade.swap?.toFixed(2) || '0.00'}
+                </span>
               </div>
             </div>
 

@@ -92,21 +92,41 @@ def delete_mapping(mapping_id: int, db: Session = Depends(get_db)):
 
 @router.post("/seed-defaults")
 def seed_defaults(db: Session = Depends(get_db)):
-    """وارد کردن Symbol Mappingهای پیش‌فرض"""
+    """وارد کردن Symbol Mappingهای پیش‌فرض — گسترانده برای پوشش همه‌ی suffixهای رایج بروکر.
+
+    امن برای اجرای مجدد (upsert): فقط مپینگ‌های غایب را اضافه می‌کند،
+    مپینگ‌های تعریف‌شده توسط کاربر را دست‌نمی‌زند.
+    """
+    from sqlalchemy.exc import IntegrityError
+
     defaults = [
-        {"original_symbol": "DJIUSD.x", "canonical_symbol": "DJIUSD", "description": "داوجونز - فرمت متاتریدر"},
-        {"original_symbol": "GOLD", "canonical_symbol": "XAUUSD", "description": "طلا - نام رایج"},
+        # ── XAUUSD (طلا) ──
+        {"original_symbol": "XAUUSD",   "canonical_symbol": "XAUUSD", "description": "طلا - نماد اصلی"},
+        {"original_symbol": "XAUUSD.x", "canonical_symbol": "XAUUSD", "description": "طلا - فرمت متاتریدر جدید"},
         {"original_symbol": "XAUUSD.a", "canonical_symbol": "XAUUSD", "description": "طلا - فرمت بروکر"},
-        {"original_symbol": "US30", "canonical_symbol": "DJIUSD", "description": "داوجونز - نام رایج"},
+        {"original_symbol": "XAUUSD.pro", "canonical_symbol": "XAUUSD", "description": "طلا - فرمت حرفه‌ای بروکر"},
+        {"original_symbol": "GOLD",      "canonical_symbol": "XAUUSD", "description": "طلا - نام رایج"},
+        {"original_symbol": "GOLD.x",    "canonical_symbol": "XAUUSD", "description": "طلا - فرمت متاتریدر جدید"},
+        {"original_symbol": "GOLD.a",    "canonical_symbol": "XAUUSD", "description": "طلا - فرمت بروکر"},
+
+        # ── DJIUSD (داوجونز) ──
+        {"original_symbol": "DJIUSD",   "canonical_symbol": "DJIUSD", "description": "داوجونز - نماد اصلی"},
+        {"original_symbol": "DJIUSD.x", "canonical_symbol": "DJIUSD", "description": "داوجونز - فرمت متاتریدر جدید"},
+        {"original_symbol": "DJIUSD.a", "canonical_symbol": "DJIUSD", "description": "داوجونز - فرمت بروکر"},
+        {"original_symbol": "US30",     "canonical_symbol": "DJIUSD", "description": "داوجونز - نام رایج"},
+        {"original_symbol": "US30.x",   "canonical_symbol": "DJIUSD", "description": "داوجونز - فرمت متاتریدر جدید"},
     ]
     created = []
     for data in defaults:
-        existing = db.query(SymbolMapping).filter(
-            SymbolMapping.original_symbol == data["original_symbol"]
-        ).first()
-        if not existing:
-            mapping = SymbolMapping(**data)
-            db.add(mapping)
+        try:
+            # savepoint برای ایزوله‌سازی هر ردیف: خطای unique در یک ردیف
+            # بقیهٔ ردیف‌ها را خراب نمی‌کند (upsert واقعی).
+            with db.begin_nested():
+                mapping = SymbolMapping(**data)
+                db.add(mapping)
             created.append(data["original_symbol"])
+        except IntegrityError:
+            # مپینگ قبلاً موجود است — ردیف رد می‌شود بدون اثر جانبی
+            pass
     db.commit()
     return {"message": f"{len(created)} Mapping اضافه شد", "created": created}

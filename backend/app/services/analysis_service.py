@@ -72,7 +72,6 @@ def _calculate_filtered_metrics(
     tt = _normalize_test_type(test_type)
     q = db.query(Trade).filter(
         Trade.version_id == version_id,
-        Trade.is_deleted == False,
     )
     if tt is None:
         q = q.filter(analysis_trades_filter())
@@ -220,7 +219,6 @@ class AnalysisService:
         # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
         trades = self.db.query(Trade).filter(
             Trade.prop_stage_id == prop_stage_id,
-            Trade.is_deleted == False,
         ).all()
         result = self._analyze(trades, scope=AnalysisScope.PROP_STAGE, scope_key=str(prop_stage_id), prop_stage_id=prop_stage_id)
         from ..services.prop_rule_engine import PropRuleEngine
@@ -232,7 +230,6 @@ class AnalysisService:
         # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
         trades = self.db.query(Trade).filter(
             Trade.personal_trading_account_id == personal_trading_account_id,
-            Trade.is_deleted == False,
         ).all()
         return self._analyze(
             trades,

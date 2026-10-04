@@ -9,13 +9,12 @@ from app.domain.risk.equity_engine import (
 )
 
 
-def _trade(close_time, pnl, *, commission=0.0, swap=0.0, is_deleted=False):
+def _trade(close_time, pnl, *, commission=0.0, swap=0.0):
     return SimpleNamespace(
         close_time=close_time,
         pnl=pnl,
         commission=commission,
         swap=swap,
-        is_deleted=is_deleted,
     )
 
 
@@ -68,22 +67,3 @@ def test_equity_negative_pnl():
     assert curve[-1]["balance"] == pytest.approx(9750.0)
     assert curve[-1]["equity"] == pytest.approx(9750.0)
     assert curve[-1]["pnl"] == pytest.approx(-250.0)
-
-
-def test_equity_soft_deleted_excluded():
-    curve = calculate_equity_with_floating(
-        10000.0,
-        [
-            _trade(_date(1), 100.0),
-            _trade(_date(2), 900.0, is_deleted=True),
-        ],
-        [
-            _trade(None, 50.0),
-            _trade(None, 500.0, is_deleted=True),
-        ],
-    )
-
-    assert len(curve) == 2
-    assert curve[-1]["balance"] == pytest.approx(10100.0)
-    assert curve[-1]["floating_pnl"] == pytest.approx(50.0)
-    assert curve[-1]["equity"] == pytest.approx(10150.0)

@@ -375,9 +375,9 @@ def test_full_cycle_finance_after_prop_payout(client, db_session):
 
 
 # ═════════════════════════════════════════════
-# ۵) Soft Delete → Restore (لایهٔ داده) → Re-analysis
+# ۵) Permanent Delete → absent from trade list and analysis scope
 # ═════════════════════════════════════════════
-def test_full_cycle_soft_delete_and_restore(client, db_session):
+def test_full_cycle_hard_delete_and_list(client, db_session):
     _, version_id = _make_strategy_version(client, db_session)
     trade_id = _manual_trade(client, version_id, pnl=100.0, day=1)
 
@@ -386,26 +386,15 @@ def test_full_cycle_soft_delete_and_restore(client, db_session):
         db_session, scope=AnalysisScope.VERSION, version_id=version_id
     ).one().total_trades == 1
 
-    # حذف نرم
     deleted = client.delete(f"/api/trades/{trade_id}")
     assert deleted.status_code == 200
-    assert deleted.json()["hard"] is False
     db_session.expire_all()
-    assert db_session.get(Trade, trade_id).is_deleted is True
+    assert db_session.get(Trade, trade_id) is None
     assert client.get("/api/trades/").json()["total"] == 0
+    assert client.get(f"/api/trades/{trade_id}").status_code == 404
 
-    # تحلیل مجدد ⇒ هیچ معاملهٔ تحلیل‌پذیری نمانده (۴۰۴) + پاک‌سازی نتیجهٔ کهنه
+    # Analysis sees only the remaining stored trades; none remain in this scope.
     assert client.post(f"/api/analytics/analyze/{version_id}").status_code == 404
-
-    # Restore — ⚠️ endpoint بازگردانی معامله در API فعلی وجود ندارد ⇒ در لایهٔ داده
-    trade = db_session.get(Trade, trade_id)
-    trade.is_deleted = False
-    db_session.commit()
-
-    assert client.post(f"/api/analytics/analyze/{version_id}").status_code == 200
-    assert _analysis(
-        db_session, scope=AnalysisScope.VERSION, version_id=version_id
-    ).one().total_trades == 1
 
 
 # ═════════════════════════════════════════════
@@ -480,22 +469,18 @@ def test_full_cycle_import_soft4x_real_prop_updates_stage(client, db_session):
 
 
 # ═════════════════════════════════════════════
-# ۸) حذف گروهی نرم → بازگردانی در لایهٔ داده
+# ۸) Batch hard delete → permanent absence
 # ═════════════════════════════════════════════
 def test_full_cycle_batch_delete_and_list(client, db_session):
     _, version_id = _make_strategy_version(client, db_session)
     ids = [_manual_trade(client, version_id, pnl=10.0, day=d) for d in (1, 2, 3)]
 
-    r = client.post("/api/trades/batch-delete", json={"trade_ids": ids})
-    assert r.status_code == 200, r.text
-    assert r.json()["deleted"] == 3
+    response = client.post("/api/trades/batch-delete", json={"trade_ids": ids})
+    assert response.status_code == 200, response.text
+    assert response.json()["deleted"] == 3
+    db_session.expire_all()
+    assert all(db_session.get(Trade, trade_id) is None for trade_id in ids)
     assert client.get("/api/trades/").json()["total"] == 0
-
-    # بازگردانی گروهی در لایهٔ داده
-    for trade_id in ids:
-        db_session.get(Trade, trade_id).is_deleted = False
-    db_session.commit()
-    assert client.get("/api/trades/").json()["total"] == 3
 
 
 # ═════════════════════════════════════════════
