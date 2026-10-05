@@ -204,6 +204,26 @@ def _manual_payload(version_id, **extra):
     return base
 
 
+def _mk_prop_stage(db, label="sync"):
+    from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
+
+    firm = PropFirm(name=f"Sync firm {label}")
+    db.add(firm)
+    db.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label=f"Sync account {label}")
+    db.add(account)
+    db.flush()
+    stage = PropStage(
+        prop_account_id=account.id,
+        stage_type=StageType.STAGE_1,
+        status=StageStatus.ACTIVE,
+    )
+    db.add(stage)
+    db.commit()
+    db.refresh(stage)
+    return stage
+
+
 def test_manual_trade_real_personal_accepts_personal_trading_account(client, db_session):
     """فاز ۳۸.۵: `personal_trading_account_id` معتبر است (جایگزین منسوخ `finance_account_id`)."""
     v = _mk_version(db_session, name="rp")
@@ -237,6 +257,135 @@ def test_manual_trade_real_prop_requires_prop_stage(client, db_session):
     r = client.post("/api/trades/manual", json=_manual_payload(v.id, test_type="real_prop"))
     assert r.status_code == 400
     assert "prop_stage_id" in r.json()["detail"]
+
+
+def test_manual_real_prop_trade_syncs_stage(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="manual-prop-sync")
+    stage = _mk_prop_stage(db_session, label="manual")
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.post(
+        "/api/trades/manual",
+        json=_manual_payload(
+            version.id, test_type="real_prop", prop_stage_id=stage.id,
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    assert synced == [stage.id]
+
+
+def test_manual_real_personal_trade_does_not_sync_stage(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="manual-personal-sync")
+    account = _mk_pta(db_session, label="manual-personal")
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.post(
+        "/api/trades/manual",
+        json=_manual_payload(
+            version.id,
+            test_type="real_personal",
+            personal_trading_account_id=account.id,
+        ),
+    )
+
+    assert response.status_code == 200, response.text
+    assert synced == []
+
+
+def test_patch_stage_reassignment_syncs_old_and_new_stages(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="patch-stage-reassignment")
+    old_stage = _mk_prop_stage(db_session, label="patch-old")
+    new_stage = _mk_prop_stage(db_session, label="patch-new")
+    trade = _mk_trade(db_session, version_id=version.id)
+    trade.test_type = TestType.REAL_PROP
+    trade.prop_stage_id = old_stage.id
+    db_session.commit()
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.patch(
+        f"/api/trades/{trade.id}",
+        json={"test_type": "real_prop", "prop_stage_id": new_stage.id},
+    )
+
+    assert response.status_code == 200, response.text
+    assert set(synced) == {old_stage.id, new_stage.id}
+    assert len(synced) == 2
+
+
+def test_patch_unchanged_stage_skips_sync(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="patch-same-stage")
+    stage = _mk_prop_stage(db_session, label="patch-same")
+    trade = _mk_trade(db_session, version_id=version.id)
+    trade.test_type = TestType.REAL_PROP
+    trade.prop_stage_id = stage.id
+    db_session.commit()
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.patch(f"/api/trades/{trade.id}", json={"note": "unchanged stage"})
+
+    assert response.status_code == 200, response.text
+    assert synced == []
+
+
+def test_patch_clearing_stage_syncs_only_old_stage(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="patch-clear-stage")
+    stage = _mk_prop_stage(db_session, label="patch-clear")
+    trade = _mk_trade(db_session, version_id=version.id)
+    trade.test_type = TestType.REAL_PROP
+    trade.prop_stage_id = stage.id
+    db_session.commit()
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.patch(f"/api/trades/{trade.id}", json={"test_type": "backtest"})
+
+    assert response.status_code == 200, response.text
+    assert synced == [stage.id]
+
+
+def test_patch_assigning_stage_syncs_only_new_stage(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="patch-assign-stage")
+    stage = _mk_prop_stage(db_session, label="patch-assign")
+    trade = _mk_trade(db_session, version_id=version.id)
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.patch(
+        f"/api/trades/{trade.id}",
+        json={"test_type": "real_prop", "prop_stage_id": stage.id},
+    )
+
+    assert response.status_code == 200, response.text
+    assert synced == [stage.id]
 
 
 def test_get_trades_filters_by_prop_account(client, db_session):
@@ -298,6 +447,47 @@ def test_normal_delete_permanently_removes_trade(client, db_session):
     assert db_session.get(Trade, trade_id) is None
     assert client.get(f"/api/trades/{trade_id}").status_code == 404
     assert client.get("/api/trades/").json()["total"] == 0
+
+
+def test_sync_failure_does_not_break_trade_delete(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    stage = _mk_prop_stage(db_session, label="delete-sync-failure")
+    trade = _mk_trade(db_session)
+    trade.test_type = TestType.REAL_PROP
+    trade.prop_stage_id = stage.id
+    db_session.commit()
+
+    def fail_sync(db, stage_id):
+        raise RuntimeError("sync failed")
+
+    monkeypatch.setattr(trades_api, "sync_prop_stage_profit", fail_sync)
+
+    response = client.delete(f"/api/trades/{trade.id}")
+
+    assert response.status_code == 200, response.text
+    assert response.json()["count"] == 1
+    db_session.expire_all()
+    assert db_session.get(Trade, trade.id) is None
+
+
+def test_delete_syncs_trade_stage(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    stage = _mk_prop_stage(db_session, label="delete-sync")
+    trade = _mk_trade(db_session)
+    trade.test_type = TestType.REAL_PROP
+    trade.prop_stage_id = stage.id
+    db_session.commit()
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.delete(f"/api/trades/{trade.id}")
+
+    assert response.status_code == 200, response.text
+    assert synced == [stage.id]
 
 
 def test_delete_removes_import_identity_and_allows_reimport(client, db_session):
@@ -393,6 +583,33 @@ def test_batch_delete_permanently_removes_trades(client, db_session):
     db_session.expire_all()
     assert db_session.query(Trade).count() == 0
     assert client.get("/api/trades/").json()["total"] == 0
+
+
+def test_batch_delete_syncs_each_affected_stage_once(client, db_session, monkeypatch):
+    from app.api import trades as trades_api
+
+    version = _mk_version(db_session, name="batch-stage-sync")
+    stage_a = _mk_prop_stage(db_session, label="batch-a")
+    stage_b = _mk_prop_stage(db_session, label="batch-b")
+    trades = [_mk_trade(db_session, version_id=version.id, symbol=f"SYM{i}") for i in range(3)]
+    for trade, stage in zip(trades, (stage_a, stage_a, stage_b)):
+        trade.test_type = TestType.REAL_PROP
+        trade.prop_stage_id = stage.id
+    db_session.commit()
+    synced = []
+    monkeypatch.setattr(
+        trades_api, "sync_prop_stage_profit", lambda db, stage_id: synced.append(stage_id)
+    )
+
+    response = client.post(
+        "/api/trades/batch-delete",
+        json={"trade_ids": [trade.id for trade in trades]},
+    )
+
+    assert response.status_code == 200, response.text
+    assert response.json()["deleted"] == len(trades)
+    assert set(synced) == {stage_a.id, stage_b.id}
+    assert len(synced) == 2
 
 
 def test_batch_delete_reports_skipped(client, db_session):

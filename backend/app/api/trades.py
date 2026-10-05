@@ -7,6 +7,7 @@ from datetime import datetime
 from pydantic import BaseModel
 import os
 import hashlib
+import logging
 
 from ..core.database import get_db
 from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion
@@ -19,8 +20,10 @@ from ..utils.trade_validator import TradeReferenceNotFound, TradeValidator
 from ..utils.uploads import read_upload_limited
 from ..utils.time_utils import to_utc
 from ..utils.date_range import filter_by_range
+from ..services.import_engine import sync_prop_stage_profit
 
 router = APIRouter()
+logger = logging.getLogger("moktrade")
 
 # مسیر ذخیره‌ی اسکرین‌شات‌ها
 SCREENSHOTS_DIR = "storage/screenshots"
@@ -454,6 +457,7 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         "personal_trading_account_id", trade.personal_trading_account_id
     )
     new_prop_stage_id = payload.get("prop_stage_id", trade.prop_stage_id)
+    old_stage_id = trade.prop_stage_id
     previous_test_type = trade.test_type.value if trade.test_type else "backtest"
     if new_test_type != previous_test_type:
         if new_test_type in ("backtest", "forward"):
@@ -549,6 +553,18 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     _commit_trade(db)
     db.refresh(trade)
 
+    if old_stage_id != new_prop_stage_id:
+        for stage_id in (old_stage_id, new_prop_stage_id):
+            if stage_id is not None:
+                try:
+                    sync_prop_stage_profit(db, stage_id)
+                except Exception:
+                    logger.exception(
+                        "Failed to sync prop stage profit after updating trade %s (stage %s)",
+                        trade_id,
+                        stage_id,
+                    )
+
     # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
     if trade.close_time is not None and trade.personal_trading_account_id:
         from ..services.finance_sync_service import FinanceSyncService
@@ -608,8 +624,18 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
     if not trade:
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
+    old_stage_id = trade.prop_stage_id
     _hard_delete_trade(db, trade)
     db.commit()
+    if old_stage_id is not None:
+        try:
+            sync_prop_stage_profit(db, old_stage_id)
+        except Exception:
+            logger.exception(
+                "Failed to sync prop stage profit after deleting trade %s (stage %s)",
+                trade_id,
+                old_stage_id,
+            )
     return {"message": "معامله برای همیشه حذف شد", "count": 1}
 
 
@@ -626,11 +652,20 @@ def batch_delete_trades(data: BatchDeleteRequest, db: Session = Depends(get_db))
     trades = db.query(Trade).filter(Trade.id.in_(unique_ids)).all()
     found_ids = {trade.id for trade in trades}
     skipped = [trade_id for trade_id in unique_ids if trade_id not in found_ids]
+    stage_ids = {trade.prop_stage_id for trade in trades if trade.prop_stage_id is not None}
 
     for trade in trades:
         _hard_delete_trade(db, trade)
 
     db.commit()
+    for stage_id in stage_ids:
+        try:
+            sync_prop_stage_profit(db, stage_id)
+        except Exception:
+            logger.exception(
+                "Failed to sync prop stage profit after batch deleting trades (stage %s)",
+                stage_id,
+            )
     deleted_count = len(trades)
     return {
         "message": f"{deleted_count} معامله برای همیشه حذف شد",
@@ -724,6 +759,16 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     db.add(trade)
     _commit_trade(db)
     db.refresh(trade)
+
+    if trade.test_type == TestType.REAL_PROP and trade.prop_stage_id is not None:
+        try:
+            sync_prop_stage_profit(db, trade.prop_stage_id)
+        except Exception:
+            logger.exception(
+                "Failed to sync prop stage profit after creating trade %s (stage %s)",
+                trade.id,
+                trade.prop_stage_id,
+            )
 
     # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
     if trade.close_time is not None and trade.personal_trading_account_id:
