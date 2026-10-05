@@ -110,13 +110,16 @@
   box-sizing: border-box;
 }
 
-html, body, #root {
+html {
+  font-size: 13px;
+}
+
+body, #root {
   height: 100%;
   direction: rtl;
   font-family: 'Vazirmatn', sans-serif;
   background: var(--bg-base);
   color: var(--text-primary);
-  font-size: 13px;
   line-height: 1.6;
   -webkit-font-smoothing: antialiased;
 }

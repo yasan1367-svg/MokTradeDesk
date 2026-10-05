@@ -21,6 +21,7 @@ import EmptyState from '../components/ui/EmptyState';
 import InfoTooltip from '../components/ui/Tooltip';
 import ErrorBoundary from '../components/ErrorBoundary';
 import FinancialAssetBalances from '../components/FinancialAssetBalances';
+import MarketSessionWidget from '../components/MarketSessionWidget';
 import { gregorianToJalali, jalaliToGregorian } from '../utils/jalali';
 
 // ── کمک‌تابع‌های هدر (فاز ۱۴.۲) ──
@@ -341,9 +342,12 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       <div className="flex justify-between items-center flex-wrap gap-3">
         <div>
           <div className="text-[var(--text-primary)] text-2xl font-extrabold">سلام، {greeting} 👋</div>
-          <div className="flex items-center gap-4 mt-1 text-sm text-[var(--text-secondary)]">
-            <span>📅 {weekday}، {jalaliDate}</span>
-            <span className="tabular-nums" dir="ltr">🕒 {clock}</span>
+          <div className="mt-1 flex flex-col items-start gap-1 text-sm text-[var(--text-secondary)] sm:flex-row sm:items-center sm:gap-4">
+            <div className="flex items-center gap-4">
+              <span>📅 {weekday}، {jalaliDate}</span>
+              <span className="tabular-nums" dir="ltr">🕒 {clock}</span>
+            </div>
+            <MarketSessionWidget />
           </div>
         </div>
         <div className="flex items-center gap-2 flex-wrap">

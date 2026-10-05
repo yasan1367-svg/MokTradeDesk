@@ -6,9 +6,9 @@ import type { CommandItem } from './components/CommandPalette';
 import { useToast } from './components/ToastProvider';
 // فاز ۴۸c — صفحهٔ فعال در URL نگه داشته می‌شود (بدون react-router؛ History API خام)
 import { writeSearch } from './utils/urlState';
-import { applyTheme, resolveInitialTheme, readStoredTheme, THEME_EVENT } from './utils/theme';
+import { applyFontSize, applyTheme, resolveInitialTheme } from './utils/theme';
 import type { Theme } from './utils/theme';
-import { getPropAlerts } from './api/client';
+import { getPropAlerts, getSettings } from './api/client';
 
 // ── فاز ۱۵.۴: Code Splitting — هر صفحه یک chunk جداگانه ──
 const DashboardPage = lazy(() => import('./pages/DashboardPage'));
@@ -78,28 +78,6 @@ function useTheme() {
     applyTheme(theme);
   }, [theme]);
 
-  // همگام‌سازی با تغییر theme از SettingsPage
-  useEffect(() => {
-    const onChange = (e: Event) => {
-      const next = (e as CustomEvent<Theme>).detail;
-      if (next === 'dark' || next === 'light') setTheme(next);
-    };
-    window.addEventListener(THEME_EVENT, onChange);
-    return () => window.removeEventListener(THEME_EVENT, onChange);
-  }, []);
-
-  // گوش دادن به تغییر system preference (فقط وقتی کاربر انتخاب نکرده)
-  useEffect(() => {
-    const mq = window.matchMedia('(prefers-color-scheme: dark)');
-    const handler = (e: MediaQueryListEvent) => {
-      if (!readStoredTheme()) {
-        setTheme(e.matches ? 'dark' : 'light');
-      }
-    };
-    mq.addEventListener('change', handler);
-    return () => mq.removeEventListener('change', handler);
-  }, []);
-
   return { theme, toggleTheme: () => setTheme(t => t === 'dark' ? 'light' : 'dark') };
 }
 
@@ -108,6 +86,15 @@ export default function App() {
   const [paletteOpen, setPaletteOpen] = useState(false);
   const { theme, toggleTheme } = useTheme();
   const toast = useToast();
+
+  useEffect(() => {
+    getSettings()
+      .then((res) => {
+        const fontSize = Number(res.data?.font_size);
+        if (Number.isFinite(fontSize) && fontSize > 0) applyFontSize(fontSize);
+      })
+      .catch(() => { /* Keep the CSS default when settings cannot be loaded. */ });
+  }, []);
 
   // فاز ۵۳.۶.۱ — نشانگر هشدارهای خوانده‌نشدهٔ پراپ روی دکمهٔ 🔔
   const [unreadAlerts, setUnreadAlerts] = useState(0);

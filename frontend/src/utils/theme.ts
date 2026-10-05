@@ -8,7 +8,6 @@
 export type Theme = 'light' | 'dark';
 
 export const THEME_KEY = 'moktrade-theme';
-export const THEME_EVENT = 'moktrade-theme-changed';
 
 export function readStoredTheme(): Theme | null {
   if (typeof window === 'undefined') return null;
@@ -16,22 +15,22 @@ export function readStoredTheme(): Theme | null {
   return stored === 'dark' || stored === 'light' ? stored : null;
 }
 
-/** اعمال theme روی `<html>` + ذخیره در localStorage + اطلاع‌رسانی به مصرف‌کنندگان. */
-export function applyTheme(theme: Theme, notify = true): void {
+/** Apply the selected theme to `<html>` and persist the user's explicit choice. */
+export function applyTheme(theme: Theme): void {
   if (typeof document === 'undefined') return;
   const root = document.documentElement;
   if (theme === 'dark') root.classList.add('dark');
   else root.classList.remove('dark');
   localStorage.setItem(THEME_KEY, theme);
-  if (notify) window.dispatchEvent(new CustomEvent<Theme>(THEME_EVENT, { detail: theme }));
 }
 
-/** theme اولیه: localStorage → system preference → dark (فاز ۱۰-الف: پیش‌فرض تاریک). */
+/** Apply a saved theme, defaulting to light without consulting the OS preference. */
 export function resolveInitialTheme(): Theme {
-  const stored = readStoredTheme();
-  if (stored) return stored;
-  if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-    return 'dark';
-  }
-  return 'light';
+  return readStoredTheme() ?? 'light';
+}
+
+/** Set the document's root font size so rem-based styles follow the user's setting. */
+export function applyFontSize(px: number): void {
+  if (typeof document === 'undefined' || !Number.isFinite(px) || px <= 0) return;
+  document.documentElement.style.fontSize = `${px}px`;
 }

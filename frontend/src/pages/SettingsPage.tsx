@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { getSettings, updateSettings } from '../api/client';
 import BackupManager from '../components/BackupManager';
-import { applyTheme, readStoredTheme } from '../utils/theme';
+import { applyFontSize } from '../utils/theme';
 
 export default function SettingsPage() {
   const [tab, setTab] = useState<'general' | 'backup'>('general');
@@ -14,10 +14,9 @@ export default function SettingsPage() {
   useEffect(() => {
     getSettings()
       .then((res) => {
-        setSettings(res.data);
-        // فاز ۵۳.۶.۳: اگر کاربر انتخاب محلی ندارد، تمِ ذخیره‌شده در API اعمال شود
-        const t = res.data?.theme;
-        if (!readStoredTheme() && (t === 'dark' || t === 'light')) applyTheme(t);
+        const loadedSettings = { ...res.data };
+        delete loadedSettings.theme;
+        setSettings(loadedSettings);
       })
       .catch(() => setError('خطا در بارگذاری تنظیمات'))
       .finally(() => setLoading(false));
@@ -27,9 +26,10 @@ export default function SettingsPage() {
     setSaving(true);
     setError(null);
     try {
-      await updateSettings(settings);
-      // فاز ۵۳.۶.۳: اعمال فوری تم (همگام با App از طریق رویداد مشترک)
-      if (settings.theme === 'dark' || settings.theme === 'light') applyTheme(settings.theme);
+      const settingsToSave = { ...settings };
+      delete settingsToSave.theme;
+      await updateSettings(settingsToSave);
+      applyFontSize(Number(settings.font_size));
       setSuccessMessage('تنظیمات با موفقیت ذخیره شد');
       setTimeout(() => setSuccessMessage(null), 3000);
     } catch (err: any) {
@@ -85,20 +85,7 @@ export default function SettingsPage() {
           </div>
         </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-          <div>
-            <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">🎨 تم</label>
-            <select
-              value={settings.theme}
-              onChange={(e) => setSettings({ ...settings, theme: e.target.value })}
-              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:outline-none cursor-pointer"
-            >
-              <option value="dark">🌙 تیره (Dark)</option>
-              <option value="light">☀️ روشن (Light)</option>
-              <option value="system">💻 سیستم</option>
-            </select>
-          </div>
-
+        <div className="grid grid-cols-1 gap-5">
           <div>
             <label className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">📏 اندازه‌ی فونت</label>
             <select
