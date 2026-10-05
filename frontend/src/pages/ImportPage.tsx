@@ -263,7 +263,7 @@ export default function ImportPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               ⚙️
             </div>
             <div>
@@ -283,7 +283,7 @@ export default function ImportPage() {
                     ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
                     : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                 }`}
-                style={fileType === 'soft4x' ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+                style={fileType === 'soft4x' ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
               >
                 📊 Soft4X (اکسل)
               </button>
@@ -294,7 +294,7 @@ export default function ImportPage() {
                     ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
                     : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                 }`}
-                style={fileType === 'mt4' ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+                style={fileType === 'mt4' ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
               >
                 📈 متاتریدر (HTML)
               </button>
@@ -315,7 +315,7 @@ export default function ImportPage() {
                     ? 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
                     : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                 }`}
-                style={importTarget === 'strategy' ? { background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' } : {}}
+                style={importTarget === 'strategy' ? { background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' } : {}}
               >
                 🎯 استراتژی
               </button>
@@ -329,7 +329,7 @@ export default function ImportPage() {
                     ? 'text-white shadow-[0_6px_16px_rgba(121,89,214,0.3)]'
                     : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                 }`}
-                style={importTarget === 'prop' ? { background: 'linear-gradient(135deg, var(--purple), #A78BFA)' } : {}}
+                style={importTarget === 'prop' ? { background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' } : {}}
               >
                 🏢 پراپ
               </button>
@@ -343,7 +343,7 @@ export default function ImportPage() {
                     ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
                     : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                 }`}
-                style={importTarget === 'personal' ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+                style={importTarget === 'personal' ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
               >
                 💼 حساب شخصی
               </button>
@@ -385,7 +385,7 @@ export default function ImportPage() {
                           ? 'text-white shadow-[0_6px_16px_rgba(63,124,255,0.3)]'
                           : 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)]'
                       }`}
-                      style={isActive ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+                      style={isActive ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
                     >
                       {t.label}
                     </button>
@@ -500,7 +500,7 @@ export default function ImportPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               📤
             </div>
             <div>
@@ -567,7 +567,7 @@ export default function ImportPage() {
                 ? 'bg-[var(--bg-elevated)] text-[var(--text-muted)] cursor-not-allowed'
                 : 'text-white shadow-[0_6px_20px_rgba(63,124,255,0.4)] hover:shadow-[0_10px_28px_rgba(63,124,255,0.5)] hover:-translate-y-0.5'
             }`}
-            style={!loading && file ? { background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' } : {}}
+            style={!loading && file ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
           >
             {loading ? '⏳ در حال پردازش...' : '🔍 پیش‌نمایش ایمپورت'}
           </button>
@@ -677,7 +677,7 @@ export default function ImportPage() {
                   }`}
                   style={
                     !loading && preview.failed === 0
-                      ? { background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }
+                      ? { background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }
                       : {}
                   }
                 >
@@ -721,7 +721,7 @@ export default function ImportPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               ✅
             </div>
             <div>
@@ -777,7 +777,7 @@ export default function ImportPage() {
             <div className="flex justify-between items-center p-6 border-b border-[var(--border-subtle)]">
               <div className="flex items-center gap-3">
                 <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                  style={{ background: 'linear-gradient(135deg, var(--purple), #A78BFA)' }}>
+                  style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}>
                   🔗
                 </div>
                 <div>
@@ -840,7 +840,7 @@ export default function ImportPage() {
                 <button
                   onClick={handleCreateMapping}
                   className="text-white px-5 py-2.5 rounded-[10px] text-[12px] font-extrabold"
-                  style={{ background: 'linear-gradient(135deg, var(--purple), #A78BFA)' }}
+                  style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}
                 >
                   ➕ افزودن
                 </button>

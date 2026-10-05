@@ -18,6 +18,7 @@
   --text-muted: #9AA8BF;
 
   --accent: #3F7CFF;
+  --accent-alpha-12: rgba(63, 124, 255, 0.12);
   --accent-soft: #EDF3FF;
   --accent-dim: #2C63D6;
   --profit: #13AE81;
@@ -69,6 +70,7 @@
   --text-muted: #4A5256;
 
   --accent: #00E5A0;
+  --accent-alpha-12: rgba(0, 229, 160, 0.12);
   --accent-soft: rgba(0, 229, 160, 0.12);
   --accent-dim: #00B37D;
   --accent-strong: #00CCA0;

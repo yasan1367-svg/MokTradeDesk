@@ -165,7 +165,7 @@ export default function JournalPage() {
         <button
           onClick={() => setShowForm(!showForm)}
           className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
+          style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
         >
           ➕ مرور معامله جدید
         </button>
@@ -176,7 +176,7 @@ export default function JournalPage() {
         <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>✏️</div>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>✏️</div>
             <div>
               <h3 className="text-lg font-extrabold text-[var(--text-primary)]">مرور معامله جدید</h3>
               <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">کیفیت ستاپ، اجرا و درس‌های معامله</p>
@@ -260,7 +260,7 @@ export default function JournalPage() {
             <button
               onClick={handleSubmit}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold"
-              style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
             >
               💾 ذخیره
             </button>
@@ -391,7 +391,7 @@ export default function JournalPage() {
                           <button
                             type="button"
                             onClick={() => handleDeleteReviewScreenshot(screenshot.id, review.id)}
-                            className="absolute top-2 left-2 bg-[#1A2B47]/75 text-white rounded-full w-7 h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
+                            className="absolute top-2 left-2 bg-[var(--bg-sidebar)]/75 text-white rounded-full w-7 h-7 text-xs opacity-0 group-hover:opacity-100 transition-opacity"
                             title="حذف"
                           >
                             ×

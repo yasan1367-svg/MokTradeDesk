@@ -313,7 +313,7 @@ export default function ComparisonPage() {
                         type="checkbox"
                         checked={isSelected}
                         onChange={() => toggleVersion(v.id)}
-                        className="w-5 h-5 accent-[#3F7CFF] cursor-pointer"
+                        className="w-5 h-5 accent-[var(--accent)] cursor-pointer"
                       />
                       <div>
                         <div className="text-[14px] font-bold text-[var(--text-primary)]">
@@ -325,7 +325,7 @@ export default function ComparisonPage() {
                       </div>
                     </div>
                     {isSelected && (
-                      <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[#3F7CFF] text-white">انتخاب‌شده</span>
+                      <span className="text-[11px] font-bold px-3 py-1 rounded-full bg-[var(--accent)] text-white">انتخاب‌شده</span>
                     )}
                   </label>
                 );
@@ -349,7 +349,7 @@ export default function ComparisonPage() {
               onClick={handleCompare}
               disabled={loading || selectedIds.length < 2}
               className="text-white px-6 py-2.5 rounded-[10px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] transition-all disabled:opacity-50 disabled:cursor-not-allowed"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
             >
               {loading ? 'در حال مقایسه...' : '🔍 مقایسه'}
             </button>

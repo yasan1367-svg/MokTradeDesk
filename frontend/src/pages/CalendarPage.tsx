@@ -110,10 +110,10 @@ export default function CalendarPage() {
     const data = dataMap.get(key);
     const isToday = day === jd0 && jalaliMonth === jm0 && jalaliYear === jy0;
     const isSel = selectedDay?.date === key;
-    let cls = 'bg-[#1E2F4D]/30 text-[var(--sidebar-text)]';
+    let cls = 'bg-[var(--bg-sidebar-hover)]/30 text-[var(--sidebar-text)]';
     let badge: ReactElement | null = null;
     if (data) {
-      cls = data.total_pnl > 0 ? 'bg-[#13AE81]/15 hover:bg-[#13AE81]/25 text-[var(--profit)]' : 'bg-[#E45D72]/15 hover:bg-[#E45D72]/25 text-[var(--loss)]';
+      cls = data.total_pnl > 0 ? 'bg-[var(--profit)]/15 hover:bg-[var(--profit)]/25 text-[var(--profit)]' : 'bg-[var(--loss)]/15 hover:bg-[var(--loss)]/25 text-[var(--loss)]';
       badge = <span className={`text-[10px] font-bold ${data.total_pnl>0?'text-[var(--profit)]':'text-[var(--loss)]'}`}>{data.total_pnl>0?'+':''}{data.total_pnl.toFixed(1)}</span>;
     }
     if (isToday) cls += ' ring-2 ring-[var(--accent)]';
@@ -134,8 +134,8 @@ return (
         </div>
         <div className='flex gap-2'>
           <button onClick={goToday} className='bg-[var(--accent)] hover:bg-[var(--accent-strong)] text-white px-4 py-2 rounded-xl text-sm transition-all'>امروز</button>
-          <button onClick={() => nav(-1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[#1E2F4D]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>◀</button>
-          <button onClick={() => nav(1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[#1E2F4D]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>▶</button>
+          <button onClick={() => nav(-1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[var(--bg-sidebar-hover)]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>◀</button>
+          <button onClick={() => nav(1)} className='bg-[var(--bg-sidebar-hover)] hover:bg-[var(--bg-sidebar-hover)]/80 text-[var(--sidebar-text)] px-3 py-2 rounded-xl text-sm transition-all'>▶</button>
         </div>
       </div>
 
@@ -151,9 +151,9 @@ return (
             <div className='grid grid-cols-7 gap-1'>{emptyCells}{dayCells}</div>
           </GlassCard>
           <div className='flex gap-6 mt-3 text-xs text-[var(--text-secondary)]'>
-            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[#13AE81]/30' /><span>سود</span></div>
-            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[#E45D72]/30' /><span>زیان</span></div>
-            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[#1E2F4D]/30' /><span>بدون معامله</span></div>
+            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[var(--profit)]/30' /><span>سود</span></div>
+            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[var(--loss)]/30' /><span>زیان</span></div>
+            <div className='flex items-center gap-2'><div className='w-3 h-3 rounded bg-[var(--bg-sidebar-hover)]/30' /><span>بدون معامله</span></div>
           </div>
         </div>
 
@@ -170,11 +170,11 @@ return (
                   </span>
                 </div>
                 <div className='flex gap-4 mb-4 text-xs'>
-                  <div className='bg-[#1E2F4D]/30 px-3 py-2 rounded-lg text-center'>
+                  <div className='bg-[var(--bg-sidebar-hover)]/30 px-3 py-2 rounded-lg text-center'>
                     <div className='text-[var(--sidebar-text)] font-bold'>{selectedDay.trade_count}</div>
                     <div className='text-[var(--text-secondary)]'>معامله</div>
                   </div>
-                  <div className='bg-[#1E2F4D]/30 px-3 py-2 rounded-lg text-center'>
+                  <div className='bg-[var(--bg-sidebar-hover)]/30 px-3 py-2 rounded-lg text-center'>
                     <div className='text-[var(--sidebar-text)] font-bold'>{selectedDay.win_rate.toFixed(1)}%</div>
                     <div className='text-[var(--text-secondary)]'>نرخ برد</div>
                   </div>
@@ -182,7 +182,7 @@ return (
                 <div className='space-y-1.5 max-h-[320px] overflow-y-auto'>
                   <div className='text-[var(--sidebar-text-muted)] text-[11px] font-bold mb-2'>معاملات:</div>
                   {selectedDay.trades.map(t => (
-                    <div key={t.id} className='bg-[#1E2F4D]/20 rounded-lg px-3 py-2 flex items-center justify-between text-xs'>
+                    <div key={t.id} className='bg-[var(--bg-sidebar-hover)]/20 rounded-lg px-3 py-2 flex items-center justify-between text-xs'>
                       <div className='flex items-center gap-2'>
                         <span className='text-[var(--sidebar-text)] font-bold'>{t.symbol}</span>
                         <span className={t.direction==='buy'?'text-[var(--profit)]':'text-[var(--loss)]'}>{t.direction==='buy'?'▲':'▼'}</span>

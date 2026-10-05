@@ -167,7 +167,7 @@ export default function CategoryForm({ mode, initialData, onSave, onCancel }: Ca
             onClick={handleSubmit}
             disabled={!name.trim() || saving}
             className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-            style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
           >
             {saving ? '⌛ در حال ذخیره...' : mode === 'create' ? '💾 ایجاد دسته‌بندی' : '💾 ذخیره تغییرات'}
           </button>

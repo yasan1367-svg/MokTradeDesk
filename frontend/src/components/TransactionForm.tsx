@@ -205,7 +205,7 @@ export default function TransactionForm({
               ))}
             </select>
             {needsTransferFields && sourceAccount && destinationAccount && transferCurrencyMismatch && (
-              <p className="text-xs text-[#ef4444] mt-1">
+              <p className="text-xs text-[var(--loss)] mt-1">
                 {sourceAccount.id === destinationAccount.id
                   ? 'حساب مبدأ و مقصد باید متفاوت باشند.'
                   : 'ارز حساب مبدأ و مقصد باید یکسان باشد.'}
@@ -296,7 +296,7 @@ export default function TransactionForm({
             onClick={handleSubmit}
             disabled={!isFormValid || saving}
             className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:translate-y-0"
-            style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
           >
             {saving ? '⌛ در حال ذخیره...' : mode === 'create' ? '💾 ثبت تراکنش' : '💾 ذخیره تغییرات'}
           </button>

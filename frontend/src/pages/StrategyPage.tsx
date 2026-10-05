@@ -496,7 +496,7 @@ const handleForkVersion = (version: Version) => {
           bins.push({
             range: `${low.toFixed(1)}-${high.toFixed(1)}`,
             count,
-            fill: low + binSize / 2 >= 0 ? '#13AE81' : '#E45D72',
+            fill: low + binSize / 2 >= 0 ? 'var(--profit)' : 'var(--loss)',
           });
         }
         setRMultipleHistogram(bins);
@@ -537,7 +537,7 @@ const handleForkVersion = (version: Version) => {
         <button
           onClick={() => handleOpenStrategyForm()}
           className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5"
-          style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+          style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
         >
           ➕ استراتژی جدید
         </button>
@@ -557,7 +557,7 @@ const handleForkVersion = (version: Version) => {
         <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               {editingStrategyId ? '✏️' : '➕'}
             </div>
             <div>
@@ -599,7 +599,7 @@ const handleForkVersion = (version: Version) => {
             <button
               onClick={handleSaveStrategy}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:shadow-[0_10px_24px_rgba(19,174,129,0.4)] hover:-translate-y-0.5"
-              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
             >
               💾 ذخیره
             </button>
@@ -618,7 +618,7 @@ const handleForkVersion = (version: Version) => {
         <div className="bg-[var(--bg-card)] border-2 border-[var(--accent)] rounded-[22px] p-6 shadow-lg">
           <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-              style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}>
               {editingVersionId ? '✏️' : '➕'}
             </div>
             <div>
@@ -693,7 +693,7 @@ const handleForkVersion = (version: Version) => {
             <button
               onClick={handleSaveVersion}
               className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:shadow-[0_10px_24px_rgba(19,174,129,0.4)] hover:-translate-y-0.5"
-              style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
             >
               💾 ذخیره
             </button>
@@ -713,7 +713,7 @@ const handleForkVersion = (version: Version) => {
           <div className='bg-[var(--bg-card)] border-2 border-[var(--purple)] rounded-[22px] p-6 shadow-xl w-[560px] max-h-[90vh] overflow-y-auto'>
             <div className='flex items-center gap-3 mb-3 pb-4 border-b border-[var(--border-subtle)]'>
               <div className='w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white'
-                style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>
+                style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}>
                 🔱
               </div>
               <div>
@@ -774,7 +774,7 @@ const handleForkVersion = (version: Version) => {
               <button
                 onClick={handleSubmitFork}
                 className='text-white px-7 py-3 rounded-[12px] text-sm font-extrabold transition-all shadow-[0_6px_16px_rgba(121,89,214,0.3)] hover:shadow-[0_10px_24px_rgba(121,89,214,0.4)] hover:-translate-y-0.5'
-                style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}     >
+                style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}     >
                 🔱 ساخت Fork
               </button>
               <button
@@ -879,7 +879,7 @@ const handleForkVersion = (version: Version) => {
                 <button
                   onClick={() => handleOpenVersionForm()}
                   className="text-white px-4 py-2 rounded-[10px] text-[12px] font-extrabold transition-all shadow-[0_4px_12px_rgba(121,89,214,0.3)] hover:shadow-[0_6px_16px_rgba(121,89,214,0.4)]"
-                  style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}
+                  style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}
                 >
                   ➕ نسخه جدید
                 </button>
@@ -1006,12 +1006,12 @@ const handleForkVersion = (version: Version) => {
                         {/* کارت‌های خلاصه */}
                         <div className="grid grid-cols-3 gap-2">
                           {[
-                            { label: 'نرخ برد', value: `${stats.summary.win_rate}%`, color: '#13AE81' },
-                            { label: 'فاکتور سود', value: stats.summary.profit_factor.toFixed(2), color: '#3F7CFF' },
-                            { label: 'سود خالص', value: `USDT ${stats.summary.net_pnl.toFixed(0)}`, color: '#7959D6' },
-                            { label: 'شارپ', value: stats.summary.sharpe_ratio.toFixed(2), color: '#D99B25' },
-                            { label: 'افت سرمایه', value: `USDT ${stats.summary.max_drawdown.toFixed(0)}`, color: '#E45D72' },
-                            { label: 'امید ریاضی', value: `USDT ${stats.summary.expectancy.toFixed(2)}`, color: '#13AE81' },
+                            { label: 'نرخ برد', value: `${stats.summary.win_rate}%`, color: 'var(--profit)' },
+                            { label: 'فاکتور سود', value: stats.summary.profit_factor.toFixed(2), color: 'var(--accent)' },
+                            { label: 'سود خالص', value: `USDT ${stats.summary.net_pnl.toFixed(0)}`, color: 'var(--purple)' },
+                            { label: 'شارپ', value: stats.summary.sharpe_ratio.toFixed(2), color: 'var(--warning)' },
+                            { label: 'افت سرمایه', value: `USDT ${stats.summary.max_drawdown.toFixed(0)}`, color: 'var(--loss)' },
+                            { label: 'امید ریاضی', value: `USDT ${stats.summary.expectancy.toFixed(2)}`, color: 'var(--profit)' },
                           ].map((item) => (
                             <div key={item.label} className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[12px] p-3 text-center">
                               <div className="text-[10px] font-bold text-[var(--text-secondary)] mb-1">{item.label}</div>
@@ -1105,21 +1105,21 @@ const handleForkVersion = (version: Version) => {
                             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[12px] p-3">
                               <ResponsiveContainer width="100%" height={180}>
                                 <LineChart data={equityData}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#E5EBF3" />
-                                  <XAxis dataKey="index" tick={{ fontSize: 10, fill: '#9AA8BF' }} />
-                                  <YAxis tick={{ fontSize: 10, fill: '#9AA8BF' }} />
+                                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                                  <XAxis dataKey="index" tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
+                                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
                                   <Tooltip
-                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5EBF3' }}
+                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid var(--border-subtle)' }}
                                     formatter={(value) => [`USDT ${Number(value ?? 0).toFixed(2)}`, 'سرمایه']}
                                     labelFormatter={(label) => `معامله #${label}`}
                                   />
                                   <Line
                                     type="monotone"
                                     dataKey="equity"
-                                    stroke="#3F7CFF"
+                                    stroke="var(--accent)"
                                     strokeWidth={2}
                                     dot={false}
-                                    activeDot={{ r: 4, fill: '#3F7CFF' }}
+                                    activeDot={{ r: 4, fill: 'var(--accent)' }}
                                   />
                                 </LineChart>
                               </ResponsiveContainer>
@@ -1134,14 +1134,14 @@ const handleForkVersion = (version: Version) => {
                             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[12px] p-3">
                               <ResponsiveContainer width="100%" height={160}>
                                 <BarChart data={rMultipleHistogram}>
-                                  <CartesianGrid strokeDasharray="3 3" stroke="#E5EBF3" />
-                                  <XAxis dataKey="range" tick={{ fontSize: 8, fill: '#9AA8BF' }} />
-                                  <YAxis tick={{ fontSize: 10, fill: '#9AA8BF' }} />
+                                  <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
+                                  <XAxis dataKey="range" tick={{ fontSize: 8, fill: 'var(--text-muted)' }} />
+                                  <YAxis tick={{ fontSize: 10, fill: 'var(--text-muted)' }} />
                                   <Tooltip
-                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid #E5EBF3' }}
+                                    contentStyle={{ fontSize: 12, borderRadius: 10, border: '1px solid var(--border-subtle)' }}
                                     formatter={(value) => [Number(value ?? 0), 'تعداد']}
                                   />
-                                  <Bar dataKey="count" fill="#3F7CFF" radius={[3, 3, 0, 0]} />
+                                  <Bar dataKey="count" fill="var(--accent)" radius={[3, 3, 0, 0]} />
                                 </BarChart>
                               </ResponsiveContainer>
                             </div>

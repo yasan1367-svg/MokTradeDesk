@@ -29,8 +29,8 @@ type Tab = 'prop' | 'broker';
 // فاز ۳۳ — چرخهٔ عمر برداشت
 const STATUS_META: Record<string, { label: string; cls: string; icon: string }> = {
   requested: { label: 'درخواست‌شده', icon: '🕐', cls: 'bg-[var(--bg-elevated)] text-[var(--text-secondary)] border-[var(--border-subtle)]' },
-  approved: { label: 'تأییدشده', icon: '✅', cls: 'bg-[#3F7CFF]/15 text-[#3F7CFF] border-[#3F7CFF]/30' },
-  processing: { label: 'در حال پردازش', icon: '⏳', cls: 'bg-[#F59E0B]/15 text-[#F59E0B] border-[#F59E0B]/30' },
+  approved: { label: 'تأییدشده', icon: '✅', cls: 'bg-[var(--accent)]/15 text-[var(--accent)] border-[var(--accent)]/30' },
+  processing: { label: 'در حال پردازش', icon: '⏳', cls: 'bg-[var(--warning)]/15 text-[var(--warning)] border-[var(--warning)]/30' },
   received: { label: 'دریافت‌شده', icon: '💰', cls: 'bg-[var(--profit)]/15 text-[var(--profit)] border-[var(--profit)]/30' },
   cancelled: { label: 'لغوشده', icon: '🚫', cls: 'bg-[var(--loss)]/15 text-[var(--loss)] border-[var(--loss)]/30' },
 };
@@ -67,9 +67,9 @@ const inputCls =
 
 function StatCard({ icon, label, value, tone = 'accent' }: { icon: string; label: string; value: string; tone?: 'accent' | 'profit' | 'purple' }) {
   const grad = {
-    accent: 'linear-gradient(135deg, var(--accent), #5B8DEF)',
-    profit: 'linear-gradient(135deg, var(--profit), #4DD9A9)',
-    purple: 'linear-gradient(135deg, var(--purple), #A78BFA)',
+    accent: 'linear-gradient(135deg, var(--accent), var(--accent-strong))',
+    profit: 'linear-gradient(135deg, var(--profit), var(--profit-border))',
+    purple: 'linear-gradient(135deg, var(--purple), var(--purple-light))',
   }[tone];
   return (
     <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 shadow-md">
@@ -365,7 +365,7 @@ export default function PayoutHistoryPage() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div className="flex items-center gap-4">
           <div className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl text-white"
-               style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>💸</div>
+               style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>💸</div>
           <div>
             <h2 className="text-2xl font-extrabold text-[var(--text-primary)]">{isProp ? 'تاریخچهٔ برداشت‌های پراپ' : 'گردش مالی بروکر'}</h2>
             <p className="text-xs text-[var(--text-secondary)] mt-0.5">پراپ و بروکر — آمار و تاریخچهٔ کامل</p>
@@ -380,7 +380,7 @@ export default function PayoutHistoryPage() {
             setShowForm((value) => editingBrokerId !== null || editingPropId !== null || !value);
           }}
           className="text-white px-5 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] hover:-translate-y-0.5 transition-all"
-          style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}
+          style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}
         >
           {isProp ? '➕ ثبت برداشت جدید' : '➕ ثبت گردش بروکر'}
         </button>
@@ -406,7 +406,7 @@ export default function PayoutHistoryPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                 style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>➕</div>
+                 style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>➕</div>
             <h3 className="text-lg font-extrabold text-[var(--text-primary)]">{editingPropId !== null ? 'ویرایش برداشت پراپ' : 'ثبت برداشت جدید'}</h3>
             <span className="text-[11px] text-[var(--text-muted)]">{editingPropId !== null ? 'اصلاح برداشت دریافت‌شده، موجودی مقصد و گزارش درآمد را هم اصلاح می‌کند.' : 'وضعیت اولیه: «درخواست‌شده» — تأیید → پردازش → دریافت'}</span>
           </div>
@@ -453,7 +453,7 @@ export default function PayoutHistoryPage() {
             </button>
             <button onClick={handleSubmit} disabled={saving}
                     className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
+                    style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               {saving ? '⏳ در حال ذخیره…' : editingPropId !== null ? 'ذخیرهٔ اصلاحات' : '💾 ثبت برداشت'}
             </button>
           </div>
@@ -464,7 +464,7 @@ export default function PayoutHistoryPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
           <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                 style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>🔁</div>
+                 style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>🔁</div>
             <div>
               <h3 className="text-lg font-extrabold text-[var(--text-primary)]">{editingBrokerId !== null ? 'ویرایش گردش پول بروکر' : 'ثبت گردش پول بروکر'}</h3>
               <p className="text-[11px] text-[var(--text-secondary)]">موجودی هر دو حساب هم‌زمان به‌روز می‌شود؛ ارزها باید یکسان باشند.</p>
@@ -523,7 +523,7 @@ export default function PayoutHistoryPage() {
             </button>
             <button onClick={handleBrokerSubmit} disabled={saving || tradingAccounts.length === 0}
                     className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-50"
-                    style={{ background: 'linear-gradient(135deg, var(--profit), #4DD9A9)' }}>
+                    style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
               {saving ? '⏳ در حال ذخیره…' : editingBrokerId !== null ? 'ذخیرهٔ اصلاحات' : 'ثبت گردش'}
             </button>
           </div>
@@ -715,7 +715,7 @@ export default function PayoutHistoryPage() {
                                 <button
                                   onClick={() => openTransfer(r)}
                                   title="ثبت انتقال بین‌حسابی"
-                                  className="text-xs font-bold text-[#6366f1] hover:underline"
+                                  className="text-xs font-bold text-[var(--purple)] hover:underline"
                                 >
                                   🔄
                                 </button>
@@ -751,7 +751,7 @@ export default function PayoutHistoryPage() {
             <div className="flex items-center gap-3">
               <div
                 className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #A78BFA)' }}
+                style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}
               >
                 🔄
               </div>
@@ -844,7 +844,7 @@ export default function PayoutHistoryPage() {
                 onClick={handleTransferSubmit}
                 disabled={transferSaving}
                 className="text-white px-7 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(99,102,241,0.3)] disabled:opacity-50"
-                style={{ background: 'linear-gradient(135deg, #6366f1, #A78BFA)' }}
+                style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}
               >
                 {transferSaving ? '⏳ در حال ثبت…' : '🔄 ثبت انتقال'}
               </button>

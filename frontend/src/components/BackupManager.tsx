@@ -136,7 +136,7 @@ export default function BackupManager() {
         <div className="flex items-center justify-between flex-wrap gap-4 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="flex items-center gap-3">
             <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-                 style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}>💾</div>
+                 style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>💾</div>
             <div>
               <h3 className="text-lg font-extrabold text-[var(--text-primary)]">Backup دیتابیس</h3>
               <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">ساخت، دانلود، بازیابی و حذف نسخهٔ پشتیبان</p>
@@ -146,7 +146,7 @@ export default function BackupManager() {
             onClick={handleCreate}
             disabled={busy}
             className="text-white px-5 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
-            style={{ background: 'linear-gradient(135deg, var(--accent), #5B8DEF)' }}
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
           >
             {busy ? '⏳ در حال انجام…' : '➕ ساخت Backup جدید'}
           </button>

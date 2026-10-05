@@ -87,13 +87,13 @@ const ACCOUNT_TYPE_NAMES: Record<string, string> = {
 };
 
 const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
-  deposit: { bg: 'bg-[#22c55e]/10', text: 'text-[#22c55e]' },
-  withdrawal: { bg: 'bg-[#ef4444]/10', text: 'text-[#ef4444]' },
-  transfer: { bg: 'bg-[#8b5cf6]/10', text: 'text-[#8b5cf6]' },  // فاز ۳۸.۴: جایگزین `exchange`
-  profit: { bg: 'bg-[#10b981]/10', text: 'text-[#10b981]' },
-  loss: { bg: 'bg-[#f97316]/10', text: 'text-[#f97316]' },
-  fee: { bg: 'bg-[#eab308]/10', text: 'text-[#eab308]' },
-  purchase: { bg: 'bg-[#ec4899]/10', text: 'text-[#ec4899]' },
+  deposit: { bg: 'bg-[var(--profit)]/10', text: 'text-[var(--profit)]' },
+  withdrawal: { bg: 'bg-[var(--loss)]/10', text: 'text-[var(--loss)]' },
+  transfer: { bg: 'bg-[var(--purple)]/10', text: 'text-[var(--purple)]' },  // فاز ۳۸.۴: جایگزین `exchange`
+  profit: { bg: 'bg-[var(--profit)]/10', text: 'text-[var(--profit)]' },
+  loss: { bg: 'bg-[var(--loss)]/10', text: 'text-[var(--loss)]' },
+  fee: { bg: 'bg-[var(--warning)]/10', text: 'text-[var(--warning)]' },
+  purchase: { bg: 'bg-[var(--loss)]/10', text: 'text-[var(--loss)]' },
 };
 
 // برچسب و رنگ فارسی انواع تراکنش (برای نمودار دایره‌ای)
@@ -104,11 +104,11 @@ const TRANSACTION_TYPE_LABELS: Record<string, string> = {
 };
 
 const TRANSACTION_TYPE_COLORS: Record<string, string> = {
-  deposit: '#22c55e', withdrawal: '#ef4444', transfer: '#8b5cf6',  // فاز ۳۸.۴: exchange → transfer
-  profit: '#10b981', loss: '#f97316', fee: '#eab308', purchase: '#ec4899',
+  deposit: 'var(--profit)', withdrawal: 'var(--loss)', transfer: 'var(--purple)',  // فاز ۳۸.۴: exchange → transfer
+  profit: 'var(--profit)', loss: 'var(--loss)', fee: 'var(--warning)', purchase: 'var(--loss)',
 };
 
-const FALLBACK_COLORS = ['#3F7CFF', '#6366f1', '#14b8a6', '#a855f7', '#f43f5e'];
+const FALLBACK_COLORS = ['var(--accent)', 'var(--purple)', 'var(--profit)', 'var(--purple)', 'var(--loss)'];
 
 export default function FinancePage() {
   const [tab, setTab] = useState<Tab>('accounts');
@@ -406,7 +406,7 @@ export default function FinancePage() {
                 ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                 : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
             }`}
-            style={tab === t.key ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+            style={tab === t.key ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
           >
             {t.icon} {t.label}
           </button>
@@ -426,7 +426,7 @@ export default function FinancePage() {
                   ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-card)]'
               }`}
-              style={currency === c ? { background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' } : {}}
+              style={currency === c ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
             >
               {c}
             </button>
@@ -444,7 +444,7 @@ export default function FinancePage() {
               setShowAccountForm(!(showAccountForm && accountFormScope === 'accounts'));
             }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               🆕 حساب جدید
             </button>
             <button onClick={async () => {
@@ -454,7 +454,7 @@ export default function FinancePage() {
               } catch { toast.toast('خطا در همگام‌سازی', 'error'); }
             }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(34,197,94,0.3)] hover:shadow-[0_10px_24px_rgba(34,197,94,0.4)] hover:-translate-y-0.5 transition-all"
-              style={{ background: 'linear-gradient(135deg, #22C55E, #4ADE80)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit))' }}>
               🔄 همگام‌سازی معاملات
             </button>
           </div>
@@ -505,7 +505,7 @@ export default function FinancePage() {
                     {/* فاز ۴۵.۹: هشدار مغایرت دفتر کل */}
                     {reconcileMap[a.id] && !reconcileMap[a.id].is_balanced && (
                       <InfoTooltip content={`مغایرت دفتر کل: ${reconcileMap[a.id].delta} (باید صفر باشد)`}>
-                        <span className="text-base cursor-help" style={{ color: 'var(--warning, #D99B25)' }}>🟠</span>
+                        <span className="text-base cursor-help" style={{ color: 'var(--warning)' }}>🟠</span>
                       </InfoTooltip>
                     )}
                   </div>
@@ -532,7 +532,7 @@ export default function FinancePage() {
                 setShowAccountForm(!(showAccountForm && accountFormScope === 'wallets'));
               }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:-translate-y-0.5 transition-all"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
             >
               🆕 کیف‌پول یا حساب صرافی
             </button>
@@ -597,7 +597,7 @@ export default function FinancePage() {
           <div className="flex gap-3 mb-6 flex-wrap">
             <button onClick={() => { setShowTransactionForm(!showTransactionForm); setEditTransaction(null); }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               🆕 تراکنش جدید
             </button>
           </div>
@@ -669,7 +669,7 @@ export default function FinancePage() {
           ) : (
             <div className="space-y-3">
               {transactions.map((t) => {
-                const style = TRANSACTION_TYPE_STYLES[t.type] || { bg: 'bg-[#6B7A94]/10', text: 'text-[#6B7A94]' };
+                const style = TRANSACTION_TYPE_STYLES[t.type] || { bg: 'bg-[var(--text-secondary)]/10', text: 'text-[var(--text-secondary)]' };
                 return (
                   <div key={t.id} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[18px] p-4 transition-all hover:shadow-md">
                     <div className="flex items-start justify-between gap-3">
@@ -710,7 +710,7 @@ export default function FinancePage() {
           <div className="flex gap-3 mb-6 flex-wrap">
             <button onClick={() => { setShowCategoryForm(!showCategoryForm); setEditCategory(null); }}
               className="text-white px-6 py-3 rounded-[12px] text-sm font-extrabold shadow-[0_6px_16px_rgba(63,124,255,0.3)] hover:shadow-[0_10px_24px_rgba(63,124,255,0.4)] hover:-translate-y-0.5 transition-all"
-              style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>
+              style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>
               🆕 دسته‌بندی جدید
             </button>
             <button onClick={async () => { const { data } = await seedFinanceCategories(); showSuccess(data.message); await loadCategories(); }}
@@ -752,8 +752,8 @@ export default function FinancePage() {
                 <div key={c.id} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 transition-all hover:shadow-lg hover:border-[var(--border-accent)]">
                   <div className="flex items-start justify-between mb-2">
                     <div className="flex items-center gap-3">
-                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg"
-                        style={{ backgroundColor: c.color ? c.color + '20' : '#3F7CFF20' }}>
+                      <div className="w-10 h-10 rounded-xl flex items-center justify-center text-lg bg-[var(--accent-alpha-12)]"
+                        style={c.color ? { backgroundColor: c.color + '20' } : undefined}>
                         {c.icon || '🏷️'}
                       </div>
                       <div>
@@ -795,14 +795,14 @@ export default function FinancePage() {
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📈 مجموع درآمد</div>
-              <div className="text-2xl font-extrabold text-[#22c55e]">
+              <div className="text-2xl font-extrabold text-[var(--profit)]">
                 {summary ? summary.total_income.toLocaleString() : '—'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد تراکنش‌ها: {summary?.transaction_count ?? '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📉 مجموع هزینه</div>
-              <div className="text-2xl font-extrabold text-[#ef4444]">
+              <div className="text-2xl font-extrabold text-[var(--loss)]">
                 {summary ? summary.total_expense.toLocaleString() : '—'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">انتقال: {summary?.total_transfers.toLocaleString() ?? '—'}</div>
@@ -830,8 +830,8 @@ export default function FinancePage() {
                     <XAxis dataKey="month" tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                     <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                     <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} />
-                    <Line type="monotone" dataKey="income" stroke="#22c55e" strokeWidth={2} name="درآمد" dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="expense" stroke="#ef4444" strokeWidth={2} name="هزینه" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="income" stroke="var(--profit)" strokeWidth={2} name="درآمد" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="expense" stroke="var(--loss)" strokeWidth={2} name="هزینه" dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -926,8 +926,8 @@ export default function FinancePage() {
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{ACCOUNT_TYPE_LABELS[s.type] || s.type}</td>
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{s.currency}</td>
                         <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{s.balance?.toLocaleString()}</td>
-                        <td className="py-3 px-3 text-[#22c55e]">{s.total_income?.toLocaleString()}</td>
-                        <td className="py-3 px-3 text-[#ef4444]">{s.total_expense?.toLocaleString()}</td>
+                        <td className="py-3 px-3 text-[var(--profit)]">{s.total_income?.toLocaleString()}</td>
+                        <td className="py-3 px-3 text-[var(--loss)]">{s.total_expense?.toLocaleString()}</td>
                         <td className="py-3 px-3 text-[var(--text-secondary)]">{s.transaction_count}</td>
                         <td className="py-3 px-3 text-xs text-[var(--text-secondary)]">
                           {s.last_transaction ? (
@@ -970,7 +970,7 @@ export default function FinancePage() {
                       {withdrawalStats.history.map((w) => (
                         <tr key={w.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
                           <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{w.kind === 'prop' ? 'پراپ' : 'بروکر'} — {w.account_name || `#${w.account_id}`}</td>
-                          <td className="py-3 px-3 text-[#ef4444] font-bold">{w.amount.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-[var(--loss)] font-bold">{w.amount.toLocaleString()}</td>
                           <td className="py-3 px-3 text-[var(--text-secondary)]">{w.currency}</td>
                           <td className="py-3 px-3 text-xs text-[var(--text-secondary)]">{new Date(w.date).toLocaleDateString('fa-IR')}</td>
                           <td className="py-3 px-3 text-[var(--text-secondary)]">{w.description || '—'}</td>
@@ -1027,18 +1027,18 @@ export default function FinancePage() {
           <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">💵 سود خالص</div>
-              <div className={`text-2xl font-extrabold ${(profitLoss?.net_profit ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              <div className={`text-2xl font-extrabold ${(profitLoss?.net_profit ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                 {profitLoss ? profitLoss.net_profit.toLocaleString() : '—'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">سال {profitLoss?.year ?? advYear}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📈 کل درآمد</div>
-              <div className="text-2xl font-extrabold text-[#22c55e]">{profitLoss ? profitLoss.total_income.toLocaleString() : '—'}</div>
+              <div className="text-2xl font-extrabold text-[var(--profit)]">{profitLoss ? profitLoss.total_income.toLocaleString() : '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📉 کل هزینه</div>
-              <div className="text-2xl font-extrabold text-[#ef4444]">{profitLoss ? profitLoss.total_expense.toLocaleString() : '—'}</div>
+              <div className="text-2xl font-extrabold text-[var(--loss)]">{profitLoss ? profitLoss.total_expense.toLocaleString() : '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📊 حاشیه سود</div>
@@ -1057,8 +1057,8 @@ export default function FinancePage() {
                     <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                     <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} />
                     <Legend formatter={(v: any) => <span className="text-xs text-[var(--text-secondary)]">{v}</span>} />
-                    <Bar dataKey="income" fill="#22c55e" radius={[6, 6, 0, 0]} name="درآمد" />
-                    <Bar dataKey="expense" fill="#ef4444" radius={[6, 6, 0, 0]} name="هزینه" />
+                    <Bar dataKey="income" fill="var(--profit)" radius={[6, 6, 0, 0]} name="درآمد" />
+                    <Bar dataKey="expense" fill="var(--loss)" radius={[6, 6, 0, 0]} name="هزینه" />
                   </BarChart>
                 </ResponsiveContainer>
               ) : (
@@ -1075,8 +1075,8 @@ export default function FinancePage() {
                     <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                     <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} />
                     <Legend formatter={(v: any) => <span className="text-xs text-[var(--text-secondary)]">{v}</span>} />
-                    <Line type="monotone" dataKey="cumulative" stroke="#3F7CFF" strokeWidth={2} name="تجمعی" dot={{ r: 3 }} />
-                    <Line type="monotone" dataKey="net" stroke="#a855f7" strokeWidth={2} name="ماهانه" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="cumulative" stroke="var(--accent)" strokeWidth={2} name="تجمعی" dot={{ r: 3 }} />
+                    <Line type="monotone" dataKey="net" stroke="var(--purple)" strokeWidth={2} name="ماهانه" dot={{ r: 3 }} />
                   </LineChart>
                 </ResponsiveContainer>
               ) : (
@@ -1096,7 +1096,7 @@ export default function FinancePage() {
                         name: it.category_name,
                         value: it.total,
                         percent: it.percent,
-                        fill: it.color || (it.type === 'income' ? '#22c55e' : FALLBACK_COLORS[i % FALLBACK_COLORS.length]),
+                        fill: it.color || (it.type === 'income' ? 'var(--profit)' : FALLBACK_COLORS[i % FALLBACK_COLORS.length]),
                       }))}
                       dataKey="value"
                       nameKey="name"
@@ -1106,7 +1106,7 @@ export default function FinancePage() {
                       label={(p: any) => `${p.percent}%`}
                     >
                       {categoryBreakdown.items.map((it, i) => (
-                        <Cell key={i} fill={it.color || (it.type === 'income' ? '#22c55e' : FALLBACK_COLORS[i % FALLBACK_COLORS.length])} />
+                        <Cell key={i} fill={it.color || (it.type === 'income' ? 'var(--profit)' : FALLBACK_COLORS[i % FALLBACK_COLORS.length])} />
                       ))}
                     </Pie>
                     <Tooltip
@@ -1145,9 +1145,9 @@ export default function FinancePage() {
                             <span className="text-[10px] text-[var(--text-secondary)] mr-1">{s.currency}</span>
                           </td>
                           <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{s.balance?.toLocaleString()}</td>
-                          <td className="py-3 px-3 text-[#22c55e]">{s.total_income.toLocaleString()}</td>
-                          <td className="py-3 px-3 text-[#ef4444]">{s.total_expense.toLocaleString()}</td>
-                          <td className={`py-3 px-3 font-bold ${s.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{s.net.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-[var(--profit)]">{s.total_income.toLocaleString()}</td>
+                          <td className="py-3 px-3 text-[var(--loss)]">{s.total_expense.toLocaleString()}</td>
+                          <td className={`py-3 px-3 font-bold ${s.net >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>{s.net.toLocaleString()}</td>
                         </tr>
                       ))}
                     </tbody>
@@ -1176,9 +1176,9 @@ export default function FinancePage() {
                     {profitLoss.yearly.map((y) => (
                       <tr key={y.year} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
                         <td className="py-3 px-3 font-bold text-[var(--text-primary)]">{y.year}</td>
-                        <td className="py-3 px-3 text-[#22c55e]">{y.income.toLocaleString()}</td>
-                        <td className="py-3 px-3 text-[#ef4444]">{y.expense.toLocaleString()}</td>
-                        <td className={`py-3 px-3 font-bold ${y.net >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{y.net.toLocaleString()}</td>
+                        <td className="py-3 px-3 text-[var(--profit)]">{y.income.toLocaleString()}</td>
+                        <td className="py-3 px-3 text-[var(--loss)]">{y.expense.toLocaleString()}</td>
+                        <td className={`py-3 px-3 font-bold ${y.net >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>{y.net.toLocaleString()}</td>
                       </tr>
                     ))}
                   </tbody>
@@ -1195,21 +1195,21 @@ export default function FinancePage() {
           <div className="grid grid-cols-1 md:grid-cols-3 gap-5">
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">🏢 مرحلهٔ ۳ پراپ</div>
-              <div className={`text-2xl font-extrabold ${(realPnl?.prop_stage_3?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              <div className={`text-2xl font-extrabold ${(realPnl?.prop_stage_3?.pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                 {realPnl ? `${realPnl.prop_stage_3.pnl >= 0 ? '+' : ''}${realPnl.prop_stage_3.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.prop_stage_3?.trades ?? '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">📊 بروکر</div>
-              <div className={`text-2xl font-extrabold ${(realPnl?.broker?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              <div className={`text-2xl font-extrabold ${(realPnl?.broker?.pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                 {realPnl ? `${realPnl.broker.pnl >= 0 ? '+' : ''}${realPnl.broker.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد معاملات: {realPnl?.broker?.trades ?? '—'}</div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-accent)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">Σ مجموع Real</div>
-              <div className={`text-2xl font-black ${(realPnl?.total?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+              <div className={`text-2xl font-black ${(realPnl?.total?.pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                 {realPnl ? `${realPnl.total.pnl >= 0 ? '+' : ''}${realPnl.total.pnl.toLocaleString()}` : '—'} {realPnl?.currency || 'USDT'}
               </div>
               <div className="text-xs text-[var(--text-secondary)] mt-1">تعداد کل: {realPnl?.total?.trades ?? '—'}</div>
@@ -1235,7 +1235,7 @@ export default function FinancePage() {
                   ].map(([label, v]: any, i) => (
                     <tr key={i} className={`border-b border-[var(--border-subtle)]/50 ${i === 2 ? 'font-bold' : ''}`}>
                       <td className="py-3 px-3 text-[var(--text-primary)]">{label}</td>
-                      <td className={`py-3 px-3 font-bold ${(v?.pnl ?? 0) >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>
+                      <td className={`py-3 px-3 font-bold ${(v?.pnl ?? 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                         {v ? v.pnl.toLocaleString() : '—'}
                       </td>
                       <td className="py-3 px-3 text-[var(--text-secondary)]">{v?.trades ?? '—'}</td>
@@ -1253,15 +1253,15 @@ export default function FinancePage() {
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
-                  <div className={`text-xl font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.real_pnl.toLocaleString()} {netProfit.currency || 'USDT'}</div>
+                  <div className={`text-xl font-extrabold ${netProfit.real_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>{netProfit.real_pnl.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
                 <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
-                  <div className="text-xl font-extrabold text-[#ef4444]">−{netProfit.expenses.toLocaleString()} {netProfit.currency || 'USDT'}</div>
+                  <div className="text-xl font-extrabold text-[var(--loss)]">−{netProfit.expenses.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
                 <div className="bg-[var(--accent-soft)] rounded-[14px] p-4">
                   <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود خالص</div>
-                  <div className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[#22c55e]' : 'text-[#ef4444]'}`}>{netProfit.net_profit.toLocaleString()} {netProfit.currency || 'USDT'}</div>
+                  <div className={`text-xl font-black ${netProfit.net_profit >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>{netProfit.net_profit.toLocaleString()} {netProfit.currency || 'USDT'}</div>
                 </div>
               </div>
             ) : (
@@ -1327,7 +1327,7 @@ export default function FinancePage() {
             ] as const).map(([key, label]) => (
               <div key={key} className={`bg-[var(--bg-card)] border rounded-[22px] p-4 ${key === 'total' ? 'border-[var(--border-accent)]' : 'border-[var(--border-subtle)]'}`}>
                 <div className="text-[11px] text-[var(--text-secondary)] mb-1">{label}</div>
-                <div className={`text-lg font-extrabold ${key === 'total' ? 'text-[var(--accent)]' : 'text-[#ef4444]'}`}>
+                <div className={`text-lg font-extrabold ${key === 'total' ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
                   {expenses ? Number(expenses[key] ?? 0).toLocaleString() : '—'} USDT
                 </div>
               </div>
@@ -1349,7 +1349,7 @@ export default function FinancePage() {
                   <XAxis dataKey="name" tick={{ fontSize: 11, fontFamily: 'Vazirmatn' }} stroke="var(--text-secondary)" />
                   <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                   <Tooltip contentStyle={{ backgroundColor: 'var(--bg-card)', border: '1px solid var(--border-subtle)', borderRadius: 12, color: 'var(--text-primary)', direction: 'rtl' }} formatter={(v: any) => [`${Number(v).toLocaleString()} USDT`, '']} />
-                  <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="#ef4444" />
+                  <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="var(--loss)" />
                 </BarChart>
               </ResponsiveContainer>
             ) : (
@@ -1363,11 +1363,11 @@ export default function FinancePage() {
       {tab === 'cycle' && (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5">
           {([
-            ['total_deposits', '💵 مجموع واریز', '#22c55e'],
-            ['total_withdrawals', '🏧 مجموع برداشت', '#ef4444'],
-            ['total_exchanges', '🔄 مجموع تبدیل', '#8b5cf6'],
-            ['total_transfers', '🔀 مجموع انتقال', '#3F7CFF'],
-            ['current_balance', '🏦 موجودی فعلی', '#13AE81'],
+            ['total_deposits', '💵 مجموع واریز', 'var(--profit)'],
+            ['total_withdrawals', '🏧 مجموع برداشت', 'var(--loss)'],
+            ['total_exchanges', '🔄 مجموع تبدیل', 'var(--purple)'],
+            ['total_transfers', '🔀 مجموع انتقال', 'var(--accent)'],
+            ['current_balance', '🏦 موجودی فعلی', 'var(--profit)'],
           ] as const).map(([key, label, color]) => (
             <div key={key} className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6">
               <div className="text-xs text-[var(--text-secondary)] mb-2">{label}</div>
@@ -1391,14 +1391,14 @@ export default function FinancePage() {
                 <div key={d.date} className="rounded-[16px] p-3 border border-[var(--border-subtle)]"
                   style={{ background: d.pnl > 0 ? 'rgba(34,197,94,0.08)' : d.pnl < 0 ? 'rgba(239,68,68,0.08)' : 'var(--bg-elevated)' }}>
                   <div className="text-[11px] font-bold text-[var(--text-secondary)] mb-1">{d.date}</div>
-                  <div className={`text-base font-extrabold ${d.pnl > 0 ? 'text-[#22c55e]' : d.pnl < 0 ? 'text-[#ef4444]' : 'text-[var(--text-primary)]'}`}>
+                  <div className={`text-base font-extrabold ${d.pnl > 0 ? 'text-[var(--profit)]' : d.pnl < 0 ? 'text-[var(--loss)]' : 'text-[var(--text-primary)]'}`}>
                     {d.pnl >= 0 ? '+' : ''}{d.pnl.toLocaleString()} USDT
                   </div>
                   <div className="text-[10px] text-[var(--text-secondary)] mt-1">{d.trades} معامله</div>
                   {(d.deposits > 0 || d.withdrawals > 0) && (
                     <div className="text-[10px] mt-1 text-[var(--text-secondary)]">
-                      {d.deposits > 0 && <span className="text-[#22c55e]">+{d.deposits.toLocaleString()} </span>}
-                      {d.withdrawals > 0 && <span className="text-[#ef4444]">−{d.withdrawals.toLocaleString()}</span>}
+                      {d.deposits > 0 && <span className="text-[var(--profit)]">+{d.deposits.toLocaleString()} </span>}
+                      {d.withdrawals > 0 && <span className="text-[var(--loss)]">−{d.withdrawals.toLocaleString()}</span>}
                     </div>
                   )}
                 </div>

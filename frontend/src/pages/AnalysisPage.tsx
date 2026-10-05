@@ -275,7 +275,7 @@ export default function AnalysisPage() {
                 window.URL.revokeObjectURL(url); a.remove();
               } catch { setError('خطا در دانلود PDF'); }
             }}
-              className="bg-[#E45D72] hover:bg-[#E45D72]/80 text-white px-5 py-3 rounded-xl transition-all mt-6 flex items-center gap-1">
+              className="bg-[var(--loss)] hover:bg-[var(--loss)]/80 text-white px-5 py-3 rounded-xl transition-all mt-6 flex items-center gap-1">
               📄 دانلود PDF
             </button>
           )}

@@ -29,10 +29,10 @@ export function useToast(): ToastContextValue {
 }
 
 const VARIANT_UI: Record<ToastVariant, { icon: string; color: string; border: string }> = {
-  success: { icon: '✅', color: 'text-[#13AE81]', border: 'border-[#13AE81]/40' },
-  error: { icon: '❌', color: 'text-[#E45D72]', border: 'border-[#E45D72]/40' },
-  info: { icon: 'ℹ️', color: 'text-[#3F7CFF]', border: 'border-[#3F7CFF]/40' },
-  warning: { icon: '⚠️', color: 'text-[#D99B25]', border: 'border-[#D99B25]/40' },
+  success: { icon: '✅', color: 'text-[var(--profit)]', border: 'border-[var(--profit)]/40' },
+  error: { icon: '❌', color: 'text-[var(--loss)]', border: 'border-[var(--loss)]/40' },
+  info: { icon: 'ℹ️', color: 'text-[var(--accent)]', border: 'border-[var(--accent)]/40' },
+  warning: { icon: '⚠️', color: 'text-[var(--warning)]', border: 'border-[var(--warning)]/40' },
 };
 
 /**

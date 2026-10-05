@@ -78,7 +78,7 @@ export default function SettingsPage() {
       <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-            style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}>🎨</div>
+            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}>🎨</div>
           <div>
             <h3 className="text-lg font-extrabold text-[var(--text-primary)]">ظاهر و نمایش</h3>
             <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">تم، فونت و اندازه</p>
@@ -106,7 +106,7 @@ export default function SettingsPage() {
       <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-            style={{ background: 'linear-gradient(135deg, #7959D6, #A78BFA)' }}>🌍</div>
+            style={{ background: 'linear-gradient(135deg, var(--purple), var(--purple-light))' }}>🌍</div>
           <div>
             <h3 className="text-lg font-extrabold text-[var(--text-primary)]">منطقه و ارز</h3>
             <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">منطقه‌ی زمانی، ارز و تقویم</p>
@@ -159,7 +159,7 @@ export default function SettingsPage() {
       <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-6 shadow-md">
         <div className="flex items-center gap-3 mb-6 pb-4 border-b border-[var(--border-subtle)]">
           <div className="w-11 h-11 rounded-[14px] flex items-center justify-center text-xl text-white"
-            style={{ background: 'linear-gradient(135deg, #13AE81, #4DD9A9)' }}>⚙️</div>
+            style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>⚙️</div>
           <div>
             <h3 className="text-lg font-extrabold text-[var(--text-primary)]">پیش‌فرض‌های ریسک و پراپ</h3>
             <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">مقادیر پیش‌فرض برای ساخت جدید</p>
@@ -194,7 +194,7 @@ export default function SettingsPage() {
           onClick={handleSave}
           disabled={saving}
           className="text-white px-8 py-4 rounded-[12px] text-sm font-extrabold shadow-[0_6px_20px_rgba(63,124,255,0.4)] hover:shadow-[0_10px_28px_rgba(63,124,255,0.5)] hover:-translate-y-0.5 transition-all disabled:opacity-50"
-          style={{ background: 'linear-gradient(135deg, #3F7CFF, #5B8DEF)' }}
+          style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
         >
           {saving ? '⏳ در حال ذخیره...' : '💾 ذخیره‌ی تنظیمات'}
         </button>

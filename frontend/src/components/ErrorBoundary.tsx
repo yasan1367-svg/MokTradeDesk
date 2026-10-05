@@ -50,13 +50,13 @@ export default class ErrorBoundary extends Component<ErrorBoundaryProps, ErrorBo
           <h2 className="text-lg font-extrabold text-[var(--text-primary)] mb-2">
             {this.props.label ? `خطا در بارگذاری ${this.props.label}` : 'خطایی رخ داد'}
           </h2>
-          <p className="text-sm text-[#E45D72] mb-2 font-mono bg-[var(--bg-base)] rounded-lg p-3 text-left dir-ltr overflow-auto max-h-24">
+          <p className="text-sm text-[var(--loss)] mb-2 font-mono bg-[var(--bg-base)] rounded-lg p-3 text-left dir-ltr overflow-auto max-h-24">
             {this.state.error?.message || 'خطای ناشناخته'}
           </p>
           <div className="flex gap-3 justify-center mt-5">
             <button
               onClick={this.handleReset}
-              className="bg-[#3F7CFF] hover:bg-[#3F7CFF]/80 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
+              className="bg-[var(--accent)] hover:bg-[var(--accent)]/80 text-white px-6 py-2.5 rounded-xl text-sm font-bold transition-all"
             >
               🔄 بارگذاری مجدد
             </button>
