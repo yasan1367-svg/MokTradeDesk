@@ -75,12 +75,13 @@ export default function PropAnalytics({ data }: PropAnalyticsProps) {
               </Pie>
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--bg-card)',
-                  border: '2px solid var(--border-subtle)',
-                  borderRadius: '12px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-accent)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                   color: 'var(--text-primary)',
                   fontSize: '12px',
-                  fontWeight: 'bold',
                 }}
                 formatter={(value: any) => [`${value} بار`, 'تعداد']}
               />
@@ -115,25 +116,28 @@ export default function PropAnalytics({ data }: PropAnalyticsProps) {
               <XAxis
                 dataKey="name"
                 stroke="var(--text-secondary)"
-                style={{ fontSize: '12px', fontFamily: 'Vazirmatn', fontWeight: 'bold' }}
+                style={{ fontSize: '11px', fontFamily: 'Vazirmatn', fontWeight: 'bold' }}
+                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
               />
               <YAxis
                 stroke="var(--text-secondary)"
                 style={{ fontSize: '11px', fontFamily: 'Vazirmatn' }}
+                tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
               />
               <Tooltip
                 contentStyle={{
-                  backgroundColor: 'var(--bg-card)',
-                  border: '2px solid var(--border-subtle)',
-                  borderRadius: '12px',
+                  background: 'var(--bg-elevated)',
+                  border: '1px solid var(--border-accent)',
+                  borderRadius: '8px',
+                  padding: '8px 12px',
+                  boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
                   color: 'var(--text-primary)',
                   fontSize: '12px',
-                  fontWeight: 'bold',
                 }}
               />
-              <Bar dataKey="passed" fill="var(--profit)" radius={[8, 8, 0, 0]} name="پاس‌شده" />
-              <Bar dataKey="active" fill="var(--accent)" radius={[8, 8, 0, 0]} name="فعال" />
-              <Bar dataKey="failed" fill="var(--loss)" radius={[8, 8, 0, 0]} name="فیل‌شده" />
+              <Bar dataKey="passed" fill="var(--profit)" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }} name="پاس‌شده" />
+              <Bar dataKey="active" fill="var(--accent)" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }} name="فعال" />
+              <Bar dataKey="failed" fill="var(--loss)" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }} name="فیل‌شده" />
               <Legend
                 wrapperStyle={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 'bold' }}
               />

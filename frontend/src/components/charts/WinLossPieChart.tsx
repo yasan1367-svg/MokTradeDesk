@@ -27,9 +27,9 @@ export default function WinLossPieChart({ wins, losses, height = 200 }: WinLossP
           data={data}
           cx="50%"
           cy="50%"
-          innerRadius={50}
+          innerRadius={56}
           outerRadius={80}
-          paddingAngle={5}
+          paddingAngle={3}
           dataKey="value"
         >
           {data.map((entry, index) => (
@@ -38,9 +38,11 @@ export default function WinLossPieChart({ wins, losses, height = 200 }: WinLossP
         </Pie>
         <Tooltip
           contentStyle={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border-medium)',
-            borderRadius: '12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-accent)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             color: 'var(--text-primary)',
             fontSize: '12px',
           }}

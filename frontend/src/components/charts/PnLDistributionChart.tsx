@@ -24,22 +24,23 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
           <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
           <XAxis
             dataKey="range"
-            tick={{ fontSize: 10, fontFamily: 'Vazirmatn', fill: 'var(--text-secondary)' }}
+            tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
             stroke="var(--text-secondary)"
           />
           <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
           <Tooltip
             contentStyle={{
-              backgroundColor: 'var(--bg-card)',
-              border: '1px solid var(--border-subtle)',
-              borderRadius: '12px',
+              background: 'var(--bg-elevated)',
+              border: '1px solid var(--border-accent)',
+              borderRadius: '8px',
+              padding: '8px 12px',
+              boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
               color: 'var(--text-primary)',
               fontSize: '12px',
-              direction: 'rtl',
             }}
             formatter={(value: any) => [`${value} معامله`, 'تعداد']}
           />
-          <Bar dataKey="count" radius={[6, 6, 0, 0]}>
+          <Bar dataKey="count" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }}>
             {buckets.map((_, index) => (
               <Cell key={`bucket-${index}`} fill={barColors[index % barColors.length]} />
             ))}
@@ -91,9 +92,11 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
         </Pie>
         <Tooltip
           contentStyle={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border-medium)',
-            borderRadius: '12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-accent)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             color: 'var(--text-primary)',
             fontSize: '12px',
           }}

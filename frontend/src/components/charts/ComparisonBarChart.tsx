@@ -30,26 +30,26 @@ export default function ComparisonBarChart({ items, metric, height = 250 }: Comp
           dataKey="name"
           stroke="var(--text-secondary)"
           style={{ fontSize: '11px', fontFamily: 'Vazirmatn', fontWeight: 'bold' }}
-          tick={{ fill: 'var(--text-primary)' }}
+          tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
         />
         <YAxis
           stroke="var(--text-secondary)"
           style={{ fontSize: '11px', fontFamily: 'Vazirmatn' }}
-          tick={{ fill: 'var(--text-secondary)' }}
+          tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
         />
         <Tooltip
           contentStyle={{
-            backgroundColor: 'var(--bg-card)',
-            border: '2px solid var(--border-subtle)',
-            borderRadius: '12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-accent)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             color: 'var(--text-primary)',
             fontSize: '12px',
-            fontWeight: 'bold',
-            boxShadow: '0 6px 16px rgba(25,50,85,0.08)',
           }}
           formatter={(value: any) => [value, metricLabels[metric]]}
         />
-        <Bar dataKey="value" radius={[8, 8, 0, 0]}>
+        <Bar dataKey="value" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }}>
           {data.map((_, index) => (
             <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
           ))}

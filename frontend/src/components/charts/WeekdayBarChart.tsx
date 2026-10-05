@@ -38,13 +38,15 @@ export default function WeekdayBarChart({ data, metric = 'win_rate', height = 20
     <ResponsiveContainer width="100%" height={height}>
       <BarChart data={chartData} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-        <XAxis dataKey="name" stroke="var(--text-muted)" style={{ fontSize: '11px' }} tick={{ fill: 'var(--text-muted)' }} />
-        <YAxis stroke="var(--text-muted)" style={{ fontSize: '10px' }} tick={{ fill: 'var(--text-muted)' }} />
+        <XAxis dataKey="name" stroke="var(--text-secondary)" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
+        <YAxis stroke="var(--text-secondary)" tick={{ fill: 'var(--text-secondary)', fontSize: 11 }} />
         <Tooltip
           contentStyle={{
-            backgroundColor: 'var(--bg-elevated)',
-            border: '1px solid var(--border-medium)',
-            borderRadius: '12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-accent)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             color: 'var(--text-primary)',
             fontSize: '12px',
           }}
@@ -53,7 +55,7 @@ export default function WeekdayBarChart({ data, metric = 'win_rate', height = 20
             metric === 'win_rate' ? 'نرخ برد' : 'سود خالص',
           ]}
         />
-        <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="var(--purple)" />
+        <Bar dataKey="value" radius={[6, 6, 0, 0]} fill="var(--purple)" opacity={0.85} activeBar={{ opacity: 1 }} />
       </BarChart>
     </ResponsiveContainer>
   );

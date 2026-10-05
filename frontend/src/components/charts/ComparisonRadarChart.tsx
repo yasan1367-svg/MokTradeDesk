@@ -43,12 +43,14 @@ export default function ComparisonRadarChart({ items, height = 400 }: Comparison
         <PolarGrid stroke="var(--border-subtle)" />
         <PolarAngleAxis
           dataKey="metric"
-          style={{ fontSize: '13px', fontFamily: 'Vazirmatn', fontWeight: 'bold', fill: 'var(--text-primary)' }}
+          tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+          style={{ fontSize: '11px', fontFamily: 'Vazirmatn', fontWeight: 'bold', fill: 'var(--text-secondary)' }}
         />
         <PolarRadiusAxis
           angle={90}
           domain={[0, 100]}
-          style={{ fontSize: '10px', fill: 'var(--text-muted)' }}
+          tick={{ fill: 'var(--text-secondary)', fontSize: 11 }}
+          style={{ fontSize: '11px', fill: 'var(--text-secondary)' }}
         />
         {items.map((item, index) => (
           <Radar
@@ -63,13 +65,13 @@ export default function ComparisonRadarChart({ items, height = 400 }: Comparison
         ))}
         <Tooltip
           contentStyle={{
-            backgroundColor: 'var(--bg-card)',
-            border: '2px solid var(--border-subtle)',
-            borderRadius: '12px',
+            background: 'var(--bg-elevated)',
+            border: '1px solid var(--border-accent)',
+            borderRadius: '8px',
+            padding: '8px 12px',
+            boxShadow: '0 4px 16px rgba(0,0,0,0.15)',
             color: 'var(--text-primary)',
             fontSize: '12px',
-            fontWeight: 'bold',
-            boxShadow: '0 6px 16px rgba(25,50,85,0.08)',
           }}
         />
         <Legend
