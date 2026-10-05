@@ -8,8 +8,8 @@ interface WinLossPieChartProps {
 
 export default function WinLossPieChart({ wins, losses, height = 200 }: WinLossPieChartProps) {
   const data = [
-    { name: 'برد', value: wins, color: '#00D4AA' },
-    { name: 'باخت', value: losses, color: '#FF4D6D' },
+    { name: 'برد', value: wins, color: 'var(--profit)' },
+    { name: 'باخت', value: losses, color: 'var(--loss)' },
   ];
 
   if (wins === 0 && losses === 0) {
@@ -38,15 +38,15 @@ export default function WinLossPieChart({ wins, losses, height = 200 }: WinLossP
         </Pie>
         <Tooltip
           contentStyle={{
-            backgroundColor: '#14141E',
-            border: '1px solid #2A2A3A',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-medium)',
             borderRadius: '12px',
-            color: '#F0F0F5',
+            color: 'var(--text-primary)',
             fontSize: '12px',
           }}
           formatter={(value: any, name: any) => [`${value} معامله`, name]}
         />
-        <Legend wrapperStyle={{ fontSize: '12px', color: '#F0F0F5' }} />
+        <Legend wrapperStyle={{ fontSize: '12px', color: 'var(--text-primary)' }} />
       </PieChart>
     </ResponsiveContainer>
   );

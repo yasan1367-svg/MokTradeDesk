@@ -42,10 +42,10 @@ export default function WeekdayBarChart({ data, metric = 'win_rate', height = 20
         <YAxis stroke="var(--text-muted)" style={{ fontSize: '10px' }} tick={{ fill: 'var(--text-muted)' }} />
         <Tooltip
           contentStyle={{
-            backgroundColor: '#14141E',
-            border: '1px solid #2A2A3A',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-medium)',
             borderRadius: '12px',
-            color: '#F0F0F5',
+            color: 'var(--text-primary)',
             fontSize: '12px',
           }}
           formatter={(value: any) => [
@@ -53,7 +53,7 @@ export default function WeekdayBarChart({ data, metric = 'win_rate', height = 20
             metric === 'win_rate' ? 'نرخ برد' : 'سود خالص',
           ]}
         />
-        <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="#6C63FF" />
+        <Bar dataKey="value" radius={[8, 8, 0, 0]} fill="var(--purple)" />
       </BarChart>
     </ResponsiveContainer>
   );

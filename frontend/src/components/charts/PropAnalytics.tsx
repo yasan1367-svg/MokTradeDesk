@@ -37,7 +37,7 @@ export default function PropAnalytics({ data }: PropAnalyticsProps) {
     active: value.active,
   }));
 
-  const FAILURE_COLORS = ['#E45D72', '#F0A6B2', '#D99B25', '#7959D6', '#3F7CFF', '#13AE81', '#6B7A94'];
+  const FAILURE_COLORS = ['var(--loss)', 'var(--loss-border)', 'var(--warning)', 'var(--purple)', 'var(--accent)', 'var(--profit)', 'var(--text-secondary)'];
 
   return (
     <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -131,9 +131,9 @@ export default function PropAnalytics({ data }: PropAnalyticsProps) {
                   fontWeight: 'bold',
                 }}
               />
-              <Bar dataKey="passed" fill="#13AE81" radius={[8, 8, 0, 0]} name="پاس‌شده" />
-              <Bar dataKey="active" fill="#3F7CFF" radius={[8, 8, 0, 0]} name="فعال" />
-              <Bar dataKey="failed" fill="#E45D72" radius={[8, 8, 0, 0]} name="فیل‌شده" />
+              <Bar dataKey="passed" fill="var(--profit)" radius={[8, 8, 0, 0]} name="پاس‌شده" />
+              <Bar dataKey="active" fill="var(--accent)" radius={[8, 8, 0, 0]} name="فعال" />
+              <Bar dataKey="failed" fill="var(--loss)" radius={[8, 8, 0, 0]} name="فیل‌شده" />
               <Legend
                 wrapperStyle={{ fontSize: '11px', color: 'var(--text-primary)', fontWeight: 'bold' }}
               />

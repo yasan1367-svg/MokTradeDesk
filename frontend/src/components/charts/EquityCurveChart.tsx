@@ -51,8 +51,8 @@ export default function EquityCurveChart({ trades = [], initialBalance = 0, heig
       <AreaChart data={data} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
         <defs>
           <linearGradient id="equityGradient" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="5%" stopColor="#00D4AA" stopOpacity={0.3} />
-            <stop offset="95%" stopColor="#00D4AA" stopOpacity={0} />
+            <stop offset="5%" stopColor="var(--profit)" stopOpacity={0.3} />
+            <stop offset="95%" stopColor="var(--profit)" stopOpacity={0} />
           </linearGradient>
         </defs>
         <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
@@ -69,10 +69,10 @@ export default function EquityCurveChart({ trades = [], initialBalance = 0, heig
 />
         <Tooltip
           contentStyle={{
-            backgroundColor: '#14141E',
-            border: '1px solid #2A2A3A',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-medium)',
             borderRadius: '12px',
-            color: '#F0F0F5',
+            color: 'var(--text-primary)',
             fontSize: '12px',
           }}
           formatter={(value: any) => [`${value} USDT `, 'سرمایه']}
@@ -81,7 +81,7 @@ export default function EquityCurveChart({ trades = [], initialBalance = 0, heig
         <Area
           type="monotone"
           dataKey="equity"
-          stroke="#00D4AA"
+          stroke="var(--profit)"
           strokeWidth={2}
           fill="url(#equityGradient)"
         />

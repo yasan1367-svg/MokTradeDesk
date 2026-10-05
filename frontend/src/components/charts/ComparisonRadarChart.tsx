@@ -35,7 +35,7 @@ export default function ComparisonRadarChart({ items, height = 400 }: Comparison
     return dataPoint;
   });
 
-  const colors = ['#3F7CFF', '#7959D6', '#13AE81', '#D99B25', '#E45D72'];
+  const colors = ['var(--accent)', 'var(--purple)', 'var(--profit)', 'var(--warning)', 'var(--loss)'];
 
   return (
     <ResponsiveContainer width="100%" height={height}>

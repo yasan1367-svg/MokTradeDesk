@@ -17,7 +17,7 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
         </div>
       );
     }
-    const barColors = ['#E45D72', '#F07A8C', '#F0A6B2', '#F5C2C9', '#9FE3CF', '#4DD9A9', '#13AE81', '#0E8F6B'];
+    const barColors = ['var(--loss)', 'var(--loss)', 'var(--loss-border)', 'var(--loss-border)', 'var(--profit-border)', 'var(--profit-border)', 'var(--profit)', 'var(--profit)'];
     return (
       <ResponsiveContainer width="100%" height={height}>
         <BarChart data={buckets} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
@@ -57,7 +57,7 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
     bySymbol[t.symbol] = (bySymbol[t.symbol] || 0) + pnl;
   });
 
-  const colors = ['#6C63FF', '#00D4AA', '#FFB84D', '#FF4D6D', '#4DA6FF', '#B84DFF'];
+  const colors = ['var(--purple)', 'var(--profit)', 'var(--warning)', 'var(--loss)', 'var(--accent)', 'var(--purple-light)'];
 
   const data = Object.entries(bySymbol).map(([symbol, value], idx) => ({
     name: symbol,
@@ -91,15 +91,15 @@ export default function PnLDistributionChart({ trades = [], height = 250, data: 
         </Pie>
         <Tooltip
           contentStyle={{
-            backgroundColor: '#14141E',
-            border: '1px solid #2A2A3A',
+            backgroundColor: 'var(--bg-elevated)',
+            border: '1px solid var(--border-medium)',
             borderRadius: '12px',
-            color: '#F0F0F5',
+            color: 'var(--text-primary)',
             fontSize: '12px',
           }}
           formatter={(value: any) => [`${value} USDT `, 'مجموع']}
         />
-        <Legend wrapperStyle={{ fontSize: '11px', color: '#F0F0F5' }} />
+        <Legend wrapperStyle={{ fontSize: '11px', color: 'var(--text-primary)' }} />
       </PieChart>
     </ResponsiveContainer>
   );
