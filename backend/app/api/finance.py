@@ -1442,6 +1442,118 @@ def get_real_pnl(
     return _compute_real_pnl(db, currency or Currency.USDT)
 
 
+@router.get("/real-summary")
+def get_real_summary(
+    currency: Optional[Currency] = None,
+    db: Session = Depends(get_db),
+):
+    """خلاصهٔ متریک‌های REAL (فقط FUNDED_REAL + REAL_PERSONAL)
+    بدون تأثیر فیلتر دامنه — فاز ۱۰-C-۳-A.
+
+    Returns:
+      net_pnl, win_rate, profit_factor, max_dd, total_trades,
+      winning_trades, losing_trades, gross_profit, gross_loss,
+      sparkline (30-day cumulative daily PnL), scope label.
+    """
+    from sqlalchemy import func, case, and_, or_
+    from ..models.strategy import Trade, TestType
+    from ..models.prop import PropStage, PropAccount, StageType
+    from ..models.trading import PersonalTradingAccount
+
+    target = currency or Currency.USDT
+    net = _trade_net_expr()
+    is_closed = Trade.close_time.isnot(None)
+
+    # ── Common real-scope filter ──
+    # REAL_PERSONAL → join PersonalTradingAccount for currency
+    # REAL_PROP    → join PropStage → PropAccount for currency + FUNDED_REAL
+    real_personal_filter = and_(
+        Trade.test_type == TestType.REAL_PERSONAL,
+        Trade.personal_trading_account_id.isnot(None),
+        PersonalTradingAccount.currency == target,
+    )
+    real_prop_filter = and_(
+        Trade.test_type == TestType.REAL_PROP,
+        Trade.prop_stage_id.isnot(None),
+        PropStage.stage_type == StageType.FUNDED_REAL,
+        PropAccount.currency == target,
+    )
+
+    # ── Base query with joins ──
+    base_q = (
+        db.query(Trade)
+        .outerjoin(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
+        .outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+        .outerjoin(PropAccount, PropStage.prop_account_id == PropAccount.id)
+        .filter(
+            is_closed,
+            or_(real_personal_filter, real_prop_filter),
+        )
+    )
+
+    # ── 1) Aggregates ──
+    agg = base_q.with_entities(
+        func.count(Trade.id),
+        func.coalesce(func.sum(net), 0.0),
+        func.coalesce(func.sum(case((net > 0, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((net < 0, 1), else_=0)), 0),
+        func.coalesce(func.sum(case((net > 0, net), else_=0.0)), 0.0),
+        func.coalesce(func.sum(case((net < 0, net), else_=0.0)), 0.0),
+    ).one()
+
+    total_trades = int(agg[0] or 0)
+    net_pnl = round(float(agg[1] or 0.0), 2)
+    winning_trades = int(agg[2] or 0)
+    losing_trades = int(agg[3] or 0)
+    gross_profit = round(float(agg[4] or 0.0), 2)
+    gross_loss = round(abs(float(agg[5] or 0.0)), 2)
+
+    win_rate = round((winning_trades / total_trades * 100), 2) if total_trades else 0.0
+    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (100.0 if gross_profit > 0 else 0.0)
+
+    # ── 2) Max drawdown from complete equity curve ──
+    rows = (
+        base_q.with_entities(Trade.close_time, net.label("net"))
+        .order_by(Trade.close_time.asc(), Trade.id.asc())
+        .all()
+    )
+
+    equity = [0.0]
+    for ct, n in rows:
+        net_val = float(n or 0.0)
+        equity.append(equity[-1] + net_val)
+    md = round(metrics.max_drawdown(equity), 2) if len(equity) > 1 else 0.0
+
+    # ── 3) Sparkline: cumulative daily PnL, last 30 days ──
+    from collections import defaultdict
+    daily_pnl: dict[str, float] = defaultdict(float)
+    for ct, n in rows:
+        if ct is not None:
+            day = ct.astimezone(timezone.utc).date().isoformat() if ct.tzinfo else ct.date().isoformat()
+            daily_pnl[day] += float(n or 0.0)
+
+    sparkline: list[float] = []
+    cumulative = 0.0
+    for day in sorted(daily_pnl):
+        cumulative += daily_pnl[day]
+        sparkline.append(round(cumulative, 2))
+    sparkline = sparkline[-30:]
+
+    return {
+        "net_pnl": net_pnl,
+        "win_rate": win_rate,
+        "profit_factor": profit_factor,
+        "max_dd": md,
+        "total_trades": total_trades,
+        "winning_trades": winning_trades,
+        "losing_trades": losing_trades,
+        "gross_profit": gross_profit,
+        "gross_loss": gross_loss,
+        "sparkline": sparkline,
+        "scope": "FUNDED_REAL + REAL_PERSONAL",
+    }
+
+
 @router.get("/net-profit")
 def get_net_profit(
     currency: Optional[Currency] = None,

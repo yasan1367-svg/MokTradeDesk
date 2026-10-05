@@ -30,6 +30,7 @@ interface Trade {
   close_price: number | null;
   size: number;
   pnl: number | null;
+  net_pnl?: number | null;
   source: string;
   test_type: string;
   note: string | null;

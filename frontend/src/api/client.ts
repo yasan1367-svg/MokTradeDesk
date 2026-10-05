@@ -144,10 +144,14 @@ export const getDashboardData = (params?: {
   date_to?: string;
   scope?: TradeScope;
   currency?: CurrencyCode;
+  version_id?: number;
 }) => api.get('/api/analytics/dashboard', { params });
 
 export const getYesterdayData = (params?: { scope?: TradeScope; currency?: CurrencyCode }) =>
   api.get('/api/analytics/yesterday', { params });
+
+export const getRealSummary = (params?: { currency?: CurrencyCode }) =>
+  api.get('/api/finance/real-summary', { params });
 
 export const getRiskAdvanced = (params?: {
   date_from?: string;

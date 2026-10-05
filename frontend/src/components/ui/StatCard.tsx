@@ -110,7 +110,7 @@ export default function StatCard({
       </div>
 
       <div className="text-xs text-[var(--text-secondary)] mb-1.5 font-medium relative">{label}</div>
-      <div className={`text-[30px] font-extrabold tracking-tight leading-tight ${cfg.value} relative`}>
+      <div className={`text-3xl font-extrabold tracking-tight leading-tight ${cfg.value} relative`}>
         {value}
       </div>
 

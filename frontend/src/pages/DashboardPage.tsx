@@ -8,11 +8,9 @@ import EquityCurveChart from '../components/charts/EquityCurveChart';
 import WinLossPieChart from '../components/charts/WinLossPieChart';
 import PnLDistributionChart from '../components/charts/PnLDistributionChart';
 import {
-  getDashboardData, getYesterdayData, exportDashboardPdf, getPropAlerts, markAlertRead,
-  getFinanceSummary, getFinanceCashflow, getFinanceAccounts, getTrades, getRiskAdvanced,
-  getPropPayoutsStats, getBrokerPayoutsStats,
+  getDashboardData, getYesterdayData, getRealSummary, getAllVersions, exportDashboardPdf, getPropAlerts, markAlertRead,
+  getFinanceSummary, getFinanceCashflow, getFinanceAccounts, getTrades,
   getSpendableAssets, getNetProfit, getAssetTrend,
-  listBackups, createBackup,
 } from '../api/client';
 import type { TradeScope } from '../api/client';
 import type { CurrencyCode } from '../api/client';
@@ -98,46 +96,6 @@ function computeRange(key: RangeKey, customFrom: string, customTo: string): { fr
 }
 
 // ── کارت آمار ریسک (فاز ۱۴.۴) ──
-type RiskTone = 'profit' | 'loss' | 'warning' | 'neutral';
-
-const RISK_TONE_CLASS: Record<RiskTone, string> = {
-  profit: 'text-[var(--profit)]',
-  loss: 'text-[var(--loss)]',
-  warning: 'text-[var(--warning)]',
-  neutral: 'text-[var(--text-primary)]',
-};
-
-function sharpeTone(v: number): RiskTone {
-  if (v > 1) return 'profit';
-  if (v > 0.5) return 'warning';
-  return 'loss';
-}
-
-function ruinTone(v: number): RiskTone {
-  if (v < 0.05) return 'profit';
-  if (v < 0.1) return 'warning';
-  return 'loss';
-}
-
-function RiskStat({
-  label, value, tip, tone = 'neutral', suffix = '',
-}: { label: string; value: number | string; tip: string; tone?: RiskTone; suffix?: string }) {
-  return (
-    <div className="bg-[var(--bg-base)] border border-[var(--border-subtle)] rounded-[14px] p-3">
-      <div className="flex items-center gap-1.5 mb-1">
-        <span className="text-[11px] font-bold text-[var(--text-secondary)]">{label}</span>
-        <InfoTooltip content={tip}>
-          <span className="text-[10px] text-[var(--text-muted)] cursor-help">ⓘ</span>
-        </InfoTooltip>
-      </div>
-      <div className={`text-lg font-extrabold ${RISK_TONE_CLASS[tone]}`}>
-        {value}{suffix}
-      </div>
-    </div>
-  );
-}
-
-// ── مینی‌نمودار کارت‌های آماری (فاز ۱۴.۱) ──
 const MINI_TOOLTIP = {
   backgroundColor: 'var(--bg-card)',
   border: '1px solid var(--border-subtle)',
@@ -153,7 +111,7 @@ function MiniPie({ wins, losses, height = 80 }: { wins: number; losses: number; 
     { name: 'باخت', value: losses, color: 'var(--loss)' },
   ];
   if (wins + losses === 0) {
-    return <div className="text-[11px] text-[var(--text-muted)] text-center py-4">داده نیست</div>;
+    return <div className="text-xs text-[var(--text-secondary)] text-center py-4">داده نیست</div>;
   }
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -193,6 +151,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [now, setNow] = useState(new Date());
   const [yesterday, setYesterday] = useState<any>(null);
   const [finance, setFinance] = useState<any>(null);
+  const [realSummary, setRealSummary] = useState<any>(null);
+  const [versions, setVersions] = useState<any[]>([]);
+  const [backtestSummary, setBacktestSummary] = useState<any>(null);
+  const [backtestLoading, setBacktestLoading] = useState(false);
+  const [selectedVersionId, setSelectedVersionId] = useState<number | null>(() => {
+    const stored = Number(localStorage.getItem('mok_dashboard_version'));
+    return Number.isInteger(stored) && stored > 0 ? stored : null;
+  });
 
   // فیلتر بازه (localStorage)
   const [rangeKey, setRangeKey] = useState<RangeKey>(
@@ -212,59 +178,34 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   // جدول‌های معاملات
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
   const [openTrades, setOpenTrades] = useState<any[]>([]);
-  const [risk, setRisk] = useState<any>(null);
   const [refreshing, setRefreshing] = useState(false);
 
-const [alerts, setAlerts] = useState<any[]>([]);
-const [payouts, setPayouts] = useState<any>(null);
+  const [alerts, setAlerts] = useState<any[]>([]);
 
   // ── گزارشهای فاز ۲۲ ──
   const [spendable, setSpendable] = useState<any>(null);
   const [netProfit, setNetProfit] = useState<any>(null);
   const [assetTrend, setAssetTrend] = useState<any[]>([]);
 
-  // ── آمار برداشت‌ها (فاز ۱۶) ──
+  // بارگذاری نسخه‌های استراتژی برای خلاصهٔ Backtest
   useEffect(() => {
-    Promise.all([getPropPayoutsStats(), getBrokerPayoutsStats()])
-      .then(([p, b]) => setPayouts({ prop: p.data, broker: b.data }))
-      .catch(() => {});
+    getAllVersions()
+      .then((res) => setVersions(res.data || []))
+      .catch(() => setVersions([]));
   }, []);
 
-  // ── آخرین Backup (فاز ۱۷) ──
-  const [lastBackup, setLastBackup] = useState<any>(null);
-  const [backupBusy, setBackupBusy] = useState(false);
-
-  const loadLastBackup = useCallback(() => {
-    listBackups().then((r) => setLastBackup((r.data || [])[0] || null)).catch(() => {});
-  }, []);
-  useEffect(() => { loadLastBackup(); }, [loadLastBackup]);
-
-  const handleQuickBackup = async () => {
-    setBackupBusy(true);
-    try {
-      await createBackup();
-      toast.success('Backup ساخته شد');
-      loadLastBackup();
-    } catch {
-      toast.error('خطا در ساخت Backup');
-    } finally {
-      setBackupBusy(false);
-    }
-  };
-
-  // ── بارگذاری همهٔ ویجت‌ها (قابل Refresh) ──
   const loadDashboard = useCallback(
     async (showToast = false) => {
       const r = computeRange(rangeKey, customFrom, customTo);
       setRefreshing(true);
       try {
-        const [dash, yest, sum, flow, accs, riskRes, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
+        const [dash, yest, realSum, sum, flow, accs, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
           getDashboardData({ date_from: r.from, date_to: r.to, scope, currency }),
           getYesterdayData({ scope, currency }),
+          getRealSummary({ currency }),
           getFinanceSummary(),
           getFinanceCashflow({ currency }),
           getFinanceAccounts(),
-          getRiskAdvanced({ date_from: r.from, date_to: r.to, scope, currency }),
           getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc', currency }),
           getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc', currency }),
           getPropAlerts({ unread_only: true }),
@@ -274,8 +215,8 @@ const [payouts, setPayouts] = useState<any>(null);
         ]);
         setData(dash.data);
         setYesterday(yest.data);
+        setRealSummary(realSum.data);
         setFinance({ summary: sum.data, cashflow: flow.data, accounts: accs.data });
-        setRisk(riskRes.data);
         setRecentTrades(closed.data.trades || []);
         setOpenTrades(open.data.trades || []);
         setAlerts(alertsRes.data);
@@ -299,6 +240,32 @@ const [payouts, setPayouts] = useState<any>(null);
   useEffect(() => {
     loadDashboard();
   }, [loadDashboard]);
+
+  useEffect(() => {
+    if (versions.length === 0) {
+      setBacktestSummary(null);
+      return;
+    }
+
+    const selected = versions.find((version) => version.id === selectedVersionId);
+    if (!selected) {
+      const mostRecent = [...versions].sort((a, b) =>
+        new Date(b.created_at || 0).getTime() - new Date(a.created_at || 0).getTime() || b.id - a.id,
+      )[0];
+      setSelectedVersionId(mostRecent.id);
+      return;
+    }
+
+    localStorage.setItem('mok_dashboard_version', String(selected.id));
+    let cancelled = false;
+    setBacktestLoading(true);
+    getDashboardData({ scope: 'backtest', currency: 'USDT', version_id: selected.id })
+      .then((res) => { if (!cancelled) setBacktestSummary(res.data); })
+      .catch(() => { if (!cancelled) setBacktestSummary(null); })
+      .finally(() => { if (!cancelled) setBacktestLoading(false); });
+
+    return () => { cancelled = true; };
+  }, [versions, selectedVersionId]);
 
   // ذخیرهٔ فیلتر در localStorage
   useEffect(() => {
@@ -329,14 +296,8 @@ const [payouts, setPayouts] = useState<any>(null);
 
   if (!data) return null;
 
-  const { summary, today, sparkline, equity_curve, pnl_distribution, win_loss, periods, prop_progress } = data;
+  const { summary, today, equity_curve, pnl_distribution, win_loss, periods, prop_progress } = data;
   const currencyProfit = netProfit?.by_currency?.[currency] || netProfit;
-
-  const getChangeType = (value: number): 'up' | 'down' | 'neutral' => {
-    if (value > 0) return 'up';
-    if (value < 0) return 'down';
-    return 'neutral';
-  };
 
   const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
   const jalaliDate = `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`;
@@ -375,6 +336,7 @@ const [payouts, setPayouts] = useState<any>(null);
 
   return (
     <div className="space-y-7">
+      <ErrorBoundary label="Dashboard header and filters">
       {/* هدر */}
       <div className="flex justify-between items-center flex-wrap gap-3">
         <div>
@@ -419,7 +381,7 @@ const [payouts, setPayouts] = useState<any>(null);
             <button
               key={f.key}
               onClick={() => setRangeKey(f.key)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                 rangeKey === f.key
                   ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
@@ -437,7 +399,7 @@ const [payouts, setPayouts] = useState<any>(null);
             <button
               key={f.key}
               onClick={() => setScope(f.key)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
                 scope === f.key
                   ? 'text-white shadow-[0_4px_12px_rgba(121,89,255,0.3)]'
                   : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
@@ -454,7 +416,7 @@ const [payouts, setPayouts] = useState<any>(null);
             <button
               key={value}
               onClick={() => setCurrency(value)}
-              className={`px-4 py-2 rounded-xl text-xs font-bold transition-all ${currency === value ? 'text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'}`}
+              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${currency === value ? 'text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'}`}
               style={currency === value ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
             >
               {value}
@@ -469,6 +431,87 @@ const [payouts, setPayouts] = useState<any>(null);
         )}
       </div>
 
+      </ErrorBoundary>
+
+      {/* کارت‌های آماری — پول واقعی (فاز ۱۰-C-۳-A) */}
+      <ErrorBoundary label="کارت‌های آماری">
+      {(!realSummary || (realSummary.total_trades ?? 0) === 0) ? (
+        <Card className="[&>div]:!py-6 [&>div>div:first-child]:!text-[40px] [&>div>div:first-child]:!mb-2">
+          <EmptyState
+            icon="📊"
+            title="هنوز معاملات پول واقعی ندارید"
+            description="معاملات مرحله ۳ پراپ یا بروکر شخصی شما اینجا نمایش داده می‌شوند."
+          />
+          <button
+            type="button"
+            onClick={() => onNavigate?.('prop')}
+            className="mt-2 text-xs text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+          >
+            برای مشاهده معاملات پول واقعی، به صفحه پراپ یا بروکر شخصی مراجعه کنید.
+          </button>
+        </Card>
+      ) : (
+      <>
+      <div className="text-xs text-[var(--text-secondary)] font-bold mb-2 text-center">
+        پول واقعی — مرحله ۳ پراپ + بروکر شخصی
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
+        <StatCard
+          icon="💰"
+          label="سود خالص"
+          value={`${realSummary.net_pnl >= 0 ? '+' : ''}${realSummary.net_pnl} ${currency} `}
+          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
+          changeType={realSummary.net_pnl >= 0 ? 'up' : 'down'}
+          color="profit"
+          sparkData={realSummary.sparkline && realSummary.sparkline.length > 0 ? realSummary.sparkline : [0]}
+        />
+        <StatCard
+          icon="📈"
+          label="نرخ برد"
+          value={`${realSummary.win_rate}٪`}
+          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
+          changeType="neutral"
+          color="accent"
+          chart={<MiniPie wins={realSummary.winning_trades ?? 0} losses={realSummary.losing_trades ?? 0} />}
+        />
+        <StatCard
+          icon="🏆"
+          label="فاکتور سود"
+          value={realSummary.profit_factor}
+          change="—"
+          changeType="neutral"
+          color="purple"
+          chart={<MiniBars
+            data={[
+              { label: 'سود ناخالص', value: realSummary.gross_profit ?? 0 },
+              { label: 'زیان ناخالص', value: realSummary.gross_loss ?? 0 },
+            ]}
+            colors={['var(--profit)', 'var(--loss)']}
+            currency={currency}
+          />}
+        />
+        <StatCard
+          icon="⚠️"
+          label="حداکثر ضرر"
+          value={`-${realSummary.max_dd} ${currency} `}
+          change="—"
+          changeType="neutral"
+          color="loss"
+          chart={<MiniBars
+            data={[
+              { label: 'بزرگترین ضرر', value: realSummary.gross_loss ?? 0 },
+              { label: 'حداکثر افت', value: realSummary.max_dd ?? 0 },
+            ]}
+            colors={['var(--loss)', 'var(--loss-border)']}
+            currency={currency}
+          />}
+        />
+      </div>
+      </>
+      )}
+      </ErrorBoundary>
+
+      <ErrorBoundary label="Today">
       {/* کارت وضعیت امروز (فاز ۱۴.۲ — بالای همه) */}
       <div
         className="relative rounded-[28px] p-8 flex justify-between items-center flex-wrap gap-7 overflow-hidden shadow-lg border border-[var(--border-accent)]"
@@ -508,19 +551,19 @@ const [payouts, setPayouts] = useState<any>(null);
 
         <div className="relative z-10 flex gap-4 flex-wrap">
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
-            <div className="text-[11px] text-[var(--text-secondary)] font-bold">این ماه</div>
+            <div className="text-xs text-[var(--text-secondary)] font-bold">این ماه</div>
             <div className={`text-lg font-extrabold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
-            <div className="text-[11px] text-[var(--text-secondary)] font-bold">این فصل</div>
+            <div className="text-xs text-[var(--text-secondary)] font-bold">این فصل</div>
             <div className={`text-lg font-extrabold ${periods.quarter.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
-            <div className="text-[11px] text-[var(--text-secondary)] font-bold">امسال</div>
+            <div className="text-xs text-[var(--text-secondary)] font-bold">امسال</div>
             <div className={`text-lg font-extrabold ${periods.year.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
             </div>
@@ -528,6 +571,9 @@ const [payouts, setPayouts] = useState<any>(null);
         </div>
       </div>
 
+      </ErrorBoundary>
+
+      <ErrorBoundary label="Yesterday">
       {/* کارت روز گذشته (فاز ۱۴.۲) */}
       <Card>
         <CardHeader
@@ -559,7 +605,7 @@ const [payouts, setPayouts] = useState<any>(null);
                 {(['prop', 'personal', 'simulation'] as const).map((k) => (
                   <span
                     key={k}
-                    className="text-[11px] px-2.5 py-1 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
+                    className="text-xs px-2.5 py-1 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
                   >
                     {k === 'prop' ? '🏢 پراپ' : k === 'personal' ? '👤 شخصی' : '🧪 شبیه‌سازی'}: {yesterday.by_source?.[k]?.trades ?? 0}
                   </span>
@@ -577,7 +623,7 @@ const [payouts, setPayouts] = useState<any>(null);
                 height={120}
                 currency={currency}
               />
-              <div className="text-[11px] text-[var(--text-muted)] text-center mt-1">تفکیک بر اساس منبع (قدرمطلق سود/زیان)</div>
+              <div className="text-xs text-[var(--text-secondary)] text-center mt-1">تفکیک بر اساس منبع (قدرمطلق سود/زیان)</div>
             </div>
           </div>
         ) : (
@@ -585,130 +631,193 @@ const [payouts, setPayouts] = useState<any>(null);
         )}
       </Card>
 
-      {/* کارت آمار برداشت‌ها (فاز ۱۶) */}
-      {payouts && (
-        <ErrorBoundary label="برداشت‌ها">
-          <Card>
-            <CardHeader
-              title="💸 آمار برداشت‌ها"
-              subtitle="پراپ و بروکر"
-              action={
-                <button
-                  onClick={() => onNavigate?.('payouts')}
-                  className="text-xs font-bold text-[var(--accent)] hover:bg-[var(--accent-soft)] px-3 py-1.5 rounded-lg transition-all"
-                >
-                  مشاهده همه →
-                </button>
-              }
-            />
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">مجموع پراپ</div>
-                <div className="text-base font-extrabold text-[var(--profit)]">
-                  ${Number(payouts.prop?.total || 0).toLocaleString('en-US')}
-                </div>
-              </div>
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تعداد پراپ</div>
-                <div className="text-base font-extrabold text-[var(--text-primary)]">{payouts.prop?.count ?? 0}</div>
-              </div>
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">مجموع بروکر</div>
-                <div className="text-base font-extrabold text-[var(--accent)]">
-                  ${Number(payouts.broker?.total || 0).toLocaleString('en-US')}
-                </div>
-              </div>
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تعداد بروکر</div>
-                <div className="text-base font-extrabold text-[var(--text-primary)]">{payouts.broker?.count ?? 0}</div>
-              </div>
-            </div>
-          </Card>
-        </ErrorBoundary>
-      )}
+      </ErrorBoundary>
 
-      {/* کارت آخرین Backup (فاز ۱۷) */}
-      <ErrorBoundary label="Backup">
+      <ErrorBoundary label="Active Prop Stage">
         <Card>
-          <CardHeader
-            title="💾 آخرین Backup"
-            subtitle="نسخهٔ پشتیبان دیتابیس"
-            action={
-              <div className="flex gap-2">
-                <button
-                  onClick={handleQuickBackup}
-                  disabled={backupBusy}
-                  className="text-xs font-bold text-white px-3 py-1.5 rounded-lg transition-all disabled:opacity-50"
-                  style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
-                >
-                  {backupBusy ? '⏳ …' : '➕ ساخت Backup'}
-                </button>
-                <button
-                  onClick={() => onNavigate?.('settings')}
-                  className="text-xs font-bold text-[var(--text-secondary)] hover:bg-[var(--accent-soft)] px-3 py-1.5 rounded-lg transition-all"
-                >
-                  مدیریت →
-                </button>
-              </div>
-            }
-          />
-          {lastBackup ? (
-            <div className="flex flex-wrap gap-4 text-sm">
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">فایل</div>
-                <div className="font-mono text-[12px] text-[var(--text-primary)]">{lastBackup.filename}</div>
-              </div>
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">تاریخ</div>
-                <div className="text-[13px] font-extrabold text-[var(--text-primary)]">
-                  {(() => {
-                    const d = new Date(lastBackup.created_at);
-                    if (isNaN(d.getTime())) return '—';
-                    const [jy, jm, jd] = gregorianToJalali(d.getFullYear(), d.getMonth() + 1, d.getDate());
-                    const hh = String(d.getHours()).padStart(2, '0');
-                    const mm = String(d.getMinutes()).padStart(2, '0');
-                    return `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')} - ${hh}:${mm}`;
-                  })()}
+          <CardHeader title="🏢 وضعیت پراپ" subtitle={prop_progress.length > 0 ? `${prop_progress.length} مرحله فعال` : undefined} />
+          {prop_progress.length === 0 ? (
+            <div className="text-center">
+              <EmptyState icon="🏢" title="مرحله فعالی وجود ندارد" />
+              <button
+                type="button"
+                onClick={() => onNavigate?.('prop')}
+                className="text-xs font-bold text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+              >
+                به صفحه پراپ بروید ←
+              </button>
+            </div>
+          ) : (
+            <div className="space-y-5">
+              {prop_progress.map((stage: any) => {
+                const dailyDdPercent = stage.max_daily_dd_limit > 0
+                  ? (stage.max_daily_loss / stage.max_daily_dd_limit) * 100
+                  : 0;
+                const totalDdPercent = stage.max_total_dd_limit > 0
+                  ? (stage.max_total_dd / stage.max_total_dd_limit) * 100
+                  : 0;
+                const stageLabel = stage.stage_type === 'stage_1' ? 'مرحله ۱'
+                  : stage.stage_type === 'stage_2' ? 'مرحله ۲'
+                    : stage.stage_type === 'funded_real' ? 'فاندد' : stage.stage_type;
+                const violations = stage.violations || [];
+                return (
+                  <div
+                    key={stage.stage_id}
+                    className={`rounded-[14px] border border-[var(--border-subtle)] bg-[var(--bg-elevated)] p-4 ${violations.length > 0 ? 'border-l-2 border-[var(--loss)] pl-3' : ''}`}
+                  >
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-bold text-[var(--text-primary)]">{stage.account_label || 'حساب پراپ'}</span>
+                          <Badge variant={stage.ready_to_pass ? 'success' : violations.length > 0 ? 'danger' : 'info'}>
+                            {`${stage.stage_type_icon || (stage.stage_type === 'stage_1' ? '🥇' : stage.stage_type === 'stage_2' ? '🥈' : '💰')} ${stageLabel}`}
+                          </Badge>
+                        </div>
+                        {stage.firm_name && (
+                          <div className="text-xs text-[var(--text-secondary)] mt-1">
+                            {stage.stage_type_icon || '🏢'} {stage.firm_name}
+                          </div>
+                        )}
+                      </div>
+                      {stage.ready_to_pass && <Badge variant="success">آماده پاس شدن</Badge>}
+                    </div>
+
+                    <div className="text-right mt-4">
+                      <div className="text-xl font-extrabold text-[var(--text-primary)]">
+                        سود فعلی: {Number(stage.current_profit || 0).toLocaleString('en-US')} {currency}
+                      </div>
+                      <div className="text-xs text-[var(--text-secondary)] mt-1">
+                        هدف: {Number(stage.profit_target || 0).toLocaleString('en-US')} {currency} · {Number(stage.profit_progress_percent || 0).toFixed(1)}٪
+                      </div>
+                    </div>
+
+                    <div className="mt-3">
+                      <ProgressBar value={Math.min(Math.max(stage.profit_progress_percent || 0, 0), 100)} variant="profit" />
+                    </div>
+                    <div className="text-xs text-[var(--text-secondary)] mt-2">
+                      {stage.trading_days || 0} / {stage.min_trading_days || 0} روز
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mt-3">
+                      <div className={`rounded-[10px] bg-[var(--bg-card)] px-3 py-2 text-xs ${dailyDdPercent > 50 ? 'text-[var(--warning)]' : 'text-[var(--text-secondary)]'}`}>
+                        DD روزانه: {Number(stage.max_daily_loss || 0).toFixed(2)} / {Number(stage.max_daily_dd_limit || 0).toLocaleString('en-US')} {currency}
+                      </div>
+                      <div className={`rounded-[10px] bg-[var(--bg-card)] px-3 py-2 text-xs ${totalDdPercent > 50 ? 'text-[var(--warning)]' : 'text-[var(--text-secondary)]'}`}>
+                        DD کل: {Number(stage.max_total_dd || 0).toFixed(2)} / {Number(stage.max_total_dd_limit || 0).toLocaleString('en-US')} {currency}
+                      </div>
+                    </div>
+
+                    {violations.length > 0 && (
+                      <div className="mt-3 text-xs text-[var(--loss)] font-semibold">
+                        ⚠️ {violations[0]}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </Card>
+
+{alerts.length > 0 && (
+        <Card>
+          <CardHeader title="🔔 هشدارهای پراپ" subtitle={`${alerts.length} هشدار فعال`} />
+          <div className="space-y-2 max-h-48 overflow-y-auto">
+            {alerts.map((alert) => {
+              const isDanger = alert.message.includes('🚨');
+              const isWarning = alert.message.includes('⚠️');
+              const bgColor = isDanger ? 'bg-[var(--loss-soft)] border-[var(--loss-border)]' : isWarning ? 'bg-[var(--warning-soft-alt)] border-[var(--warning-border)]' : 'bg-[var(--profit-soft)] border-[var(--profit-border)]';
+              return (
+                <div key={alert.id} className={`${bgColor} border rounded-[12px] px-4 py-3 flex items-center justify-between`}>
+                  <span className={`text-[12px] font-medium ${isDanger ? 'text-[var(--loss)]' : isWarning ? 'text-[var(--warning)]' : 'text-[var(--profit)]'}`}>
+                    {alert.message}
+                  </span>
+                  <button
+                    onClick={async () => { try { await markAlertRead(alert.id); setAlerts(alerts.filter(a => a.id !== alert.id)); } catch {} }}
+                    className="text-xs bg-[var(--bg-card)] px-3 py-1 rounded-full font-bold text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all"
+                  >
+                    ✓ خواندم
+                  </button>
                 </div>
+              );
+            })}
+          </div>
+        </Card>
+      )}
+      </ErrorBoundary>
+
+      <ErrorBoundary label="Finance">
+        <Card>
+        <CardHeader title="💰 مالی" />
+        <div className="space-y-4">
+          <div className="text-sm font-bold text-[var(--text-secondary)] pb-2 border-b border-[var(--border-subtle)] mt-5">وضعیت حال</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
+        <Card>
+          <CardHeader title="💰 موجودی کل" />
+          {finance?.summary ? (
+            <div>
+              <div className="text-2xl font-extrabold text-[var(--text-primary)]">
+                {Number(finance.summary.assets_by_currency?.[currency] || 0).toLocaleString()} {currency}
               </div>
-              <div className="bg-[var(--bg-elevated)] rounded-[14px] px-4 py-3">
-                <div className="text-[11px] text-[var(--text-secondary)] font-bold">حجم</div>
-                <div className="text-[13px] font-extrabold text-[var(--text-primary)]">
-                  {(Number(lastBackup.size || 0) / 1024).toFixed(1)} KB
-                </div>
+              <div className="text-xs text-[var(--text-secondary)] mt-1">
+                {Object.entries(finance.summary.assets_by_currency || {})
+                  .map(([c, v]: any) => `${Number(v).toLocaleString()} ${c}`)
+                  .join(' | ')}
               </div>
             </div>
           ) : (
-            <div className="text-[var(--text-secondary)] text-sm py-2">هنوز Backup‌ی ساخته نشده</div>
+            <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری...</div>
           )}
         </Card>
-      </ErrorBoundary>
-
-      {/* کارت‌های فاز ۲۲: دارایی قابل برداشت + سود خالص + روند دارایی */}
-      <ErrorBoundary label="گزارش‌های مالی (فاز ۲۲)">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-          <Card>
-            <CardHeader title="💵 دارایی شخصی" subtitle="موجودی حساب‌ها به تفکیک ارز" />
-            {spendable ? (
-              <FinancialAssetBalances assets={spendable} />
-            ) : (
-              <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
-            )}
-          </Card>
-
+        <Card>
+          <CardHeader title="💵 جریان نقدی" subtitle={`۶ ماه اخیر · ${currency}`} />
+          {finance?.cashflow?.length ? (
+            <ResponsiveContainer width="100%" height={140}>
+              <BarChart data={finance.cashflow.slice(-6)}>
+                <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
+                <Tooltip contentStyle={MINI_TOOLTIP} />
+                <Bar dataKey="income" fill="var(--profit)" radius={[4, 4, 0, 0]} name="درآمد" />
+                <Bar dataKey="expense" fill="var(--loss)" radius={[4, 4, 0, 0]} name="هزینه" />
+              </BarChart>
+            </ResponsiveContainer>
+          ) : (
+            <div className="text-[var(--text-muted)] text-sm py-4">داده‌ای برای نمایش نیست</div>
+          )}
+        </Card>
+        <Card>
+          <CardHeader title="🏦 تفکیک حساب‌ها" />
+          {finance?.accounts?.length ? (
+            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
+              {finance.accounts.slice(0, 6).map((a: any) => (
+                <div key={a.id} className="flex items-center justify-between text-sm gap-2">
+                  <span className="text-[var(--text-secondary)] truncate">{a.name}</span>
+                  <span className="font-bold text-[var(--text-primary)] shrink-0">
+                    {Number(a.balance || 0).toLocaleString()}{' '}
+                    <span className="text-xs text-[var(--text-secondary)]">{a.currency}</span>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="text-[var(--text-muted)] text-sm py-4">حسابی ثبت نشده</div>
+          )}
+        </Card>
+          </div>
+          <div className="text-sm font-bold text-[var(--text-secondary)] pb-2 border-b border-[var(--border-subtle)] mt-5">عملکرد</div>
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
           <Card>
             <CardHeader title="🧾 سود خالص" subtitle="سود Real منهای هزینه‌ها" />
             {netProfit ? (
               <div className="space-y-4">
                 <div className="grid grid-cols-2 gap-3">
                   <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                    <div className="text-[11px] text-[var(--text-secondary)] font-bold">سود Real</div>
+                    <div className="text-xs text-[var(--text-secondary)] font-bold">سود Real</div>
                     <div className={`text-lg font-extrabold ${currencyProfit.real_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                       {currencyProfit.real_pnl >= 0 ? '+' : ''}{Number(currencyProfit.real_pnl).toLocaleString('en-US')} {currency}
                     </div>
                   </div>
                   <div className="bg-[var(--bg-elevated)] rounded-[14px] p-4">
-                    <div className="text-[11px] text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
+                    <div className="text-xs text-[var(--text-secondary)] font-bold">هزینه‌ها</div>
                     <div className="text-lg font-extrabold text-[var(--loss)]">
                       −{Number(currencyProfit.expenses).toLocaleString('en-US')} {currency}
                     </div>
@@ -725,9 +834,15 @@ const [payouts, setPayouts] = useState<any>(null);
               <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
             )}
           </Card>
-        </div>
-
-        <Card className="mt-5">
+          <Card>
+            <CardHeader title="💵 دارایی شخصی" subtitle="موجودی حساب‌ها به تفکیک ارز" />
+            {spendable ? (
+              <FinancialAssetBalances assets={spendable} />
+            ) : (
+              <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری…</div>
+            )}
+          </Card>
+        <Card>
           <CardHeader title="📈 روند دارایی" subtitle="مجموع تجمعی USDT / IRR" />
           {assetTrend.length > 1 ? (
             <ResponsiveContainer width="100%" height={260}>
@@ -743,85 +858,155 @@ const [payouts, setPayouts] = useState<any>(null);
                 <YAxis tick={{ fontSize: 11 }} stroke="var(--text-secondary)" />
                 <Tooltip contentStyle={MINI_TOOLTIP} />
                 <Area type="monotone" dataKey="total_usdt" stroke="var(--accent)" fill="url(#assetUsd)" strokeWidth={2} name="USDT" />
-                <Area type="monotone" dataKey="total_irr" stroke="#F59E0B" fillOpacity={0} strokeWidth={2} name="IRR" />
+                <Area type="monotone" dataKey="total_irr" stroke="var(--warning)" fillOpacity={0} strokeWidth={2} name="IRR" />
               </AreaChart>
             </ResponsiveContainer>
           ) : (
             <div className="text-[var(--text-muted)] text-sm py-6 text-center">دادهٔ کافی برای نمایش روند وجود ندارد</div>
           )}
         </Card>
+          </div>
+        </div>
+        </Card>
       </ErrorBoundary>
 
-      {/* کارت‌های آماری */}
-      <ErrorBoundary label="کارت‌های آماری">
-      {(!summary || (summary.total_trades ?? 0) === 0) ? (
+      <ErrorBoundary label="Prop goals">
+        {/* پیشرفت اهداف (ماهانه/فصلی/سالانه) */}
         <Card>
-          <EmptyState
-            icon="📊"
-            title="هنوز معامله‌ای ثبت نشده"
-            description="برای مشاهدهٔ آمار، اولین معامله را ثبت کنید"
-            actionLabel="افزودن معامله"
-            onAction={handleNewTrade}
-          />
+          <CardHeader title="🎯 پیشرفت اهداف" subtitle="عملکرد واقعی بر اساس PnL" />
+          <div className="space-y-6">
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
+                <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.month.change_percent), 100)}
+                variant={periods.month.pnl >= 0 ? 'profit' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">نسبت به ماه قبل</span>
+                <span className={`text-xs font-bold ${periods.month.change_percent > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.change_percent > 0 ? '+' : ''}{periods.month.change_percent}٪
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
+                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">از ابتدای فصل</span>
+                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
+                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">از ابتدای سال</span>
+                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                </span>
+              </div>
+            </div>
+          </div>
         </Card>
-      ) : (
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatCard
-          icon="💰"
-          label="سود خالص"
-          value={`${summary.net_pnl >= 0 ? '+' : ''}${summary.net_pnl} ${currency} `}
-          change={periods.month.change_percent > 0 ? `+${periods.month.change_percent}٪` : `${periods.month.change_percent}٪`}
-          changeType={getChangeType(periods.month.change_percent)}
-          color="profit"
-          sparkData={
-            (equity_curve || []).length > 1
-              ? (equity_curve || []).map((p: any) => p.equity)
-              : (sparkline && sparkline.length > 0 ? sparkline : [0])
-          }
-        />
-        <StatCard
-          icon="📈"
-          label="نرخ برد"
-          value={`${summary.win_rate}٪`}
-          change={`${win_loss?.wins ?? 0}W / ${win_loss?.losses ?? 0}L`}
-          changeType="neutral"
-          color="accent"
-          chart={<MiniPie wins={win_loss?.wins ?? 0} losses={win_loss?.losses ?? 0} />}
-        />
-        <StatCard
-          icon="⚠️"
-          label="حداکثر ضرر"
-          value={`-${summary.max_dd} ${currency} `}
-          change="—"
-          changeType="neutral"
-          color="loss"
-          chart={<MiniBars
-            data={[
-              { label: 'بزرگترین ضرر', value: summary.largest_loss ?? 0 },
-              { label: 'حداکثر افت', value: summary.max_dd ?? 0 },
-            ]}
-            colors={['var(--loss)', 'var(--loss-border)']}
-            currency={currency}
-          />}
-        />
-        <StatCard
-          icon="🏆"
-          label="فاکتور سود"
-          value={summary.profit_factor}
-          change="—"
-          changeType="neutral"
-          color="purple"
-          chart={<MiniBars
-            data={[
-              { label: 'سود ناخالص', value: summary.gross_profit ?? 0 },
-              { label: 'زیان ناخالص', value: summary.gross_loss ?? 0 },
-            ]}
-            colors={['var(--profit)', 'var(--loss)']}
-            currency={currency}
-          />}
-        />
-      </div>
-      )}
+      </ErrorBoundary>
+
+      {/* عملکرد بک‌تست نسخهٔ انتخاب‌شده */}
+      <ErrorBoundary label="عملکرد بک‌تست">
+        <Card>
+          <CardHeader
+            title="📊 عملکرد بک‌تست"
+            action={(
+              <select
+                value={selectedVersionId ?? ''}
+                onChange={(event) => setSelectedVersionId(Number(event.target.value) || null)}
+                className="max-w-[220px] bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+                aria-label="انتخاب نسخه برای عملکرد بک‌تست"
+              >
+                {versions.length === 0 && <option value="">نسخه‌ای موجود نیست</option>}
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.strategy_name} — {version.version_name}
+                  </option>
+                ))}
+              </select>
+            )}
+          />
+          {versions.length === 0 ? (
+            <EmptyState icon="📊" title="نسخه‌ای برای بک‌تست وجود ندارد" />
+          ) : backtestLoading ? (
+            <div className="text-sm text-[var(--text-muted)] py-5 text-center">در حال بارگذاری عملکرد بک‌تست…</div>
+          ) : backtestSummary ? (
+            <>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+                <StatCard
+                  icon="💰"
+                  label="سود خالص بک‌تست"
+                  value={`${Number(backtestSummary.summary?.net_pnl || 0).toLocaleString('en-US')} USDT`}
+                  color={(backtestSummary.summary?.net_pnl || 0) >= 0 ? 'profit' : 'loss'}
+                  sparkData={backtestSummary.sparkline || [0]}
+                />
+                <StatCard
+                  icon="📈"
+                  label="نرخ برد"
+                  value={`${Number(backtestSummary.summary?.win_rate || 0).toFixed(1)}٪`}
+                  color="accent"
+                  sparkData={[0]}
+                />
+                <StatCard
+                  icon="🏆"
+                  label="Profit Factor"
+                  value={Number(backtestSummary.summary?.profit_factor || 0).toFixed(2)}
+                  color="purple"
+                  sparkData={[0]}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {Number(backtestSummary.summary?.closed_trades || 0)} معامله · R-Multiple: {Number(backtestSummary.summary?.avg_r_multiple || 0).toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedVersionId !== null) {
+                      localStorage.setItem('analysis_selected_version', String(selectedVersionId));
+                      onNavigate?.('analysis');
+                    }
+                  }}
+                  className="text-xs font-bold text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+                >
+                  برو به تحلیل کامل ←
+                </button>
+              </div>
+            </>
+          ) : (
+            <EmptyState icon="📊" title="دادهٔ بک‌تستی برای نسخهٔ انتخاب‌شده موجود نیست" />
+          )}
+        </Card>
       </ErrorBoundary>
 
       {/* نمودارهای پایه (فاز ۱۴.۱) */}
@@ -841,275 +1026,6 @@ const [payouts, setPayouts] = useState<any>(null);
         <Card>
           <CardHeader title="📊 توزیع سود/زیان" subtitle="تعداد معاملات در هر بازه" />
           <PnLDistributionChart data={pnl_distribution || []} height={240} />
-        </Card>
-      </div>
-      </ErrorBoundary>
-
-{/* پراپ + اهداف */}
-      <ErrorBoundary label="پراپ و اهداف">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* وضعیت پراپ */}
-        <Card>
-          <CardHeader title="🏢 وضعیت پراپ" subtitle={prop_progress.length > 0 ? `${prop_progress.length} مرحله فعال` : undefined} />
-          <div className="space-y-6">
-            {prop_progress.length === 0 ? (
-              <div className="text-[var(--text-muted)] text-center py-4 text-sm">مرحله فعالی وجود ندارد</div>
-            ) : (
-              prop_progress.slice(0, 3).map((stage: any) => (
-                <div key={stage.stage_id}>
-                  <div className="flex justify-between mb-2">
-                    <span className="text-sm font-bold text-[var(--text-primary)]">{stage.account_label}</span>
-                    <Badge variant={stage.ready_to_pass ? 'success' : stage.violations.length > 0 ? 'danger' : 'info'}>
-                      {stage.stage_type === 'stage_1' ? '🥇 مرحله ۱' :
-                       stage.stage_type === 'stage_2' ? '🥈 مرحله ۲' :
-                       stage.stage_type === 'funded_real' ? '💰 رییل' : stage.stage_type}
-                    </Badge>
-                  </div>
-                  <ProgressBar
-                    value={Math.min(stage.profit_progress_percent, 100)}
-                    variant={stage.ready_to_pass ? 'profit' : stage.violations.length > 0 ? 'loss' : 'profit'}
-                  />
-                  <div className="flex justify-between mt-1.5">
-                    <span className="text-[11px] text-[var(--text-muted)]">
-                      {stage.trading_days}/{stage.min_trading_days} روز
-                    </span>
-                    <span className={`text-[11px] font-bold ${stage.ready_to_pass ? 'text-[var(--profit)]' : 'text-[var(--accent)]'}`}>
-                      {Math.round(stage.profit_progress_percent)}٪ پیشرفت
-                    </span>
-                  </div>
-                  {stage.violations.length > 0 && (
-                    <div className="mt-2 text-[11px] text-[var(--loss)] font-semibold">
-                      ⚠️ {stage.violations[0]}
-                    </div>
-                  )}
-                </div>
-              ))
-            )}
-          </div>
-        </Card>
-
-        {/* پیشرفت اهداف (ماهانه/فصلی/سالانه) */}
-        <Card>
-          <CardHeader title="🎯 پیشرفت اهداف" subtitle="عملکرد واقعی بر اساس PnL" />
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
-                <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.month.change_percent), 100)}
-                variant={periods.month.pnl >= 0 ? 'profit' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-[11px] text-[var(--text-muted)]">نسبت به ماه قبل</span>
-                <span className={`text-[11px] font-bold ${periods.month.change_percent > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.change_percent > 0 ? '+' : ''}{periods.month.change_percent}٪
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
-                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
-                variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-[11px] text-[var(--text-muted)]">از ابتدای فصل</span>
-                <span className={`text-[11px] font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
-                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
-                variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-[11px] text-[var(--text-muted)]">از ابتدای سال</span>
-                <span className={`text-[11px] font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-{alerts.length > 0 && (
-        <Card>
-          <CardHeader title="🔔 هشدارهای پراپ" subtitle={`${alerts.length} هشدار فعال`} />
-          <div className="space-y-2 max-h-48 overflow-y-auto">
-            {alerts.map((alert) => {
-              const isDanger = alert.message.includes('🚨');
-              const isWarning = alert.message.includes('⚠️');
-              const bgColor = isDanger ? 'bg-[var(--loss-soft)] border-[var(--loss-border)]' : isWarning ? 'bg-[var(--warning-soft-alt)] border-[var(--warning-border)]' : 'bg-[var(--profit-soft)] border-[var(--profit-border)]';
-              return (
-                <div key={alert.id} className={`${bgColor} border rounded-[12px] px-4 py-3 flex items-center justify-between`}>
-                  <span className={`text-[12px] font-medium ${isDanger ? 'text-[var(--loss)]' : isWarning ? 'text-[var(--warning)]' : 'text-[var(--profit)]'}`}>
-                    {alert.message}
-                  </span>
-                  <button
-                    onClick={async () => { try { await markAlertRead(alert.id); setAlerts(alerts.filter(a => a.id !== alert.id)); } catch {} }}
-                    className="text-[11px] bg-[var(--bg-card)] px-3 py-1 rounded-full font-bold text-[var(--accent)] hover:bg-[var(--accent-soft)] transition-all"
-                  >
-                    ✓ خواندم
-                  </button>
-                </div>
-              );
-            })}
-          </div>
-        </Card>
-      )}
-      </div>
-      </ErrorBoundary>
-
-      {/* آمار ریسک پیشرفته (فاز ۱۴.۴) */}
-      <ErrorBoundary label="آمار ریسک">
-      <Card>
-        <CardHeader
-          title="🛡️ آمار ریسک پیشرفته"
-          subtitle={risk && risk.has_enough_data ? `${risk.total_trades} معامله` : undefined}
-        />
-        {risk === null ? (
-          <div className="text-[var(--text-muted)] text-sm py-6 text-center">در حال بارگذاری…</div>
-        ) : !risk.has_enough_data ? (
-          <EmptyState icon="🛡️" title="دادهٔ کافی برای تحلیل ریسک نیست" description="حداقل دو معاملهٔ بسته لازم است" />
-        ) : (
-          <div className="space-y-5">
-            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-              <RiskStat label="Sharpe" value={risk.sharpe_ratio} tip="بازده به ازای ریسک کل (سالیانه) — بالاتر از ۱ مطلوب" tone={sharpeTone(risk.sharpe_ratio)} />
-              <RiskStat label="Sortino" value={risk.sortino_ratio} tip="مثل شارپ اما فقط نوسان نزولی را در نظر می‌گیرد" />
-              <RiskStat label="Calmar" value={risk.calmar_ratio} tip="بازده سالیانه تقسیم بر حداکثر افت سرمایه" />
-              <RiskStat label="Risk of Ruin" value={risk.risk_of_ruin} tip="احتمال از دست دادن کل سرمایه" tone={ruinTone(risk.risk_of_ruin)} />
-              <RiskStat label="VaR 95%" value={risk.var_95} tip="حد ضرر مورد انتظار در ۹۵٪ موارد" tone="loss" suffix={` ${currency} `} />
-              <RiskStat label="CVaR 95%" value={risk.cvar_95} tip="میانگین زیان‌های فراتر از VaR" tone="loss" suffix={` ${currency} `} />
-              <RiskStat label="Max Consec. Losses" value={risk.max_consecutive_losses} tip="بیشترین ضررهای متوالی" tone="loss" />
-              <RiskStat label="Max Consec. Wins" value={risk.max_consecutive_wins} tip="بیشترین بردهای متوالی" tone="profit" />
-              <RiskStat label="Avg R-Multiple" value={risk.avg_r_multiple} tip="میانگین R هر معامله" tone={risk.avg_r_multiple >= 0 ? 'profit' : 'loss'} />
-              <RiskStat label="Expectancy (R)" value={risk.expectancy_r} tip="امید ریاضی بر حسب R" tone={risk.expectancy_r >= 0 ? 'profit' : 'loss'} />
-              <RiskStat label="Kelly" value={risk.kelly_criterion} tip="کسر بهینهٔ سرمایه برای هر معامله" tone={risk.kelly_criterion > 0 ? 'profit' : 'loss'} />
-              <RiskStat label="Recovery Factor" value={risk.recovery_factor} tip="سود خالص تقسیم بر حداکثر افت" />
-              <RiskStat label="Ulcer Index" value={risk.ulcer_index} tip="شدت و مدت افت‌ها — کمتر بهتر" />
-              <RiskStat label="Max Drawdown" value={risk.max_drawdown} tip="بیشترین افت سرمایه از سقف" tone="loss" suffix={` ${currency} `} />
-            </div>
-            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-              <div>
-                <div className="text-sm font-bold text-[var(--text-primary)] mb-2">توزیع R-Multiple</div>
-                {risk.r_multiple_distribution?.some((b: any) => b.count > 0) ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <BarChart data={risk.r_multiple_distribution} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                      <XAxis dataKey="range" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
-                      <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
-                      <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} معامله`, 'تعداد']} />
-                      <Bar dataKey="count" radius={[6, 6, 0, 0]}>
-                        {risk.r_multiple_distribution.map((_: any, i: number) => (
-                          <Cell key={i} fill={i < 3 ? 'var(--loss)' : i === 3 ? 'var(--text-muted)' : 'var(--profit)'} />
-                        ))}
-                      </Bar>
-                    </BarChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="text-[var(--text-muted)] text-sm py-6 text-center">داده‌ای برای R-Multiple ثبت نشده</div>
-                )}
-              </div>
-              <div>
-                <div className="text-sm font-bold text-[var(--text-primary)] mb-2">منحنی افت سرمایه (Drawdown)</div>
-                {risk.drawdown_curve?.length > 1 ? (
-                  <ResponsiveContainer width="100%" height={220}>
-                    <AreaChart data={risk.drawdown_curve} margin={{ top: 10, right: 10, left: 0, bottom: 0 }}>
-                      <defs>
-                        <linearGradient id="ddGradient" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="var(--loss)" stopOpacity={0.35} />
-                          <stop offset="95%" stopColor="var(--loss)" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="var(--border-subtle)" />
-                      <XAxis dataKey="index" stroke="var(--text-secondary)" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} />
-                      <YAxis stroke="var(--text-secondary)" tick={{ fontSize: 11, fill: 'var(--text-secondary)' }} />
-                      <Tooltip contentStyle={MINI_TOOLTIP} formatter={(v: any) => [`${v} ${currency} `, 'افت']} labelFormatter={(l: any) => `معامله #${l}`} />
-                      <Area type="monotone" dataKey="drawdown" stroke="var(--loss)" strokeWidth={2} fill="url(#ddGradient)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                ) : (
-                  <div className="text-[var(--text-muted)] text-sm py-6 text-center">داده کافی نیست</div>
-                )}
-              </div>
-            </div>
-          </div>
-        )}
-      </Card>
-      </ErrorBoundary>
-
-      {/* ویجت مالی (فاز ۱۴.۲) */}
-      <ErrorBoundary label="ویجت مالی">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card>
-          <CardHeader title="💰 موجودی کل" />
-          {finance?.summary ? (
-            <div>
-              <div className="text-2xl font-extrabold text-[var(--text-primary)]">
-                {Number(finance.summary.assets_by_currency?.[currency] || 0).toLocaleString()} {currency}
-              </div>
-              <div className="text-xs text-[var(--text-secondary)] mt-1">
-                {Object.entries(finance.summary.assets_by_currency || {})
-                  .map(([c, v]: any) => `${Number(v).toLocaleString()} ${c}`)
-                  .join(' | ')}
-              </div>
-            </div>
-          ) : (
-            <div className="text-[var(--text-muted)] text-sm py-4">در حال بارگذاری...</div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader title="💵 جریان نقدی" subtitle={`۶ ماه اخیر · ${currency}`} />
-          {finance?.cashflow?.length ? (
-            <ResponsiveContainer width="100%" height={140}>
-              <BarChart data={finance.cashflow.slice(-6)}>
-                <XAxis dataKey="month" tick={{ fontSize: 10, fill: 'var(--text-secondary)' }} stroke="var(--text-secondary)" />
-                <Tooltip contentStyle={MINI_TOOLTIP} />
-                <Bar dataKey="income" fill="var(--profit)" radius={[4, 4, 0, 0]} name="درآمد" />
-                <Bar dataKey="expense" fill="var(--loss)" radius={[4, 4, 0, 0]} name="هزینه" />
-              </BarChart>
-            </ResponsiveContainer>
-          ) : (
-            <div className="text-[var(--text-muted)] text-sm py-4">داده‌ای برای نمایش نیست</div>
-          )}
-        </Card>
-
-        <Card>
-          <CardHeader title="🏦 تفکیک حساب‌ها" />
-          {finance?.accounts?.length ? (
-            <div className="space-y-2 max-h-40 overflow-y-auto pr-1">
-              {finance.accounts.slice(0, 6).map((a: any) => (
-                <div key={a.id} className="flex items-center justify-between text-sm gap-2">
-                  <span className="text-[var(--text-secondary)] truncate">{a.name}</span>
-                  <span className="font-bold text-[var(--text-primary)] shrink-0">
-                    {Number(a.balance || 0).toLocaleString()}{' '}
-                    <span className="text-[10px] text-[var(--text-secondary)]">{a.currency}</span>
-                  </span>
-                </div>
-              ))}
-            </div>
-          ) : (
-            <div className="text-[var(--text-muted)] text-sm py-4">حسابی ثبت نشده</div>
-          )}
         </Card>
       </div>
       </ErrorBoundary>
@@ -1156,7 +1072,7 @@ const [payouts, setPayouts] = useState<any>(null);
                         <td className={`py-2.5 px-2 font-bold ${pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                           {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} {currency}
                         </td>
-                        <td className="py-2.5 px-2 text-[11px] text-[var(--text-secondary)]">
+                        <td className="py-2.5 px-2 text-xs text-[var(--text-secondary)]">
                           {t.close_time ? new Date(t.close_time).toLocaleDateString('fa-IR') : '—'}
                         </td>
                       </tr>

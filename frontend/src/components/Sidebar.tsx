@@ -65,14 +65,14 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
           </div>
           <div>
             <div className="text-2xl font-extrabold text-white leading-tight">MokTradeDesk</div>
-            <div className="text-[12px] text-[var(--sidebar-text-muted)] tracking-wider mt-0.5">Analyze • Improve • Grow</div>
+            <div className="text-[12px] text-[#5A6B80] tracking-wider mt-0.5">Analyze • Improve • Grow</div>
           </div>
         </div>
       )}
 
       {NAV_GROUPS.map((group) => (
         <div key={group.label} className="mb-2">
-          <div className="px-5 py-3 pb-1 text-[12px] text-[var(--sidebar-text-muted)] uppercase tracking-widest font-bold">
+          <div className="px-5 py-3 pb-1 text-[11px] text-[#5A6B80] uppercase tracking-wider font-medium">
             {group.label}
           </div>
           {group.items.map((item) => {
@@ -81,16 +81,20 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
               <div
                 key={item.key}
                 onClick={() => handleNavigate(item.key)}
-                className={`flex items-center gap-3 mx-3 px-5 py-3.5 rounded-[10px] cursor-pointer text-[17px] transition-all relative ${
+                className={`group flex items-center gap-3 mx-3 px-5 py-3.5 rounded-[10px] cursor-pointer text-[17px] transition-all relative ${
                   isActive
-                    ? 'text-[var(--accent)] bg-gradient-to-r from-[var(--accent-soft)] to-transparent font-bold shadow-[0_4px_12px_rgba(0,0,0,0.15)]'
-                    : 'text-[var(--sidebar-text)] hover:text-[var(--accent)] hover:bg-[var(--bg-sidebar-hover)]'
+                    ? 'font-semibold'
+                    : 'text-[#A8B8CC] font-normal hover:text-[#E8EDEE] hover:bg-[#1A2733]'
                 }`}
+                style={isActive ? {
+                  color: '#FFFFFF',
+                  background: 'linear-gradient(90deg, rgba(63,124,255,0.20), transparent)',
+                } : undefined}
               >
                 {isActive && (
-                  <div className="absolute right-[-12px] top-2.5 bottom-2.5 w-[3px] bg-[var(--accent)] rounded-r-sm" />
+                  <div className="absolute right-[-12px] top-2.5 bottom-2.5 w-[3px] bg-[#3F7CFF] rounded-r-sm" />
                 )}
-                <span className="text-xl w-6 text-center">{item.icon}</span>
+                <span className={`text-xl w-6 text-center ${isActive ? 'text-white' : 'text-[#7A8FA8] group-hover:text-[var(--accent)]'}`}>{item.icon}</span>
                 <span>{item.label}</span>
               </div>
             );
@@ -125,7 +129,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       </button>
 
       {/* سایدبرگ دسکتاپ */}
-      <aside className="hidden lg:flex w-[260px] bg-[var(--bg-sidebar)] text-[var(--sidebar-text)] flex-col py-5 overflow-y-auto shadow-[4px_0_24px_rgba(21,34,56,0.15)] z-10 shrink-0">
+      <aside className="hidden lg:flex w-[260px] bg-[#0F1720] text-[#A8B8CC] flex-col py-5 overflow-y-auto shadow-[4px_0_24px_rgba(21,34,56,0.15)] z-10 shrink-0">
         {navContent({})}
       </aside>
 
@@ -133,7 +137,7 @@ export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
       {mobileOpen && (
         <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)}>
           <aside
-            className="w-[280px] h-full bg-[var(--bg-sidebar)] text-[var(--sidebar-text)] flex flex-col py-5 overflow-y-auto shadow-xl"
+            className="w-[280px] h-full bg-[#0F1720] text-[#A8B8CC] flex flex-col py-5 overflow-y-auto shadow-xl"
             onClick={(e) => e.stopPropagation()}
           >
             <div className="flex justify-between items-center px-5 pb-3">

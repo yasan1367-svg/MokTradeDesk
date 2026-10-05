@@ -10,9 +10,14 @@ describe('Badge', () => {
     expect(screen.getByText('سود')).toBeInTheDocument();
   });
 
-  it('کلاس variant درست را اعمال می‌کند', () => {
-    render(<Badge variant="danger">ضرر</Badge>);
-    expect(screen.getByText('ضرر').className).toContain('E45D72');
+  it.each([
+    ['danger', 'ضرر', 'text-[var(--loss)]'],
+    ['success', 'سود', 'text-[var(--profit)]'],
+    ['info', 'اطلاعات', 'text-[var(--accent)]'],
+    ['warning', 'هشدار', 'text-[var(--warning)]'],
+  ] as const)('کلاس variant %s را اعمال می‌کند', (variant, label, expectedClass) => {
+    render(<Badge variant={variant}>{label}</Badge>);
+    expect(screen.getByText(label).className).toContain(expectedClass);
   });
 });
 

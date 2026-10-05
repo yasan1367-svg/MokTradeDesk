@@ -298,6 +298,7 @@ def get_dashboard_data(
     date_to: Optional[str] = None,
     scope: str = Query("real", description="real | backtest | forward | all"),
     currency: Currency = Query(Currency.USDT),
+    version_id: Optional[int] = Query(None, description="Optional strategy version filter"),
     db: Session = Depends(get_db),
 ):
     """داده‌های داشبورد — فاز ۱۵.۳: محاسبات در SQL (بدون لود کل جدول)
@@ -306,6 +307,7 @@ def get_dashboard_data(
     """
     from ..services.prop_rule_engine import PropRuleEngine
     from ..models.prop import PropStage, StageStatus
+    from sqlalchemy.orm import joinedload
 
     sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
@@ -315,6 +317,8 @@ def get_dashboard_data(
     win_cond = and_(is_closed, net > 0)
     loss_cond = and_(is_closed, net < 0)
     scoped_q = _scope_filter(db.query(Trade), df_bound, dt_bound, sc, currency)
+    if version_id is not None:
+        scoped_q = scoped_q.filter(Trade.version_id == version_id)
     closed_scope = scoped_q.filter(is_closed)
 
     # ── ۱) آمار کلی در یک کوئری (بدون لود ردیف‌ها) ──
@@ -346,6 +350,7 @@ def get_dashboard_data(
     win_ratio = (wins_n / closed_count) if closed_count else 0.0
     loss_ratio = (losses_n / closed_count) if closed_count else 0.0
     expectancy = (win_ratio * avg_win) - (loss_ratio * avg_loss)
+    avg_r_multiple = closed_scope.with_entities(func.avg(Trade.r_multiple)).scalar()
 
     # ── ۲) سکانس مرتب برای streak و محاسبه‌های دامنه‌ای equity/drawdown ──
     narrow = (
@@ -465,7 +470,9 @@ def get_dashboard_data(
     spendable_net = round(broker_pnl + funded_pnl, 2)
 
     # ── Prop Progress (فاز ۳۶: ارزیابی گروهی ⇒ بدون N+1) ──
-    active_stages = db.query(PropStage).join(PropAccount).filter(
+    active_stages = db.query(PropStage).options(
+        joinedload(PropStage.account).joinedload(PropAccount.firm)
+    ).join(PropAccount).filter(
         PropStage.status == StageStatus.ACTIVE,
         PropAccount.currency == currency,
     ).all()
@@ -475,6 +482,17 @@ def get_dashboard_data(
     for stage in active_stages:
         result = bulk_eval.get(stage.id) or PropRuleEngine.evaluate_stage(db, stage.id)
         result["stage_name"] = stage.stage_type.value if stage.stage_type else "Unknown"
+        result["account_label"] = stage.account.account_label if stage.account else ""
+        result["firm_name"] = (
+            stage.account.firm.name
+            if stage.account and stage.account.firm
+            else None
+        )
+        result["stage_type_icon"] = {
+            "stage_1": "🥇",
+            "stage_2": "🥈",
+            "funded_real": "💰",
+        }.get(result["stage_name"], "🏢")
         prop_progress_data.append(result)
 
     return {
@@ -489,6 +507,7 @@ def get_dashboard_data(
             "closed_trades": closed_count,
             "gross_profit": round(gp, 2),
             "gross_loss": round(gl, 2),
+            "avg_r_multiple": round(float(avg_r_multiple), 4) if avg_r_multiple is not None else 0.0,
             "avg_win": round(avg_win, 2),
             "avg_loss": round(avg_loss, 2),
             "largest_win": round(largest_win, 2),

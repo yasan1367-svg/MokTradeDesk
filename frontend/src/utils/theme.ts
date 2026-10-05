@@ -33,5 +33,5 @@ export function resolveInitialTheme(): Theme {
   if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
     return 'dark';
   }
-  return 'dark';
+  return 'light';
 }
