@@ -15,6 +15,8 @@ import {
   deleteScreenshot,
   getAllVersions,
   getAllPropStages,
+  getPropAccounts,
+  getPropAccountDetail,
   getPersonalTradingAccounts,
   exportTradesCsv,
   exportTradesPdf,
@@ -40,17 +42,34 @@ interface Trade {
   screenshots_count: number;
 }
 
+const PROP_STAGE_TYPE_LABELS: Record<string, string> = {
+  stage_1: 'مرحله ۱',
+  stage_2: 'مرحله ۲',
+  funded_real: 'رییل',
+};
+
+const PROP_STAGE_STATUS_LABELS: Record<string, string> = {
+  active: 'فعال',
+  passed: 'پاس‌شده',
+  failed: 'فیل‌شده',
+  closed: 'بسته‌شده',
+};
+
 export default function TradesPage() {
   const [trades, setTrades] = useState<Trade[]>([]);
   const [total, setTotal] = useState(0);
   const [versions, setVersions] = useState<any[]>([]);
   const [propStages, setPropStages] = useState<any[]>([]);
+  const [propAccounts, setPropAccounts] = useState<any[]>([]);
+  const [filterPropStages, setFilterPropStages] = useState<any[]>([]);
   const [personalAccounts, setPersonalAccounts] = useState<any[]>([]);
 
   const [filterVersion, setFilterVersion] = useState<number | null>(null);
   const [filterSymbol, setFilterSymbol] = useState('');
   const [filterTestType, setFilterTestType] = useState('');
   const [filterSource, setFilterSource] = useState('');
+  const [filterPropAccountId, setFilterPropAccountId] = useState<number | null>(null);
+  const [filterPropStageId, setFilterPropStageId] = useState<number | null>(null);
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
@@ -118,21 +137,41 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   useEffect(() => {
     setCurrentPage(1);
     setSelectedIds([]);
-  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterDateFrom, filterDateTo]);
+  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterPropAccountId, filterPropStageId, filterDateFrom, filterDateTo]);
 
   useEffect(() => {
     loadTrades();
-  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterDateFrom, filterDateTo, currentPage]);
+  }, [filterVersion, filterSymbol, filterTestType, filterSource, filterPropAccountId, filterPropStageId, filterDateFrom, filterDateTo, currentPage]);
+
+  useEffect(() => {
+    let active = true;
+    if (filterTestType !== 'real_prop' || !filterPropAccountId) {
+      setFilterPropStages([]);
+      return () => { active = false; };
+    }
+
+    getPropAccountDetail(filterPropAccountId)
+      .then((res) => {
+        if (active) setFilterPropStages(res.data?.stages || []);
+      })
+      .catch(() => {
+        if (active) setFilterPropStages([]);
+      });
+
+    return () => { active = false; };
+  }, [filterTestType, filterPropAccountId]);
 
   const loadFilters = async () => {
     try {
-      const [versionsRes, stagesRes, ptaRes] = await Promise.all([
+      const [versionsRes, stagesRes, ptaRes, accountsRes] = await Promise.all([
         getAllVersions(),
         getAllPropStages(),
         getPersonalTradingAccounts(),
+        getPropAccounts(),
       ]);
       setVersions(versionsRes.data);
       setPropStages(stagesRes.data);
+      setPropAccounts(accountsRes.data || []);
       // فاز ۳۸.۵: دامنهٔ REAL_PERSONAL از «حساب معاملاتی شخصی» پر می‌شود (نه حساب مالی)
       setPersonalAccounts(ptaRes.data || []);
     } catch (err) {
@@ -148,6 +187,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         symbol: filterSymbol || undefined,
         test_type: filterTestType || undefined,
         source: filterSource || undefined,
+        prop_account_id: filterTestType === 'real_prop' ? filterPropAccountId || undefined : undefined,
+        prop_stage_id: filterTestType === 'real_prop' ? filterPropStageId || undefined : undefined,
         date_from: filterDateFrom || undefined,
         date_to: filterDateTo || undefined,
         search: searchQuery || undefined,
@@ -404,6 +445,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       if (filterSymbol) params.symbol = filterSymbol;
       if (filterTestType) params.test_type = filterTestType;
       if (filterSource) params.source = filterSource;
+      if (filterTestType === 'real_prop' && filterPropAccountId) params.prop_account_id = filterPropAccountId;
+      if (filterTestType === 'real_prop' && filterPropStageId) params.prop_stage_id = filterPropStageId;
       if (searchQuery) params.search = searchQuery;
       // فاز ۵۳.۵.۳: خروجی باید همان فیلترهای صفحه (شامل بازهٔ تاریخ) را حفظ کند
       if (filterDateFrom) params.date_from = filterDateFrom;
@@ -511,7 +554,15 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
             <label className="text-[var(--text-secondary)] text-xs block mb-1">نوع تست</label>
             <select
               value={filterTestType}
-              onChange={(e) => setFilterTestType(e.target.value)}
+              onChange={(e) => {
+                const value = e.target.value;
+                setFilterTestType(value);
+                if (value !== 'real_prop') {
+                  setFilterPropAccountId(null);
+                  setFilterPropStageId(null);
+                  setFilterPropStages([]);
+                }
+              }}
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
             >
               <option value="">همه</option>
@@ -521,6 +572,47 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               <option value="real_prop">🏢 رییل پراپ</option>
             </select>
           </div>
+
+          {filterTestType === 'real_prop' && (
+            <>
+              <div>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حساب پراپ</label>
+                <select
+                  value={filterPropAccountId ?? ''}
+                  onChange={(e) => {
+                    setFilterPropAccountId(e.target.value ? Number(e.target.value) : null);
+                    setFilterPropStageId(null);
+                    setFilterPropStages([]);
+                  }}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm"
+                >
+                  <option value="">همه حساب‌ها</option>
+                  {propAccounts.map((account) => (
+                    <option key={account.id} value={account.id}>
+                      {account.firm_name} / {account.account_label}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">مرحله پراپ</label>
+                <select
+                  value={filterPropStageId ?? ''}
+                  onChange={(e) => setFilterPropStageId(e.target.value ? Number(e.target.value) : null)}
+                  disabled={!filterPropAccountId}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)] text-sm disabled:opacity-50"
+                >
+                  <option value="">همه مراحل</option>
+                  {filterPropStages.map((stage) => (
+                    <option key={stage.id} value={stage.id}>
+                      {PROP_STAGE_TYPE_LABELS[stage.stage_type] || stage.stage_type} · {PROP_STAGE_STATUS_LABELS[stage.status] || stage.status}
+                    </option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           <div>
             <label className="text-[var(--text-secondary)] text-xs block mb-1">منبع</label>

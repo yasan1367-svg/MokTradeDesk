@@ -274,6 +274,7 @@ def get_trades(
     version_id: Optional[int] = None,
     strategy_id: Optional[int] = None,
     personal_trading_account_id: Optional[int] = None,
+    prop_account_id: Optional[int] = None,
     prop_stage_id: Optional[int] = None,
     symbol: Optional[str] = None,
     test_type: Optional[str] = None,
@@ -308,6 +309,12 @@ def get_trades(
                 and_(Trade.test_type.in_([TestType.BACKTEST, TestType.FORWARD]), currency == Currency.USDT),
             ))
         )
+
+    # Reuse the currency join when present; otherwise join the stage for the account filter.
+    if prop_account_id:
+        if currency is None:
+            query = query.join(PropStage, Trade.prop_stage_id == PropStage.id)
+        query = query.filter(PropStage.prop_account_id == prop_account_id)
 
     if version_id:
         query = query.filter(Trade.version_id == version_id)

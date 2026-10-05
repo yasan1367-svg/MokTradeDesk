@@ -239,6 +239,37 @@ def test_manual_trade_real_prop_requires_prop_stage(client, db_session):
     assert "prop_stage_id" in r.json()["detail"]
 
 
+def test_get_trades_filters_by_prop_account(client, db_session):
+    """Prop-account filtering follows Trade → PropStage → PropAccount."""
+    from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
+
+    firm = PropFirm(name="Filter firm")
+    db_session.add(firm)
+    db_session.flush()
+    account_a = PropAccount(prop_firm_id=firm.id, account_label="Account A")
+    account_b = PropAccount(prop_firm_id=firm.id, account_label="Account B")
+    db_session.add_all([account_a, account_b])
+    db_session.flush()
+    stage_a = PropStage(prop_account_id=account_a.id, stage_type=StageType.STAGE_1, status=StageStatus.ACTIVE)
+    stage_b = PropStage(prop_account_id=account_b.id, stage_type=StageType.STAGE_1, status=StageStatus.ACTIVE)
+    db_session.add_all([stage_a, stage_b])
+    db_session.commit()
+
+    first = _mk_trade(db_session, symbol="XAUUSD")
+    first.test_type = TestType.REAL_PROP
+    first.prop_stage_id = stage_a.id
+    second = _mk_trade(db_session, symbol="DJIUSD")
+    second.test_type = TestType.REAL_PROP
+    second.prop_stage_id = stage_b.id
+    db_session.commit()
+
+    response = client.get("/api/trades/", params={"prop_account_id": account_a.id})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["total"] == 1
+    assert [trade["symbol"] for trade in body["trades"]] == ["XAUUSD"]
+
+
 def test_manual_trade_backtest_rejects_personal_account(client, db_session):
     """BACKTEST نباید personal_trading_account_id داشته باشد"""
     v = _mk_version(db_session, name="bt")

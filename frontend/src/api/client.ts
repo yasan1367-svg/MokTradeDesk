@@ -485,6 +485,7 @@ export const forkVersion = (
 // ─────────────────────────────────────────────
 export const getTrades = (params?: {
   version_id?: number;
+  prop_account_id?: number;
   prop_stage_id?: number;
   personal_trading_account_id?: number;  // فاز ۳۸.۴: جایگزین منسوخ `finance_account_id`
   symbol?: string;
