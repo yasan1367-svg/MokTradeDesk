@@ -145,7 +145,7 @@ def test_patch_missing_foreign_key_maps_to_404(client, db_session):
     assert response.json()["detail"] == "Version not found"
 
 
-def test_patch_omitted_fields_preserve_and_explicit_null_clears(client, db_session):
+def test_patch_omitted_fields_preserve_and_close_time_cannot_be_cleared(client, db_session):
     version = _version(db_session)
     trade_id = _create_trade(client, version.id)
 
@@ -155,13 +155,14 @@ def test_patch_omitted_fields_preserve_and_explicit_null_clears(client, db_sessi
     assert unchanged["note"] == "initial"
     assert unchanged["close_time"] is not None
 
-    cleared = client.patch(
-        f"/api/trades/{trade_id}", json={"note": None, "close_time": None, "sl": None}
-    )
+    clear_close_time = client.patch(f"/api/trades/{trade_id}", json={"close_time": None})
+    assert clear_close_time.status_code == 400
+
+    cleared = client.patch(f"/api/trades/{trade_id}", json={"note": None, "sl": None})
     assert cleared.status_code == 200, cleared.text
     result = client.get(f"/api/trades/{trade_id}").json()
     assert result["note"] is None
-    assert result["close_time"] is None
+    assert result["close_time"] is not None
     assert result["sl"] is None
 
 

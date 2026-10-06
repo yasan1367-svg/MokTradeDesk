@@ -242,6 +242,34 @@ def test_preview_stages_rows_without_touching_trades(client, db_session):
     assert batch.context["version_id"] == version.id
 
 
+def test_preview_rejects_soft4x_open_trade_before_staging(client, db_session):
+    version = _version(db_session)
+    response = _preview_soft4x(
+        client,
+        content=_xlsx_bytes([_soft4x_row(close_time=None)]),
+        test_type="backtest",
+        version_id=version.id,
+    )
+
+    assert response.status_code == 400
+    assert "زمان بسته شدن" in response.json()["detail"]
+    assert db_session.query(ImportBatch).count() == 0
+    assert db_session.query(ImportBatchRow).count() == 0
+    assert db_session.query(Trade).count() == 0
+
+
+def test_preview_rejects_mt4_open_trade_before_staging(client, db_session):
+    version = _version(db_session)
+    html = _mt4_html().replace("2025.01.02 11:00:00", "")
+    response = _preview_mt4(client, html=html, test_type="backtest", version_id=version.id)
+
+    assert response.status_code == 400
+    assert "زمان بسته شدن" in response.json()["detail"]
+    assert db_session.query(ImportBatch).count() == 0
+    assert db_session.query(ImportBatchRow).count() == 0
+    assert db_session.query(Trade).count() == 0
+
+
 def test_preview_rejects_unknown_extension(client, db_session):
     version = _version(db_session)
     response = _preview_soft4x(

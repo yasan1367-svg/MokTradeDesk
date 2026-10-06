@@ -142,11 +142,45 @@ def test_manual_trade_endpoint(client, db_session):
     assert detail.json()["r_multiple"] == 2.0
 
 
+def test_manual_trade_without_close_time_is_rejected(client, db_session):
+    version = _mk_version(db_session, name="missing-close")
+    response = client.post(
+        "/api/trades/manual",
+        json={
+            "symbol": "XAUUSD",
+            "direction": "buy",
+            "open_time": "2025-01-01T10:00:00Z",
+            "open_price": 2000,
+            "size": 1,
+            "test_type": "backtest",
+            "version_id": version.id,
+        },
+    )
+
+    assert response.status_code == 422
+    assert db_session.query(Trade).count() == 0
+
+
+def test_patch_cannot_clear_trade_close_time(client, db_session):
+    trade = _mk_trade(db_session)
+    original_close_time = trade.close_time
+
+    for close_time in (None, ""):
+        response = client.patch(
+            f"/api/trades/{trade.id}", json={"close_time": close_time}
+        )
+        assert response.status_code == 400
+
+    db_session.expire_all()
+    assert db_session.get(Trade, trade.id).close_time == original_close_time
+
+
 def test_manual_trade_invalid_classification(client):
     r = client.post("/api/trades/manual", json={
         "symbol": "XAUUSD",
         "direction": "buy",
         "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
         "open_price": 2000,
         "size": 1,
         "test_type": "backtest",
@@ -159,6 +193,7 @@ def test_manual_trade_invalid_direction(client):
         "symbol": "XAUUSD",
         "direction": "sideways",
         "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
         "open_price": 2000,
         "size": 1,
         "test_type": "backtest",
@@ -196,6 +231,7 @@ def _manual_payload(version_id, **extra):
         "symbol": "XAUUSD",
         "direction": "buy",
         "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
         "open_price": 2000,
         "size": 1,
         "version_id": version_id,

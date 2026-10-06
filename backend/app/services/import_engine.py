@@ -384,7 +384,9 @@ def validate_trade(trade: Dict[str, Any]) -> Optional[str]:
     if open_time is None:
         return "زمان باز شدن معامله الزامی است"
     close_time = trade.get("close_time")
-    if close_time is not None and close_time < open_time:
+    if close_time is None:
+        return "زمان بسته شدن معامله الزامی است"
+    if close_time < open_time:
         return "زمان بسته شدن نمی‌تواند قبل از باز شدن باشد"
     if trade.get("open_price") is None:
         return "قیمت ورود الزامی است"
@@ -865,6 +867,23 @@ class ImportEngine:
         validate_context(self.db, ctx)
         if not raw_rows:
             raise ImportEngineError("هیچ معامله‌ای در فایل یافت نشد", 400)
+
+        # Open positions / rows without a close timestamp are not trades for
+        # this import flow. Reject before creating either the batch or staged rows.
+        missing_close_rows = [
+            index
+            for index, raw in enumerate(raw_rows, start=1)
+            if not isinstance(raw, dict)
+            or normalize_utc(
+                raw.get("close_time"), ctx.server_utc_offset_minutes or 0
+            ) is None
+        ]
+        if missing_close_rows:
+            first = missing_close_rows[0]
+            raise ImportEngineError(
+                f"ردیف {first}: زمان بسته شدن معامله الزامی است؛ هیچ ردیفی staging نشد",
+                400,
+            )
 
         batch = ImportBatch(
             source=ctx.expected_source.name,

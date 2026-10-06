@@ -74,7 +74,7 @@ class ManualTradeCreate(BaseModel):
     symbol: str
     direction: str
     open_time: str
-    close_time: Optional[str] = None
+    close_time: str
     open_price: float
     close_price: Optional[float] = None
     size: float
@@ -443,6 +443,11 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
     payload = data.model_dump(exclude_unset=True)
+    if "close_time" in payload and (
+        payload["close_time"] is None
+        or (isinstance(payload["close_time"], str) and not payload["close_time"].strip())
+    ):
+        raise HTTPException(status_code=400, detail="زمان بسته شدن معامله الزامی است")
     for required_field in ("test_type", "version_id", "symbol", "direction", "open_time", "open_price", "size"):
         if required_field in payload and payload[required_field] is None:
             raise HTTPException(status_code=400, detail=f"{required_field} cannot be null")
@@ -689,6 +694,8 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         raise HTTPException(status_code=400, detail="زمان باز شدن الزامی است")
 
     close_time = _parse_iso_datetime(data.close_time, "زمان بسته شدن", offset)
+    if close_time is None:
+        raise HTTPException(status_code=400, detail="زمان بسته شدن معامله الزامی است")
 
     direction = data.direction.lower()
     if direction not in ["buy", "sell"]:
