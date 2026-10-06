@@ -106,7 +106,7 @@ def test_profit_factor():
 
 
 def test_profit_factor_no_loss():
-    assert metrics.profit_factor([10, 20]) == float("inf")
+    assert metrics.profit_factor([10, 20]) == 999.0
     assert metrics.profit_factor([-10]) == 0.0
 
 

@@ -355,8 +355,8 @@ def get_dashboard_data(
     largest_win = float(agg[7] or 0.0)
     largest_loss = abs(float(agg[8] or 0.0))
 
-    wr = (wins_n / closed_count * 100) if closed_count else 0
-    pf = (gp / gl) if gl > 0 else (100.0 if gp > 0 else 0.0)
+    wr = (wins_n / closed_count) if closed_count else 0  # 0-1 fraction
+    pf = metrics.profit_factor_from_sums(gp, gl)
     avg_win = (gp / wins_n) if wins_n else 0.0
     avg_loss = (gl / losses_n) if losses_n else 0.0
     win_ratio = (wins_n / closed_count) if closed_count else 0.0
@@ -398,13 +398,9 @@ def get_dashboard_data(
     max_drawdown = max(peak_to_trough["dd"], static_dd["dd"])
     sp = [round(point["equity"] - initial_balance, 2) for point in equity_points[1:]]
     spd = sp[-20:] if len(sp) >= 20 else sp
-    max_consecutive_losses = 0; _streak = 0
-    for _ct, _n in seq:
-        if _n < 0:
-            _streak += 1
-            if _streak > max_consecutive_losses: max_consecutive_losses = _streak
-        elif _n > 0:
-            _streak = 0
+    max_wins_dash, max_losses_dash = metrics.win_loss_streaks([n for _, n in seq])
+    max_consecutive_losses = max_losses_dash
+    max_consecutive_wins = max_wins_dash
 
     now = datetime.now(timezone.utc)
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
@@ -522,6 +518,7 @@ def get_dashboard_data(
             "largest_loss": round(largest_loss, 2),
             "expectancy": round(expectancy, 2),
             "max_consecutive_losses": max_consecutive_losses,
+            "max_consecutive_wins": max_consecutive_wins,
         },
         "today": {
             "pnl": round(tdp, 2),
@@ -738,22 +735,20 @@ def get_risk_metrics(
         db.query(func.sum(func.abs(_net_expr()))).filter(Trade.close_time.is_(None)), sc
     ).scalar() or 0.0)
     orp = (oe / avg_b * 100) if avg_b > 0 else 0
-    streak = 0; ms = 0
-    for r in returns:
-        if r < 0: streak += 1; ms = max(ms, streak)
-        elif r > 0: streak = 0
+    # ── برد/باخت متوالی ──
+    mw, ml = metrics.win_loss_streaks(returns)
     dd_d = max(peak_to_trough["dd"], static_dd["dd"])
     md = drawdown_trade_count
     status = "danger" if (sharpe < 0.5 or (ror is not None and ror > 0.1) or orp > 20) else ("warning" if (sharpe < 1.0 or (ror is not None and ror > 0.05) or orp > 10) else "safe")
     return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
-            "profit_factor": round((sum(wins) / abs(sum(losses))) if losses else (100 if wins else 0), 2),
-            "win_rate": round(wr * 100, 2), "avg_r_multiple": round(arm, 2),
+            "profit_factor": round(metrics.profit_factor_from_sums(sum(wins), abs(sum(losses))), 2),
+            "win_rate": round(wr, 2), "avg_r_multiple": round(arm, 2),
             "expectancy": round((ar) if returns else 0, 2), "expectancy_r": round(expectancy_r, 2),
             "avg_win": round(aw, 2), "avg_loss": round(al, 2), "rr_ratio": round(rr, 2)},
         "risk_metrics": {"risk_of_ruin": round(ror, 4) if ror is not None else None,
             "var_95": round(var_95_dollar, 2), "var_95_percent": round(var_95_percent, 4),
             "cvar_95": round(cvar_95_dollar, 2), "cvar_95_percent": round(cvar_95_percent, 4),
-            "max_consecutive_losses": ms,
+            "max_consecutive_losses": ml, "max_consecutive_wins": mw,
             "max_drawdown_depth": round(dd_d, 2), "max_drawdown_duration": md,
             "open_exposure": round(oe, 2), "open_risk_percent": round(orp, 2), "total_trades": len(returns)},
         "status": status}
@@ -913,24 +908,8 @@ def get_risk_advanced(
     cvar_95_percent = cvar_95_dollar / initial_balance * 100 if initial_balance > 0 else 0.0
 
     # ── برد/باخت متوالی ──
-    max_cl = 0
-    max_cw = 0
-    cur_l = 0
-    cur_w = 0
-    for r in returns:
-        if r < 0:
-            cur_l += 1
-            cur_w = 0
-            if cur_l > max_cl:
-                max_cl = cur_l
-        elif r > 0:
-            cur_w += 1
-            cur_l = 0
-            if cur_w > max_cw:
-                max_cw = cur_w
-        else:
-            cur_l = 0
-            cur_w = 0
+    # ── برد/باخت متوالی ──
+    max_cw, max_cl = metrics.win_loss_streaks(returns)
 
     # ── R-Multiple ──
     r_multiples = [c["r_multiple"] for c in closed]
@@ -939,7 +918,10 @@ def get_risk_advanced(
     avg_r = expectancy_r
 
     # ── Kelly Criterion ──
-    kelly = (wr - ((1 - wr) / rr)) if rr > 0 else 0.0
+    if rr <= 0:
+        kelly = wr if wr > 0 else 0.0
+    else:
+        kelly = wr - ((1 - wr) / rr)
 
     # ── Risk of Ruin from valid R outcomes (1% assumed risk per trade) ──
     r_wins = [r for r in valid_r if r > 0]

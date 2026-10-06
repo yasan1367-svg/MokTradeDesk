@@ -84,13 +84,47 @@ def streaks(nets: List[float]) -> Dict[str, Any]:
     }
 
 
+def win_loss_streaks(values: List[float]) -> tuple[int, int]:
+    """Return (max_consecutive_wins, max_consecutive_losses).
+    Zero resets both streaks.
+    """
+    max_w = max_l = cur_w = cur_l = 0
+    for v in values:
+        if v > 0:
+            cur_w += 1
+            cur_l = 0
+            if cur_w > max_w:
+                max_w = cur_w
+        elif v < 0:
+            cur_l += 1
+            cur_w = 0
+            if cur_l > max_l:
+                max_l = cur_l
+        else:
+            cur_w = 0
+            cur_l = 0
+    return max_w, max_l
+
+
+def profit_factor_from_sums(gross_profit: float, gross_loss: float) -> float:
+    """Return profit factor with consistent edge-case behavior.
+    
+    - normal case: gross_profit / gross_loss
+    - no losses but some profit: 999.0 (sentinel for "no losses")
+    - no profit and no losses: 0.0
+    """
+    if gross_loss > 0:
+        return gross_profit / gross_loss
+    if gross_profit > 0:
+        return 999.0  # sentinel for "no losses"
+    return 0.0
+
+
 def profit_factor(nets: List[float]) -> float:
     """PF = gross_profit / gross_loss"""
     gross_profit = sum(n for n in nets if n > 0)
     gross_loss = abs(sum(n for n in nets if n < 0))
-    if gross_loss == 0:
-        return float('inf') if gross_profit > 0 else 0.0
-    return gross_profit / gross_loss
+    return profit_factor_from_sums(gross_profit, gross_loss)
 
 
 def calculate_basic_metrics(trades: List) -> Dict[str, Any]:

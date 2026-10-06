@@ -52,7 +52,7 @@ export default function RiskManagementPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 shadow-md">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-input)] flex items-center justify-center text-lg">📈</div>
-            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sharpe Ratio</span>
+            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sharpe Ratio (روزانه)</span>
           </div>
           <div className="text-[22px] font-extrabold text-[var(--text-primary)]">{performance_ratios.sharpe_ratio}</div>
           <div className={`text-[11px] font-bold mt-1 ${performance_ratios.sharpe_ratio >= 1 ? 'text-[var(--profit)]' : performance_ratios.sharpe_ratio >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
@@ -62,7 +62,7 @@ export default function RiskManagementPage() {
         <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 shadow-md">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-input)] flex items-center justify-center text-lg">📉</div>
-            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sortino Ratio</span>
+            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sortino Ratio (روزانه)</span>
           </div>
           <div className="text-[22px] font-extrabold text-[var(--text-primary)]">{performance_ratios.sortino_ratio}</div>
           <div className={`text-[11px] font-bold mt-1 ${performance_ratios.sortino_ratio >= 1 ? 'text-[var(--profit)]' : performance_ratios.sortino_ratio >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
@@ -104,6 +104,7 @@ export default function RiskManagementPage() {
           </div>
           <div className="space-y-3">
             <RiskRow label="حداکثر ضرر متوالی" value={`${risk_metrics.max_consecutive_losses} مرتبه`} status={risk_metrics.max_consecutive_losses > 5 ? 'danger' : risk_metrics.max_consecutive_losses > 3 ? 'warning' : 'safe'} />
+            <RiskRow label="حداکثر برد متوالی" value={`${risk_metrics.max_consecutive_wins} مرتبه`} status={risk_metrics.max_consecutive_wins > 0 ? 'safe' : 'safe'} />
             <RiskRow label="عمق Drawdown" value={`USDT ${risk_metrics.max_drawdown_depth.toFixed(2)}`} status={risk_metrics.max_drawdown_depth > 2000 ? 'danger' : risk_metrics.max_drawdown_depth > 1000 ? 'warning' : 'safe'} />
             <RiskRow label="مدت Drawdown" value={`${risk_metrics.max_drawdown_duration} معامله`} status={risk_metrics.max_drawdown_duration > 10 ? 'danger' : risk_metrics.max_drawdown_duration > 5 ? 'warning' : 'safe'} />
             <RiskRow label="Exposure باز" value={`USDT ${risk_metrics.open_exposure.toFixed(2)} (${risk_metrics.open_risk_percent.toFixed(1)}٪)`} status={risk_metrics.open_risk_percent > 20 ? 'danger' : risk_metrics.open_risk_percent > 10 ? 'warning' : 'safe'} />
@@ -123,8 +124,8 @@ export default function RiskManagementPage() {
           </div>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <PerfItem label="Win Rate" value={`${performance_ratios.win_rate}٪`} color={performance_ratios.win_rate >= 50 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
-          <PerfItem label="Profit Factor" value={performance_ratios.profit_factor} color={performance_ratios.profit_factor >= 1.5 ? 'text-[var(--profit)]' : performance_ratios.profit_factor >= 1 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
+          <PerfItem label="Win Rate" value={`${(performance_ratios.win_rate * 100).toFixed(1)}٪`} color={performance_ratios.win_rate >= 0.5 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
+          <PerfItem label="Profit Factor" value={performance_ratios.profit_factor >= 999 ? '∞' : performance_ratios.profit_factor.toFixed(2)} color={performance_ratios.profit_factor >= 1.5 ? 'text-[var(--profit)]' : performance_ratios.profit_factor >= 1 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="Avg R-Multiple" value={performance_ratios.avg_r_multiple} color={performance_ratios.avg_r_multiple >= 1 ? 'text-[var(--profit)]' : performance_ratios.avg_r_multiple > 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="R:R Ratio" value={performance_ratios.rr_ratio} color={performance_ratios.rr_ratio >= 2 ? 'text-[var(--profit)]' : 'text-[var(--warning)]'} />
           <PerfItem label="Avg Win" value={`USDT ${performance_ratios.avg_win}`} color="text-[var(--profit)]" />
