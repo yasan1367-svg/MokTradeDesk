@@ -8,6 +8,7 @@ from sqlalchemy.orm import Session, joinedload
 from ..core.database import get_db
 from ..core.rate_limit import limiter, EXPORT_RATE_LIMIT
 from ..models.strategy import Trade, StrategyVersion
+from ..models.finance import Currency
 from ..services.analysis_service import AnalysisService
 from ..services import metrics
 from ..utils.chart_helpers import draw_equity_chart, draw_win_loss_pie, get_font_path
@@ -18,6 +19,11 @@ from ..utils.date_range import filter_by_range
 # ═════════════════════════════════════════════
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from reportlab.lib import colors
+from reportlab.lib.units import cm, inch
+from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle, Image
+from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+from reportlab.lib.enums import TA_LEFT, TA_RIGHT, TA_CENTER
 import jdatetime
 import os
 import arabic_reshaper
@@ -76,12 +82,69 @@ def _build_pdf_response(buffer, filename_prefix):
         media_type="application/pdf",
         headers={"Content-Disposition": f"attachment; filename={filename_prefix}_{ts}.pdf"},
     )
-def _draw_header(canvas, doc):
+def _draw_header_footer(canvas, doc):
+    """Header + footer on every page."""
     canvas.saveState()
-    canvas.setFont(_PERSIAN_FONT, 9)
-    canvas.drawString(40, 20, _fa(f"گزارش معاملات | MokTradeDesk \u2014 {_pdate()}"))
-    canvas.drawRightString(doc.pagesize[0] - 40, 20, _fa(f"صفحه {doc.page}"))
+    w, h = doc.pagesize
+    # Header
+    canvas.setFont(_PERSIAN_FONT, 8)
+    canvas.setFillColor(colors.HexColor("#6B7A94"))
+    canvas.drawString(cm * 1.5, h - cm * 1.2, _fa("MokTradeDesk"))
+    canvas.setFont(_PERSIAN_FONT, 8)
+    canvas.drawCentredString(w / 2, h - cm * 1.2, _fa("گزارش معاملاتی"))
+    canvas.drawRightString(w - cm * 1.5, h - cm * 1.2, _fa(_pdate()))
+    # Header line
+    canvas.setStrokeColor(colors.HexColor("#E5EBF3"))
+    canvas.setLineWidth(0.5)
+    canvas.line(cm * 1.5, h - cm * 1.5, w - cm * 1.5, h - cm * 1.5)
+    # Footer
+    canvas.setFont(_PERSIAN_FONT, 7)
+    canvas.setFillColor(colors.HexColor("#9AA8BF"))
+    canvas.drawString(cm * 1.5, cm * 1, _fa(f"ایجاد شده: {datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M UTC')}"))
+    canvas.drawRightString(w - cm * 1.5, cm * 1, _fa(f"صفحه {doc.page}"))
     canvas.restoreState()
+
+
+def _kpi_card(value, label, color_hex="#6B7A94", prefix="", suffix="", font_size=20):
+    """Build a (left, right) table cell pair for a KPI card."""
+    from reportlab.platypus import Table, TableStyle
+    from reportlab.lib import colors
+    val_text = f"{prefix}{value}{suffix}"
+    card = Table([
+        [Paragraph(f"<font color='{color_hex}' size='{font_size}'><b>{val_text}</b></font>",
+                   ParagraphStyle("kpi_val", fontName=_PERSIAN_FONT, alignment=TA_CENTER)),
+         Paragraph(f"<font color='#6B7A94' size='8'>{_fa(label)}</font>",
+                   ParagraphStyle("kpi_lbl", fontName=_PERSIAN_FONT, alignment=TA_CENTER))]],
+        colWidths=[None],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#F5F7FB")),
+            ("BOX", (0, 0), (-1, -1), 0.5, colors.HexColor("#D0D5DD")),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+            ("VALIGN", (0, 0), (-1, -1), "MIDDLE"),
+        ]))
+    return card
+
+
+def _kpi_color(value):
+    if value is None:
+        return "#6B7A94"
+    v = float(value) if not isinstance(value, (int, float)) else value
+    if v > 0:
+        return "#13AE81"
+    if v < 0:
+        return "#E45D72"
+    return "#6B7A94"
+
+
+def _section_heading(text, level=2):
+    """Section heading with colored underline."""
+    ps = ParagraphStyle(f"h{level}", fontName=_PERSIAN_FONT, fontSize=14 if level == 2 else 12,
+                        spaceBefore=12, spaceAfter=4, leading=18,
+                        textColor=colors.HexColor("#1A1D29"))
+    return Paragraph(_fa(f"<b>{text}</b>"), ps)
 def _draw_table(elements, data, col_widths, title):
     from reportlab.platypus import Table, TableStyle, Paragraph
     from reportlab.lib import colors
@@ -262,7 +325,7 @@ def export_trades_pdf(
         [_fa("فاکتور سود"), f"{pf:.2f}"],
         [_fa("کل معاملات"), str(len(closed))],
     ], [150, 150], "")
-    doc.build(els, onFirstPage=_draw_header, onLaterPages=_draw_header)
+    doc.build(els, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
     return _build_pdf_response(buffer, "trades")
 # ═════════════════════════════════════════════
 # PDF Export — Analysis Report
@@ -368,7 +431,7 @@ def export_analysis_pdf(
                 _fa(f"* نمایش ۵۰ معامله از {len(trades_list)} معامله"),
                 styles["Italic"],
             ))
-    doc.build(els, onFirstPage=_draw_header, onLaterPages=_draw_header)
+    doc.build(els, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
     return _build_pdf_response(buffer, "analysis")
 # ═════════════════════════════════════════════
 # PDF Export — Dashboard Summary
@@ -382,7 +445,7 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
     from ..api.analytics import get_dashboard_data
-    dashboard_data = get_dashboard_data(db)
+    dashboard_data = get_dashboard_data(db=db, scope="real", currency=Currency.USDT, version_id=None)
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -443,5 +506,5 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
                     f"{st.get('profit_progress_percent', 0):.1f}%",
                 ])
             _draw_table(els, pr, [120, 120, 100], "")
-    doc.build(els, onFirstPage=_draw_header, onLaterPages=_draw_header)
+    doc.build(els, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
     return _build_pdf_response(buffer, "dashboard")
