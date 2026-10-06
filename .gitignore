@@ -1,11 +1,33 @@
+# ═════════════════════════════════════════════════════════
+# .gitignore — MokTradeDesk
+# ═════════════════════════════════════════════════════════
+
 # ═════════════════════════════════════════════
-# Python / Backend
+# Python bytecode & runtime
 # ═════════════════════════════════════════════
 __pycache__/
 *.py[cod]
 *$py.class
 *.so
 .Python
+*.pid
+*.pid.lock
+*.seed
+*.tmp
+
+# ═════════════════════════════════════════════
+# Python virtual environments
+# ═════════════════════════════════════════════
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ═════════════════════════════════════════════
+# Build artifacts (Python setuptools / pip)
+# ═════════════════════════════════════════════
 build/
 develop-eggs/
 dist/
@@ -23,60 +45,74 @@ wheels/
 *.egg
 MANIFEST
 
-# Virtual Environment
-venv/
-env/
-ENV/
-env.bak/
-venv.bak/
-.venv/
-
-# Testing
+# ═════════════════════════════════════════════
+# Test caches & coverage
+# ═════════════════════════════════════════════
 .pytest_cache/
-.coverage
-htmlcov/
-.tox/
+.hypothesis/
 .mypy_cache/
 .ruff_cache/
+.tox/
+.coverage
+htmlcov/
+coverage/
 
 # ═════════════════════════════════════════════
-# Database
+# SQLite databases & sidecar files
 # ═════════════════════════════════════════════
 *.db
+*.db-shm
+*.db-wal
+*.db-journal
 *.sqlite
 *.sqlite3
-trading_desk.db
-trading_desk.db.backup*
 *.db.backup*
 *.db.bak*
+
+# ═════════════════════════════════════════════
+# Backup files & folders
+# ═════════════════════════════════════════════
+backups/
+backend/backups/
+*.bak
+*.backup
+*.pre*
+# Exception for pre-commit config (tracked)
+!backend/.pre-commit-config.yaml
 
 # ═════════════════════════════════════════════
 # Node.js / Frontend
 # ═════════════════════════════════════════════
 node_modules/
-dist/
+frontend/node_modules/
 dist-ssr/
-*.local
 .vite/
-.cache/
 .parcel-cache/
 frontend/dist/
 frontend/build/
-frontend/node_modules/
+*.local
 
 # ═════════════════════════════════════════════
-# Backup Files (فازهای توسعه)
+# Logs
 # ═════════════════════════════════════════════
-*.bak
-*.pre*
-*.pre61
-*.pre7
-*.pre71
-*.pre8
-*.backup
-backups/
-# فاز ۴۱.۲: قاعدهٔ «*.pre*» فایل pre-commit را ignore می‌کرد ⇒ استثنا
-!backend/.pre-commit-config.yaml
+*.log
+*.log.*
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+temp_build.log
+temp_build_err.log
+
+# ═════════════════════════════════════════════
+# Environment files (never commit secrets)
+# ═════════════════════════════════════════════
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
 
 # ═════════════════════════════════════════════
 # IDE / Editor
@@ -89,9 +125,10 @@ backups/
 .project
 .classpath
 .settings/
+.cache/
 
 # ═════════════════════════════════════════════
-# OS
+# OS junk files
 # ═════════════════════════════════════════════
 .DS_Store
 .DS_Store?
@@ -103,44 +140,8 @@ Thumbs.db
 desktop.ini
 
 # ═════════════════════════════════════════════
-# Environment Variables
-# ═════════════════════════════════════════════
-.env
-.env.local
-.env.*.local
-*.env
-backend/.env
-
-# ═════════════════════════════════════════════
-# Logs
-# ═════════════════════════════════════════════
-*.log
-npm-debug.log*
-yarn-debug.log*
-yarn-error.log*
-pnpm-debug.log*
-logs/
-*.log.*
-temp_build.log
-temp_build_err.log
-
-# ═════════════════════════════════════════════
-# Attachments / Screenshots / Storage
+# Storage / Uploads
 # ═════════════════════════════════════════════
 backend/storage/screenshots/
-backend/backups/
 frontend/storage/
 storage/
-
-# ═════════════════════════════════════════════
-# Misc
-# ═════════════════════════════════════════════
-*.pid
-*.seed
-*.pid.lock
-.cache
-coverage/
-*.tmp
-
-*.db-wal
-*.db-shm
