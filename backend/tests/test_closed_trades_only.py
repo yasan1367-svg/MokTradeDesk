@@ -221,3 +221,22 @@ def test_open_trades_cannot_add_trading_day(db_session):
     assert result2["trading_days"] == 2, \
         f"trading_days should be 2 now, got {result2['trading_days']}"
     assert result2["days_met"] is True
+def test_withdrawable_profit_uses_closed_pnl_only(db_session):
+    """FUNDED_REAL withdrawable_profit must be based on closed PnL only, not floating."""
+    v = _version(db_session)
+    stage = _make_stage(db_session, stage_type=StageType.FUNDED_REAL,
+                        profit_target=0, min_trading_days=0,
+                        max_daily_dd=9999, max_total_dd=9999,
+                        profit_share=80.0, initial=10000)
+    # $500 closed profit, $300 floating profit
+    db_session.add(_closed_trade(500, 1, stage_id=stage.id, version_id=v.id))
+    db_session.add(_open_trade(300, 2, stage_id=stage.id, version_id=v.id))
+    db_session.commit()
+
+    result = PropRuleEngine.evaluate_stage(db_session, stage.id)
+    # withdrawable_profit should be based on $500 closed only (80% share = $400)
+    expected = 500 * 0.80  # $400
+    assert abs(result["withdrawable_profit"] - expected) < 0.01, \
+        f"withdrawable_profit should be {expected} (closed-only), got {result['withdrawable_profit']}"
+    assert result["floating_pnl"] == 300, \
+        f"floating_pnl should still be 300, got {result['floating_pnl']}"

@@ -226,7 +226,7 @@ class PropRuleEngine:
         withdrawable_profit = 0.0
 
         if is_funded:
-            user_share = total_pnl * (profit_share / 100.0)
+            user_share = closed_pnl * (profit_share / 100.0)
             withdrawable_profit = max(user_share - total_withdrawn, 0.0)
             ready_to_pass = False
         else:
