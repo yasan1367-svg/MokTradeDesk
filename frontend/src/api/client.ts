@@ -951,3 +951,17 @@ export const updateBackupSettings = (data: {
   keep?: number;
 }) => api.put('/api/backup/settings', data);
 
+// ─────────────────────────────────────────────
+// Custom Intervals (Poursamadi / Time Windows)
+// ─────────────────────────────────────────────
+export const getCustomIntervals = () =>
+  api.get('/api/analytics/intervals/');
+
+export const getSeedStatus = () =>
+  api.get('/api/analytics/intervals/seed-status');
+
+export const seedPoursamadiIntervals = () =>
+  api.post('/api/analytics/intervals/seed-poursamadi');
+
+export const deleteCustomInterval = (id: number) =>
+  api.delete(`/api/analytics/intervals/${id}`);

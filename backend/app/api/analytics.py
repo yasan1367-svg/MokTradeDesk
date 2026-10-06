@@ -1400,59 +1400,112 @@ def delete_interval(interval_id: int, db: Session = Depends(get_db)):
 
 
 # ═════════════════════════════════════════════
-# Seed (وارد کردن داده‌های اولیه)
+# Seed (وارد کردن داده‌های اولیه پورصمدی)
 # ═════════════════════════════════════════════
+_POURSAMADI_GOLD = [
+    {"symbol": "XAUUSD", "start_hour": 10, "start_minute": 30,
+     "end_hour": 13, "end_minute": 30, "label": "A", "priority": 1},
+    {"symbol": "XAUUSD", "start_hour": 16, "start_minute": 0,
+     "end_hour": 17, "end_minute": 0, "label": "A", "priority": 1},
+    {"symbol": "XAUUSD", "start_hour": 17, "start_minute": 0,
+     "end_hour": 18, "end_minute": 30, "label": "A", "priority": 1},
+]
+
+_POURSAMADI_DJI = [
+    {"symbol": "DJIUSD", "start_hour": 17, "start_minute": 0,
+     "end_hour": 18, "end_minute": 30, "label": "A", "priority": 1},
+    {"symbol": "DJIUSD", "start_hour": 18, "start_minute": 30,
+     "end_hour": 21, "end_minute": 30, "label": "B", "priority": 2},
+    {"symbol": "DJIUSD", "start_hour": 21, "start_minute": 30,
+     "end_hour": 23, "end_minute": 30, "label": "C", "priority": 3},
+]
+
+_POURSAMADI_EUR = [
+    {"symbol": "EURUSD", "start_hour": 10, "start_minute": 30,
+     "end_hour": 13, "end_minute": 30, "label": "A", "priority": 1},
+    {"symbol": "EURUSD", "start_hour": 16, "start_minute": 0,
+     "end_hour": 17, "end_minute": 0, "label": "A", "priority": 1},
+    {"symbol": "EURUSD", "start_hour": 17, "start_minute": 0,
+     "end_hour": 18, "end_minute": 30, "label": "A", "priority": 1},
+]
+
+_POURSAMADI_NAMES = {
+    ("XAUUSD", 0): "طلا — A1",
+    ("XAUUSD", 1): "طلا — A2",
+    ("XAUUSD", 2): "طلا — A3",
+    ("DJIUSD", 0): "داو — A1",
+    ("DJIUSD", 1): "داو — B1",
+    ("DJIUSD", 2): "داو — C1",
+    ("EURUSD", 0): "یورو — A1",
+    ("EURUSD", 1): "یورو — A2",
+    ("EURUSD", 2): "یورو — A3",
+}
+
+
+def _seed_intervals(db: Session, intervals: list, name_map: dict) -> list[str]:
+    """Seed intervals idempotently. Returns names of newly created intervals."""
+    created = []
+    for idx, data in enumerate(intervals):
+        name = name_map.get((data["symbol"], idx), data["symbol"])
+        existing = db.query(CustomTimeInterval).filter(
+            CustomTimeInterval.name == name,
+            CustomTimeInterval.symbol == data["symbol"],
+        ).first()
+        if existing:
+            continue
+        db_interval = CustomTimeInterval(
+            name=name, symbol=data["symbol"],
+            start_hour=data["start_hour"], start_minute=data["start_minute"],
+            end_hour=data["end_hour"], end_minute=data["end_minute"],
+            label=data["label"], priority=data["priority"],
+        )
+        db.add(db_interval)
+        created.append(name)
+    db.commit()
+    return created
+
+
 @router.post("/intervals/seed-gold")
 def seed_gold_intervals(db: Session = Depends(get_db)):
-    """وارد کردن بازه‌های پیش‌فرض طلا"""
-    gold_intervals = [
-        {"name": "بازه طلا A1", "symbol": "XAUUSD", "start_hour": 1, "start_minute": 0,
-         "end_hour": 17, "end_minute": 0, "label": "A", "priority": 1},
-        {"name": "بازه طلا C1", "symbol": "XAUUSD", "start_hour": 17, "start_minute": 0,
-         "end_hour": 18, "end_minute": 30, "label": "C", "priority": 3},
-        {"name": "بازه طلا B1", "symbol": "XAUUSD", "start_hour": 16, "start_minute": 20,
-         "end_hour": 16, "end_minute": 30, "label": "B", "priority": 2},
-        {"name": "بازه طلا A2", "symbol": "XAUUSD", "start_hour": 15, "start_minute": 50,
-         "end_hour": 16, "end_minute": 30, "label": "A", "priority": 1},
-        {"name": "بازه طلا B2", "symbol": "XAUUSD", "start_hour": 11, "start_minute": 0,
-         "end_hour": 12, "end_minute": 30, "label": "B", "priority": 2},
-    ]
-    created = []
-    for data in gold_intervals:
-        existing = db.query(CustomTimeInterval).filter(
-            CustomTimeInterval.name == data["name"]
-        ).first()
-        if not existing:
-            db_interval = CustomTimeInterval(**data)
-            db.add(db_interval)
-            created.append(data["name"])
-    db.commit()
-    return {"message": f"{len(created)} بازه اضافه شد", "created": created}
+    """وارد کردن بازه‌های طلا (پورصمدی)"""
+    created = _seed_intervals(db, _POURSAMADI_GOLD, _POURSAMADI_NAMES)
+    return {"message": f"{len(created)} بازه طلا اضافه شد", "created": created}
 
 
 @router.post("/intervals/seed-dji")
 def seed_dji_intervals(db: Session = Depends(get_db)):
-    """وارد کردن بازه‌های پیش‌فرض داوجونز"""
-    dji_intervals = [
-        {"name": "داو A1", "symbol": "DJIUSD", "start_hour": 1, "start_minute": 0,
-         "end_hour": 17, "end_minute": 0, "label": "A", "priority": 1},
-        {"name": "داو C1", "symbol": "DJIUSD", "start_hour": 17, "start_minute": 0,
-         "end_hour": 18, "end_minute": 30, "label": "C", "priority": 3},
-        {"name": "داو B1", "symbol": "DJIUSD", "start_hour": 16, "start_minute": 20,
-         "end_hour": 16, "end_minute": 30, "label": "B", "priority": 2},
-        {"name": "داو A2", "symbol": "DJIUSD", "start_hour": 15, "start_minute": 50,
-         "end_hour": 16, "end_minute": 30, "label": "A", "priority": 1},
-        {"name": "داو B2", "symbol": "DJIUSD", "start_hour": 11, "start_minute": 0,
-         "end_hour": 12, "end_minute": 30, "label": "B", "priority": 2},
-    ]
+    """وارد کردن بازه‌های داوجونز (پورصمدی)"""
+    created = _seed_intervals(db, _POURSAMADI_DJI, _POURSAMADI_NAMES)
+    return {"message": f"{len(created)} بازه داو اضافه شد", "created": created}
+
+
+@router.post("/intervals/seed-poursamadi")
+def seed_poursamadi_intervals(db: Session = Depends(get_db)):
+    """وارد کردن همهٔ بازه‌های پورصمدی (طلا + داو + یورو)"""
     created = []
-    for data in dji_intervals:
-        existing = db.query(CustomTimeInterval).filter(
-            CustomTimeInterval.name == data["name"]
+    for intervals in (_POURSAMADI_GOLD, _POURSAMADI_DJI, _POURSAMADI_EUR):
+        created.extend(_seed_intervals(db, intervals, _POURSAMADI_NAMES))
+    return {"message": f"{len(created)} بازه پورصمدی اضافه شد", "created": created}
+
+
+@router.get("/intervals/seed-status")
+def get_seed_status(db: Session = Depends(get_db)):
+    """وضعیت بازه‌های پورصمدی — آیا همهٔ ۹ بازه وجود دارند؟"""
+    all_poursamadi = list(_POURSAMADI_NAMES.keys())
+    by_symbol: dict[str, int] = {}
+    total_found = 0
+    for sym, idx in all_poursamadi:
+        name = _POURSAMADI_NAMES[(sym, idx)]
+        exists = db.query(CustomTimeInterval.id).filter(
+            CustomTimeInterval.name == name,
+            CustomTimeInterval.symbol == sym,
         ).first()
-        if not existing:
-            db_interval = CustomTimeInterval(**data)
-            db.add(db_interval)
-            created.append(data["name"])
-    db.commit()
-    return {"message": f"{len(created)} بازه اضافه شد", "created": created}
+        if exists:
+            by_symbol[sym] = by_symbol.get(sym, 0) + 1
+            total_found += 1
+    poursamadi_seeded = total_found == len(all_poursamadi)
+    return {
+        "poursamadi_seeded": poursamadi_seeded,
+        "total_intervals": total_found,
+        "by_symbol": by_symbol,
+    }

@@ -14,6 +14,10 @@ import {
   getAnalysisPersonalAccount, // فاز ۴۸c
   getAllPropStages,
   getPersonalTradingAccounts, // فاز ۴۸c
+  getCustomIntervals,
+  getSeedStatus,
+  seedPoursamadiIntervals,
+  deleteCustomInterval,
 } from '../api/client';
 
 import EquityCurveChart from '../components/charts/EquityCurveChart';
@@ -80,6 +84,9 @@ export default function AnalysisPage() {
   const [trades, setTrades] = useState<any[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // فاز TA-1 — بازه‌های زمانی پورصمدی
+  const [intervals, setIntervals] = useState<any[]>([]);
+  const [seedStatus, setSeedStatus] = useState<any>(null);
 
   // ═════════════════════════════════════════════
   // ۱. بارگذاری لیست‌های اولیه (نسخه‌ها / پراپ‌ها)
@@ -96,6 +103,7 @@ export default function AnalysisPage() {
     getPersonalTradingAccounts()
       .then((res) => setPersonalAccounts(res.data || []))
       .catch((err) => console.error('خطا در دریافت حساب‌های معاملاتی شخصی:', err));
+    loadIntervals();
   }, []);
 
   // ═════════════════════════════════════════════
@@ -187,6 +195,36 @@ export default function AnalysisPage() {
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در تحلیل');
     } finally { setLoading(false); }
+  };
+
+  // ═════════════════════════════════════════════
+  // بازه‌های زمانی پورصمدی
+  // ═════════════════════════════════════════════
+  const loadIntervals = async () => {
+    try {
+      const res = await getCustomIntervals();
+      setIntervals(res.data || []);
+    } catch { /* silent */ }
+    try {
+      const s = await getSeedStatus();
+      setSeedStatus(s.data);
+    } catch { /* silent */ }
+  };
+
+  const handleSeedPoursamadi = async () => {
+    try {
+      await seedPoursamadiIntervals();
+      await loadIntervals();
+      handleReanalyze(); // trigger reanalyze with current selection
+    } catch { setError('خطا در افزودن بازه‌های پورصمدی'); }
+  };
+
+  const handleDeleteInterval = async (id: number) => {
+    try {
+      await deleteCustomInterval(id);
+      await loadIntervals();
+      handleReanalyze();
+    } catch { setError('خطا در حذف بازه'); }
   };
 
   const handleScopeChange = (newScope: ScopeType) => {
@@ -447,6 +485,69 @@ export default function AnalysisPage() {
               data={analysis.custom_time_analysis || {}}
               firstColumnLabel="بازه"
             />
+          </div>
+
+          {/* ═════════════════════════════════════════════
+          بازه‌های زمانی پورصمدی (فاز TA-1)
+          ═════════════════════════════════════════════ */}
+          <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[16px] p-5 mb-6">
+            <div className="flex items-center justify-between gap-3 mb-4">
+              <h4 className="text-[14px] font-extrabold text-[var(--text-primary)]">⏰ بازه‌های زمانی پورصمدی</h4>
+              <div className="flex items-center gap-2">
+                {!seedStatus?.poursamadi_seeded && (
+                  <button onClick={handleSeedPoursamadi}
+                    className="px-3 py-1.5 rounded-[8px] bg-[var(--profit)] text-white text-[12px] font-bold hover:opacity-80 transition-opacity">
+                    افزودن پنجره‌های پورصمدی
+                  </button>
+                )}
+                <span className="text-[11px] text-[var(--text-secondary)]">
+                  {seedStatus?.total_intervals ?? 0} بازه
+                </span>
+              </div>
+            </div>
+
+            {intervals.length === 0 ? (
+              <div className="text-center py-6">
+                <div className="text-[var(--text-secondary)] text-sm mb-3">هنوز بازه‌ای تعریف نکردی</div>
+                <button onClick={handleSeedPoursamadi}
+                  className="px-4 py-2 rounded-[10px] bg-[var(--profit)] text-white text-sm font-bold hover:opacity-80 transition-opacity">
+                  افزودن پنجره‌های پورصمدی
+                </button>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                {['XAUUSD', 'DJIUSD', 'EURUSD'].map((sym) => {
+                  const group = intervals.filter((i: any) => i.symbol === sym);
+                  if (group.length === 0) return null;
+                  const symLabel = { XAUUSD: 'طلا', DJIUSD: 'داو جونز', EURUSD: 'یورو' } as Record<string, string>;
+                  return (
+                    <div key={sym} className="border-b border-[var(--border-subtle)] pb-2 mb-2 last:border-b-0">
+                      <div className="text-[12px] text-[var(--text-primary)] font-bold mb-1">{symLabel[sym] || sym} ({sym})</div>
+                      {group.map((interval: any) => (
+                        <div key={interval.id} className="flex items-center justify-between gap-3 py-1 text-[12px]">
+                          <span className="text-[var(--text-primary)]">{interval.name}</span>
+                          <span dir="ltr" className="tabular-nums text-[var(--text-secondary)]">
+                            {String(interval.start_hour).padStart(2, '0')}:{String(interval.start_minute).padStart(2, '0')}
+                            –
+                            {String(interval.end_hour).padStart(2, '0')}:{String(interval.end_minute).padStart(2, '0')}
+                          </span>
+                          <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-[6px] text-[11px] font-bold ${
+                            interval.label === 'A' ? 'bg-[var(--profit-soft)] text-[var(--profit)]'
+                            : interval.label === 'B' ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                            : 'bg-[var(--bg-input)] text-[var(--text-muted)]'
+                          }`}>
+                            {interval.label}
+                          </span>
+                          <button onClick={() => handleDeleteInterval(interval.id)}
+                            className="text-[var(--loss)] text-[11px] hover:opacity-70 transition-opacity"
+                            title="حذف بازه">✕</button>
+                        </div>
+                      ))}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* جدول معاملات */}

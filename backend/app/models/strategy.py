@@ -240,6 +240,13 @@ class Trade(Base):
 
 
 class CustomTimeInterval(Base):
+    """بازه‌های زمانی سفارشی برای تحلیل معاملات.
+
+    Times are stored as Tehran local time (UTC+3:30).
+    The analysis engine matches trades by comparing `open_time` (stored as UTC)
+    against the stored interval times. Callers should convert local Tehran
+    times to this column's Tehran-local convention.
+    """
     __tablename__ = "custom_time_intervals"
 
     id = Column(Integer, primary_key=True, index=True)
