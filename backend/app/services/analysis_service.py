@@ -203,7 +203,7 @@ class AnalysisService:
 
         فاز ۲۳: Backtest و Forward مستقل ذخیره می‌شوند (کلید دامنه شامل test_type است).
         """
-        q = self.db.query(Trade).filter(Trade.version_id == version_id, analysis_trades_filter())
+        q = self.db.query(Trade).filter(Trade.version_id == version_id, Trade.close_time.isnot(None), analysis_trades_filter())
         if test_type is not None:
             q = q.filter(Trade.test_type == test_type)
         return self._analyze(
@@ -219,6 +219,7 @@ class AnalysisService:
         # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
         trades = self.db.query(Trade).filter(
             Trade.prop_stage_id == prop_stage_id,
+            Trade.close_time.isnot(None),
         ).all()
         result = self._analyze(trades, scope=AnalysisScope.PROP_STAGE, scope_key=str(prop_stage_id), prop_stage_id=prop_stage_id)
         from ..services.prop_rule_engine import PropRuleEngine
@@ -230,6 +231,7 @@ class AnalysisService:
         # فاز ۲۵: معاملات حذف‌شده از تحلیل کنار گذاشته می‌شوند
         trades = self.db.query(Trade).filter(
             Trade.personal_trading_account_id == personal_trading_account_id,
+            Trade.close_time.isnot(None),
         ).all()
         return self._analyze(
             trades,

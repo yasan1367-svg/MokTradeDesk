@@ -447,7 +447,8 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     from ..models.strategy import Trade
     # فاز ۲۵: معاملات حذف‌شده (Soft Delete) در محاسبه‌ی موجودی نهایی لحاظ نمی‌شوند
     trades = db.query(Trade).filter(
-        Trade.prop_stage_id == stage_id
+        Trade.prop_stage_id == stage_id,
+        Trade.close_time.isnot(None),
     ).all()
     total_pnl = sum(metrics.net_pnl(t) for t in trades)
     final_balance = (stage.initial_balance or 0) + total_pnl

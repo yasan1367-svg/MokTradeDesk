@@ -146,9 +146,6 @@ class PropRuleEngine:
             floating_pnl if dd_basis == "equity" else 0.0,
         )
         daily_pnl = PropRuleEngine._group_daily_pnl(closed_trades, day_offset)
-        if dd_basis == "equity" and open_trades:
-            current_day = (datetime.now(timezone.utc) + timedelta(minutes=day_offset)).date().isoformat()
-            daily_pnl.setdefault(current_day, 0.0)
         trading_days = len(daily_pnl)
         max_daily_loss = max(daily_losses.values(), default=0.0)
 
@@ -196,7 +193,7 @@ class PropRuleEngine:
             if max_daily_dd_limit > 0
             else False
         )
-        target_pnl = total_pnl
+        target_pnl = closed_pnl
         target_reached = target_pnl >= profit_target if profit_target > 0 else True
         min_days_met = trading_days >= min_days if min_days > 0 else True
 
@@ -243,7 +240,7 @@ class PropRuleEngine:
 
         # ── درصدها (فقط برای نمایش) ──
         current_profit_percent = (
-            round(total_pnl / initial * 100, 2) if initial > 0 else 0.0
+            round(closed_pnl / initial * 100, 2) if initial > 0 else 0.0
         )
         profit_progress_percent = (
             round(target_pnl / profit_target * 100, 2)
@@ -339,7 +336,7 @@ class PropRuleEngine:
             "initial_balance": round(initial, 2),
             "balance": round(balance, 2),
             "equity": round(equity, 2),
-            "current_profit": round(total_pnl, 2),
+            "current_profit": round(closed_pnl, 2),
             "current_profit_percent": current_profit_percent,
 
             # هدف سود (دلار)
