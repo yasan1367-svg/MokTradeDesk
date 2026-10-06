@@ -300,8 +300,11 @@ def test_ready_to_pass_requires_target_days_and_no_violations(db_session):
     stage.status = StageStatus.FAILED
     db_session.commit()
     result = PropRuleEngine.evaluate_stage(db_session, stage.id)
-    assert result["ready_to_pass"] is False
-    assert result["overall_severity"] == "violation"
+    # Historical stage: ready_to_pass is None, not False
+    assert result["ready_to_pass"] is None
+    # No DD violations, so overall_severity should be "pass"
+    assert result["overall_severity"] == "pass"
+    assert result["is_historical"] is True
 
 
 def test_invalid_mode_fails_closed(db_session):

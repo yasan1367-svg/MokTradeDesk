@@ -422,6 +422,12 @@ def pass_stage(stage_id: int, request: PassStageWithRulesRequest, db: Session = 
     if not stage:
         raise HTTPException(status_code=404, detail="مرحله پیدا نشد")
 
+    if stage.status != StageStatus.ACTIVE:
+        raise HTTPException(
+            status_code=409,
+            detail="این مرحله دیگر فعال نیست و قابل پاس شدن نیست",
+        )
+
     if stage.stage_type == StageType.FUNDED_REAL:
         raise HTTPException(status_code=400, detail="مرحله رییل قابل پاس شدن نیست")
 

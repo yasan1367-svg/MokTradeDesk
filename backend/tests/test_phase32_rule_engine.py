@@ -155,8 +155,10 @@ def test_stage_status_rule_violation_on_terminal(db_session):
     stage = _make_stage(db_session, status=StageStatus.FAILED)
     res = PropRuleEngine.evaluate_stage(db_session, stage.id)
     checks = _check_map(res)
-    assert checks[RuleType.STAGE_STATUS]["severity"] == Severity.VIOLATION
-    assert checks[RuleType.STAGE_STATUS]["actual_value"] == 0.0
+    # Historical stages no longer get VIOLATION for STAGE_STATUS
+    assert checks[RuleType.STAGE_STATUS]["severity"] == Severity.PASS
+    assert checks[RuleType.STAGE_STATUS]["actual_value"] == 1.0
+    assert res["is_historical"] is True
 
 
 def test_floating_pnl_uses_open_trades(db_session):

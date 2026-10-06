@@ -282,32 +282,58 @@ class PropRuleEngine:
             min_days=min_days,
             floating_pnl=floating_pnl,
         )
-        overall_severity = PropRuleEngine._overall_severity(rule_checks)
-        # ready_to_pass must agree with every rule check, including stage status.
-        ready_to_pass = (
-            not is_funded
-            and not unconfigured
-            and target_reached
-            and min_days_met
-            and all(check["severity"] != Severity.VIOLATION for check in rule_checks)
-        )
-        if not is_funded:
-            if ready_to_pass:
-                suggested_status = "ready_to_pass"
-            elif not unconfigured and not daily_dd_violated and not total_dd_violated:
-                suggested_status = "in_progress"
-        if any(check["severity"] == Severity.VIOLATION for check in rule_checks):
-            violations.extend(
-                check["message"]
-                for check in rule_checks
-                if check["severity"] == Severity.VIOLATION
-                and check["message"] not in violations
+        is_historical = stage.status != StageStatus.ACTIVE
+        if is_historical:
+            # ── وضعیت برای مراحل تکمیل‌شده ──
+            dd_sevs = [
+                c["severity"] for c in rule_checks
+                if c["rule_type"] not in (
+                    RuleType.STAGE_STATUS,
+                    RuleType.PROFIT_TARGET,
+                    RuleType.MIN_TRADING_DAYS,
+                )
+            ]
+            if Severity.VIOLATION in dd_sevs:
+                overall_severity = Severity.VIOLATION
+            elif Severity.WARNING in dd_sevs:
+                overall_severity = Severity.WARNING
+            else:
+                overall_severity = Severity.PASS
+            ready_to_pass = None
+            suggested_status = stage.status.value if stage.status else "unknown"
+            if any(c["severity"] == Severity.VIOLATION for c in rule_checks):
+                violations.extend(
+                    c["message"] for c in rule_checks
+                    if c["severity"] == Severity.VIOLATION
+                    and c["message"] not in violations
+                )
+        else:
+            overall_severity = PropRuleEngine._overall_severity(rule_checks)
+            ready_to_pass = (
+                not is_funded
+                and not unconfigured
+                and target_reached
+                and min_days_met
+                and all(check["severity"] != Severity.VIOLATION for check in rule_checks)
             )
+            if not is_funded:
+                if ready_to_pass:
+                    suggested_status = "ready_to_pass"
+                elif not unconfigured and not daily_dd_violated and not total_dd_violated:
+                    suggested_status = "in_progress"
+            if any(check["severity"] == Severity.VIOLATION for check in rule_checks):
+                violations.extend(
+                    check["message"]
+                    for check in rule_checks
+                    if check["severity"] == Severity.VIOLATION
+                    and check["message"] not in violations
+                )
 
         return {
             "stage_id": stage.id,
             "stage_type": stage.stage_type.value if stage.stage_type else None,
             "status": stage.status.value if stage.status else None,
+            "is_historical": is_historical,
 
             # موجودی و سود (دلار)
             "initial_balance": round(initial, 2),
@@ -473,6 +499,7 @@ class PropRuleEngine:
     ) -> List[Dict[str, Any]]:
         """۷ قاعده را ارزیابی و لیست نتایج ساختاریافته برمی‌گرداند."""
         checks: List[Dict[str, Any]] = []
+        is_historical = stage.status != StageStatus.ACTIVE
 
         def add(rule_type, actual, limit_v, sev, msg) -> None:
             checks.append({
@@ -495,22 +522,33 @@ class PropRuleEngine:
             PropRuleEngine._grade_loss(max_total_dd, max_total_dd_limit),
             f"Total DD: {max_total_dd:.2f}USDT  از حد {max_total_dd_limit:.2f}USDT ",
         )
-        # ۳) Profit Target
-        if profit_target > 0 and total_pnl >= profit_target:
-            tp_sev = Severity.PASS
-        elif profit_target > 0:
-            tp_sev = Severity.WARNING
+        # ۳) Profit Target — برای مراحل تکمیل‌شده بی‌ربط
+        if is_historical:
+            add(
+                RuleType.PROFIT_TARGET, total_pnl, profit_target, Severity.PASS,
+                "برای مراحل تکمیل‌شده بی‌ربط",
+            )
+        elif profit_target > 0 and total_pnl >= profit_target:
+            add(
+                RuleType.PROFIT_TARGET, total_pnl, profit_target, Severity.PASS,
+                f"سود: {total_pnl:.2f}USDT  از هدف {profit_target:.2f}USDT ",
+            )
         else:
-            tp_sev = Severity.PASS
-        add(
-            RuleType.PROFIT_TARGET, total_pnl, profit_target, tp_sev,
-            f"سود: {total_pnl:.2f}USDT  از هدف {profit_target:.2f}USDT ",
-        )
-        # ۴) Min Trading Days
+            tp_sev = Severity.WARNING if profit_target > 0 else Severity.PASS
+            add(
+                RuleType.PROFIT_TARGET, total_pnl, profit_target, tp_sev,
+                f"سود: {total_pnl:.2f}USDT  از هدف {profit_target:.2f}USDT ",
+            )
+        # ۴) Min Trading Days — برای مراحل تکمیل‌شده بی‌ربط
+        if is_historical:
+            md_sev = Severity.PASS
+            md_msg = "برای مراحل تکمیل‌شده بی‌ربط"
+        else:
+            md_sev = Severity.PASS if (min_days <= 0 or trading_days >= min_days) else Severity.WARNING
+            md_msg = f"روزهای معاملاتی: {trading_days} از حداقل {min_days}"
         add(
             RuleType.MIN_TRADING_DAYS, float(trading_days), float(min_days),
-            Severity.PASS if (min_days <= 0 or trading_days >= min_days) else Severity.WARNING,
-            f"روزهای معاملاتی: {trading_days} از حداقل {min_days}",
+            md_sev, md_msg,
         )
         # ۵) Balance / Equity rule according to the configured basis.
         if dd_basis_value < equity_floor:
@@ -531,14 +569,19 @@ class PropRuleEngine:
             if floating_enabled else Severity.PASS,
             f"زیان شناور: {floating_loss:.2f}USDT  از حد {max_daily_dd_limit:.2f}USDT ",
         )
-        # ۷) Stage Status — ارزیابی فقط روی مرحله فعال مجاز است
-        is_active = stage.status == StageStatus.ACTIVE
+        # ۷) Stage Status — برای مراحل تکمیل‌شده فقط PASS
+        if is_historical:
+            ss_sev = Severity.PASS
+            ss_msg = "این مرحله تکمیل شده است"
+        else:
+            ss_sev = Severity.PASS
+            ss_msg = f"وضعیت مرحله: {stage.status.value if stage.status else 'unknown'}"
         add(
             RuleType.STAGE_STATUS,
-            1.0 if is_active else 0.0,
             1.0,
-            Severity.PASS if is_active else Severity.VIOLATION,
-            f"وضعیت مرحله: {stage.status.value if stage.status else 'unknown'}",
+            1.0,
+            ss_sev,
+            ss_msg,
         )
         return checks
 

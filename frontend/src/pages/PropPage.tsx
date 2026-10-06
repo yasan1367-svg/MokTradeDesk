@@ -1180,24 +1180,27 @@ await passStageWithRules(
               )}
 
               <div className={`rounded-[14px] p-4 border-2 ${
-                passProgress.suggested_status === 'ready_to_pass'
+                passProgress.is_historical
+                  ? 'bg-[var(--bg-input)] border-[var(--border-subtle)]'
+                  : passProgress.suggested_status === 'ready_to_pass'
                   ? 'bg-[var(--profit-soft)] border-[var(--profit-border)]'
                   : passProgress.suggested_status === 'failed_daily_dd' || passProgress.suggested_status === 'failed_total_dd'
                   ? 'bg-[var(--loss-soft)] border-[var(--loss-border)]'
                   : 'bg-[var(--accent-soft)] border-[var(--border-accent)]'
               }`}>
                 <div className="font-extrabold text-[15px] text-[var(--text-primary)] mb-1">
-                  {passProgress.suggested_status === 'ready_to_pass' && '✅ آماده‌ی پاس کردن'}
-                  {passProgress.suggested_status === 'failed_daily_dd' && '❌ DD روزانه نقض شده'}
-                  {passProgress.suggested_status === 'failed_total_dd' && '❌ DD کلی نقض شده'}
-                  {passProgress.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
+                  {passProgress.is_historical && '📄 این مرحله تکمیل شده است — اطلاعات زیر برای مرجع است'}
+                  {!passProgress.is_historical && passProgress.suggested_status === 'ready_to_pass' && '✅ آماده‌ی پاس کردن'}
+                  {!passProgress.is_historical && passProgress.suggested_status === 'failed_daily_dd' && '❌ DD روزانه نقض شده'}
+                  {!passProgress.is_historical && passProgress.suggested_status === 'failed_total_dd' && '❌ DD کلی نقض شده'}
+                  {!passProgress.is_historical && passProgress.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] font-semibold">
                   {passProgress.total_trades} معامله | سود فعلی: {passProgress.current_profit} USDT
                 </div>
               </div>
 
-              <div className="space-y-3">
+              <div className={`space-y-3 ${passProgress.is_historical ? 'opacity-60' : ''}`}>
                 <div className="bg-[var(--bg-input)] border border-[var(--border-subtle)] rounded-[14px] p-4">
                   <div className="flex justify-between mb-2">
                     <span className="text-[13px] text-[var(--text-primary)] font-bold">🎯 هدف سود</span>
@@ -1330,9 +1333,13 @@ await passStageWithRules(
               <div className="flex gap-3 pt-4 border-t border-[var(--border-subtle)]">
                 <button onClick={handleConfirmPass}
                   disabled={!passProgress.ready_to_pass}
-                  className="flex-1 text-white py-3 rounded-[12px] font-extrabold text-sm shadow-[0_6px_16px_rgba(19,174,129,0.3)] disabled:opacity-40 disabled:cursor-not-allowed"
-                  style={{ background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
-                  ✅ تأیید و پاس
+                  className={`flex-1 py-3 rounded-[12px] font-extrabold text-sm disabled:opacity-40 disabled:cursor-not-allowed ${
+                    passProgress.is_historical
+                      ? 'bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] cursor-not-allowed'
+                      : 'text-white shadow-[0_6px_16px_rgba(19,174,129,0.3)]'
+                  }`}
+                  style={passProgress.is_historical ? {} : { background: 'linear-gradient(135deg, var(--profit), var(--profit-border))' }}>
+                  {passProgress.is_historical ? '📄 مرحله تکمیل شده' : '✅ تأیید و پاس'}
                 </button>
                 <button onClick={() => setShowPassModal(false)}
                   className="bg-[var(--bg-card)] border-2 border-[var(--border-subtle)] text-[var(--text-secondary)] px-7 py-3 rounded-[12px] font-bold text-sm hover:border-[var(--border-accent)]">
@@ -1433,10 +1440,12 @@ await passStageWithRules(
               </button>
             </div>
 
-            <div className="p-6 space-y-4">
+            <div className={`p-6 space-y-4 ${stageProgressData.is_historical ? 'opacity-60' : ''}`}>
               {/* وضعیت */}
               <div className={`rounded-[14px] p-4 border-2 ${
-                progressStage.status === 'passed'
+                stageProgressData.is_historical
+                  ? 'bg-[var(--bg-input)] border-[var(--border-subtle)]'
+                  : progressStage.status === 'passed'
                   ? 'bg-[var(--profit-soft)] border-[var(--profit-border)]'
                   : progressStage.status === 'failed'
                   ? 'bg-[var(--loss-soft)] border-[var(--loss-border)]'
@@ -1445,12 +1454,13 @@ await passStageWithRules(
                   : 'bg-[var(--accent-soft)] border-[var(--border-accent)]'
               }`}>
                 <div className="font-extrabold text-[15px] text-[var(--text-primary)] mb-1">
-                  {progressStage.status === 'passed' && '✅ این مرحله پاس شده است'}
-                  {progressStage.status === 'failed' && '❌ این مرحله فیل شده است'}
-                  {progressStage.status === 'active' && stageProgressData.suggested_status === 'ready_to_pass' && '✅ آماده‌ی پاس کردن'}
-                  {progressStage.status === 'active' && stageProgressData.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
-                  {progressStage.status === 'active' && stageProgressData.suggested_status === 'failed_daily_dd' && '❌ DD روزانه نقض شده'}
-                  {progressStage.status === 'active' && stageProgressData.suggested_status === 'failed_total_dd' && '❌ DD کلی نقض شده'}
+                  {stageProgressData.is_historical && '📄 این مرحله تکمیل شده است — اطلاعات زیر برای مرجع است'}
+                  {!stageProgressData.is_historical && progressStage.status === 'passed' && '✅ این مرحله پاس شده است'}
+                  {!stageProgressData.is_historical && progressStage.status === 'failed' && '❌ این مرحله فیل شده است'}
+                  {!stageProgressData.is_historical && progressStage.status === 'active' && stageProgressData.suggested_status === 'ready_to_pass' && '✅ آماده‌ی پاس کردن'}
+                  {!stageProgressData.is_historical && progressStage.status === 'active' && stageProgressData.suggested_status === 'in_progress' && '⏳ در حال پیشرفت'}
+                  {!stageProgressData.is_historical && progressStage.status === 'active' && stageProgressData.suggested_status === 'failed_daily_dd' && '❌ DD روزانه نقض شده'}
+                  {!stageProgressData.is_historical && progressStage.status === 'active' && stageProgressData.suggested_status === 'failed_total_dd' && '❌ DD کلی نقض شده'}
                 </div>
                 <div className="text-[12px] text-[var(--text-secondary)] font-semibold">
                   سود فعلی: <span className="text-[var(--profit)] font-extrabold">{stageProgressData.current_profit} USDT </span>
