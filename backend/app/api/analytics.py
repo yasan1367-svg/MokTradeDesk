@@ -12,7 +12,7 @@ from ..services.analysis_service import AnalysisService, compare_versions
 from ..services import metrics
 from ..models.strategy import Trade, AnalysisResult, AnalysisRun, CustomTimeInterval, AnalysisScope, TestType
 from ..models.finance import Currency
-from ..models.prop import PropAccount, PropStage
+from ..models.prop import PropAccount, PropStage, StageType
 from ..models.trading import PersonalTradingAccount
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 from ..utils import jalali
@@ -59,7 +59,7 @@ def _parse_bound(value: Optional[str], end: bool = False):
 
 
 # فاز ۴۴.۱ — دامنهٔ معاملات (scope) برای داشبورد/ریسک/تقویم
-#   real      → فقط REAL_PERSONAL + REAL_PROP  (پیش‌فرض)
+#   real      → فقط REAL_PERSONAL + REAL_PROP با مرحلهٔ FUNDED_REAL (پیش‌فرض)
 #   backtest  → فقط BACKTEST
 #   forward   → فقط FORWARD
 #   all       → بدون فیلتر نوع
@@ -78,9 +78,17 @@ def normalize_scope(scope: Optional[str]) -> str:
 
 
 def _apply_scope(query, scope: str):
-    """فیلتر test_type بر اساس scope (فاز ۴۴.۱)."""
+    """فیلتر test_type بر اساس scope (real = personal + funded prop)."""
     if scope == "real":
-        return query.filter(Trade.test_type.in_([TestType.REAL_PERSONAL, TestType.REAL_PROP]))
+        real_personal = Trade.test_type == TestType.REAL_PERSONAL
+        real_prop_funded = and_(
+            Trade.test_type == TestType.REAL_PROP,
+            PropStage.stage_type == StageType.FUNDED_REAL,
+        )
+        return (
+            query.outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+            .filter(or_(real_personal, real_prop_funded))
+        )
     if scope == "backtest":
         return query.filter(Trade.test_type == TestType.BACKTEST)
     if scope == "forward":
@@ -92,10 +100,14 @@ def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Opti
     """اعمال فیلتر بازه + دامنه در سطح SQL به‌جای فیلتر در Python (فاز ۱۵.۳ / ۴۴.۱)"""
     query = _apply_scope(query, scope)
     if currency is not None:
+        query = query.outerjoin(
+            PersonalTradingAccount,
+            Trade.personal_trading_account_id == PersonalTradingAccount.id,
+        )
+        if scope != "real":
+            query = query.outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
         query = (
-            query.outerjoin(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
-            .outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
-            .outerjoin(PropAccount, PropStage.prop_account_id == PropAccount.id)
+            query.outerjoin(PropAccount, PropStage.prop_account_id == PropAccount.id)
             .filter(or_(
                 and_(Trade.test_type == TestType.REAL_PERSONAL, PersonalTradingAccount.currency == currency),
                 and_(Trade.test_type == TestType.REAL_PROP, PropAccount.currency == currency),
@@ -398,18 +410,14 @@ def get_dashboard_data(
     ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
     # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
     opn = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None)).count()
-    # ── ۳) منحنی Equity و Drawdown با موتور دامنه‌ای ──
-    daily_pnl = defaultdict(float)
-    for point in equity_points:
-        if point["date"] is not None:
-            day = point["date"].astimezone(timezone.utc).date().isoformat()
-            daily_pnl[day] += point["pnl"]
-    daily_equity = []
-    cumulative_daily_pnl = 0.0
-    for day in sorted(daily_pnl):
-        cumulative_daily_pnl += daily_pnl[day]
-        daily_equity.append({"date": day, "equity": round(cumulative_daily_pnl, 2)})
-    equity_curve = daily_equity
+    # The dashboard curve and max_dd now project the same domain equity points.
+    equity_curve = [
+        {
+            "date": point["date"].isoformat() if point["date"] is not None else None,
+            "equity": round(point["equity"], 2),
+        }
+        for point in equity_points
+    ]
     md = max_drawdown
 
     # ── ۴) توزیع PnL (یک کوئری GROUP BY) ──

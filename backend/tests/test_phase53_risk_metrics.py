@@ -12,6 +12,7 @@ from app.models.finance import Currency
 from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
 from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
 from app.models.trading import Broker, PersonalTradingAccount
+from app.api.analytics import _apply_scope
 
 
 def _version(db):
@@ -143,6 +144,52 @@ def test_risk_metrics_backtest_assumed_balance(client, db_session):
     assert "risk_of_ruin" in body["risk_metrics"]
 
 
+def test_real_scope_excludes_challenge_stages(db_session):
+    version = _version(db_session)
+    personal = _pta(db_session, label="real-scope-personal")
+    firm = PropFirm(name="Real Scope Firm")
+    db_session.add(firm)
+    db_session.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label="Real Scope Account")
+    db_session.add(account)
+    db_session.flush()
+
+    stages = {}
+    for stage_type in (StageType.STAGE_1, StageType.STAGE_2, StageType.FUNDED_REAL):
+        stage = PropStage(
+            prop_account_id=account.id,
+            stage_type=stage_type,
+            status=StageStatus.ACTIVE,
+            initial_balance=10000.0,
+        )
+        db_session.add(stage)
+        db_session.flush()
+        stages[stage_type] = stage
+
+    personal_trade = _trade(db_session, version.id, 10.0, day=8, pta_id=personal.id)
+    stage_1_trade = _trade(
+        db_session, version.id, 20.0, day=9,
+        prop_stage_id=stages[StageType.STAGE_1].id, test_type=TestType.REAL_PROP,
+    )
+    stage_2_trade = _trade(
+        db_session, version.id, 30.0, day=10,
+        prop_stage_id=stages[StageType.STAGE_2].id, test_type=TestType.REAL_PROP,
+    )
+    funded_trade = _trade(
+        db_session, version.id, 40.0, day=11,
+        prop_stage_id=stages[StageType.FUNDED_REAL].id, test_type=TestType.REAL_PROP,
+    )
+    db_session.commit()
+
+    scoped_ids = {
+        trade.id for trade in _apply_scope(db_session.query(Trade), "real").all()
+    }
+    assert personal_trade.id in scoped_ids
+    assert funded_trade.id in scoped_ids
+    assert stage_1_trade.id not in scoped_ids
+    assert stage_2_trade.id not in scoped_ids
+
+
 def test_analytics_drawdown_uses_account_initial_balance(client, db_session):
     """Analytics drawdown starts at the referenced account's opening balance."""
     version = _version(db_session)
@@ -163,10 +210,42 @@ def test_analytics_drawdown_uses_account_initial_balance(client, db_session):
     assert advanced["max_drawdown"] == 1500.0
     assert advanced["drawdown_curve"][-1]["drawdown_pct"] == 7.14
     assert dashboard["summary"]["max_dd"] == 1500.0
-    # Dashboard response retains its legacy cumulative-PnL equity curve contract.
+    # Dashboard curve is the same initial-balance curve used to calculate max_dd.
     assert dashboard["equity_curve"] == [
-        {"date": "2025-07-04", "equity": 1000.0},
-        {"date": "2025-07-05", "equity": -500.0},
+        {"date": None, "equity": 20000.0},
+        {"date": "2025-07-04T10:00:00+00:00", "equity": 21000.0},
+        {"date": "2025-07-05T10:00:00+00:00", "equity": 19500.0},
+    ]
+    assert dashboard["summary"]["max_dd"] == max(
+        max(point["equity"] for point in dashboard["equity_curve"])
+        - min(point["equity"] for point in dashboard["equity_curve"]),
+        20000.0 - min(point["equity"] for point in dashboard["equity_curve"]),
+        0.0,
+    )
+
+
+def test_equity_curve_and_max_dd_share_the_same_curve(client, db_session):
+    version = _version(db_session)
+    account = _pta(db_session, label="shared-equity-curve", balance=20000.0)
+    _trade(db_session, version.id, 1000.0, day=12, pta_id=account.id)
+    _trade(db_session, version.id, -1500.0, day=13, pta_id=account.id)
+    db_session.commit()
+
+    dashboard = client.get(
+        "/api/analytics/dashboard", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    points = dashboard["equity_curve"]
+    peak_to_trough = max(
+        max(points[:index + 1], key=lambda point: point["equity"])["equity"] - point["equity"]
+        for index, point in enumerate(points)
+    )
+    static = max(0.0, 20000.0 - min(point["equity"] for point in points))
+    assert dashboard["summary"]["max_dd"] == max(peak_to_trough, static)
+    assert points == [
+        {"date": None, "equity": 20000.0},
+        {"date": "2025-07-12T10:00:00+00:00", "equity": 21000.0},
+        {"date": "2025-07-13T10:00:00+00:00", "equity": 19500.0},
     ]
 
 

@@ -59,7 +59,7 @@ class PropRuleEngine:
                 "error": "مرحله پیدا نشد",
             }
 
-        # فاز ۲۵: معاملات حذف‌شده در ارزیابی قوانین پراپ لحاظ نمی‌شوند
+        # ارزیابی قوانین فقط معاملات مرتبط با همین مرحله را می‌خواند.
         trades = db.query(Trade).filter(
             Trade.prop_stage_id == stage_id
         ).all()
