@@ -488,21 +488,24 @@ class AnalysisService:
         }
 
     def _analyze_by_session(self, trades: List[Trade]) -> Dict[str, Any]:
-        """تحلیل سشن بر پایهٔ **زمان ورود** (`open_time`) — فاز 48a.3."""
-        sessions = {"Asia": [], "Europe": [], "America": [], "Other": []}
+        """Exclusive Tehran entry-time buckets: start inclusive, end exclusive."""
+        sessions = {"Early": [], "London Only": [], "London+NY": [], "NY Only": [], "Outside": []}
 
         for t in trades:
             if not t.open_time:
                 continue
-            hour = t.open_time.hour
-            if 0 <= hour < 8:
-                sessions["Asia"].append(t)
-            elif 8 <= hour < 16:
-                sessions["Europe"].append(t)
-            elif 16 <= hour < 24:
-                sessions["America"].append(t)
+            tehran = to_tehran(t.open_time)
+            seconds = tehran.hour * 3600 + tehran.minute * 60
+            if 8 * 3600 <= seconds < 10 * 3600:
+                sessions["Early"].append(t)
+            elif 10 * 3600 <= seconds < 16 * 3600:
+                sessions["London Only"].append(t)
+            elif 16 * 3600 <= seconds < 19 * 3600:
+                sessions["London+NY"].append(t)
+            elif 19 * 3600 <= seconds < 23 * 3600:
+                sessions["NY Only"].append(t)
             else:
-                sessions["Other"].append(t)
+                sessions["Outside"].append(t)
 
         return {name: self._summarize(trades) for name, trades in sessions.items() if trades}
 

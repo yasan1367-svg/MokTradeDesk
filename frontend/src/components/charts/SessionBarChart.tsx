@@ -8,13 +8,15 @@ interface SessionBarChartProps {
 
 export default function SessionBarChart({ data, metric = 'win_rate', height = 200 }: SessionBarChartProps) {
   const sessionLabels: Record<string, string> = {
-    Asia: 'آسیا',
-    Europe: 'اروپا',
-    America: 'آمریکا',
-    Other: 'سایر',
+    Early: 'ابتدای روز',
+    'London Only': 'فقط لندن',
+    'London+NY': 'لندن + نیویورک',
+    'NY Only': 'فقط نیویورک',
+    Outside: 'خارج از بازه',
   };
 
   const chartData = Object.entries(data).map(([key, value]: [string, any]) => ({
+    key,
     name: sessionLabels[key] || key,
     value: value[metric] || 0,
   }));
@@ -27,7 +29,13 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
     );
   }
 
-  const colors = ['var(--profit)', 'var(--purple)', 'var(--warning)', 'var(--loss)'];
+  const colors: Record<string, string> = {
+    Early: 'var(--profit)',
+    'London Only': 'var(--purple)',
+    'London+NY': 'var(--warning)',
+    'NY Only': 'var(--accent)',
+    Outside: 'var(--text-secondary)',
+  };
 
   return (
     <ResponsiveContainer width="100%" height={height}>
@@ -51,8 +59,8 @@ export default function SessionBarChart({ data, metric = 'win_rate', height = 20
           ]}
         />
         <Bar dataKey="value" radius={[6, 6, 0, 0]} opacity={0.85} activeBar={{ opacity: 1 }}>
-          {chartData.map((_, index) => (
-            <Cell key={`cell-${index}`} fill={colors[index % colors.length]} />
+          {chartData.map((entry) => (
+            <Cell key={entry.key} fill={colors[entry.key] || 'var(--text-secondary)'} />
           ))}
         </Bar>
       </BarChart>

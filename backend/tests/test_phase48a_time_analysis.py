@@ -59,15 +59,67 @@ def _analyze_and_get(client, version_id) -> dict:
 # سشن
 # ═════════════════════════════════════════════
 def test_session_uses_open_time(client, db_session):
-    """ورود ۰۳:۰۰ (Asia) و خروج ۲۰:۰۰ (America) ⇒ باید Asia شمرده شود."""
+    """08:30 Tehran entry, 23:30 Tehran exit: only Early is counted."""
     v = _make_version(client, db_session, "S-48a-sess")
-    _add_trade(client, v, open_time=_dt(7, 3), close_time=_dt(7, 20))
+    _add_trade(client, v, open_time=_dt(7, 5), close_time=_dt(7, 20))
     db_session.commit()
 
     body = _analyze_and_get(client, v)
     sessions = body["session_analysis"]
-    assert "Asia" in sessions           # 03:00 → open_time
-    assert "America" not in sessions    # 20:00 → close_time (نباید لحاظ شود)
+    assert set(sessions) == {"Early"}
+    assert sessions["Early"]["total_trades"] == 1
+
+
+def _assert_session_at_tehran_time(client, db_session, time: str, expected: str):
+    """Use an explicit Tehran offset, independent of the conversion under test."""
+    v = _make_version(client, db_session, f"S-session-{time}")
+    _add_trade(
+        client, v,
+        open_time=f"2025-04-07T{time}+03:30",
+        close_time="2025-04-08T01:00:00+03:30",
+    )
+    db_session.commit()
+    sessions = _analyze_and_get(client, v)["session_analysis"]
+    assert set(sessions) == {expected}
+    assert sessions[expected]["total_trades"] == 1
+
+
+def test_early_trade_at_08_30(client, db_session):
+    _assert_session_at_tehran_time(client, db_session, "08:30:00", "Early")
+
+
+def test_london_only_trade_at_12_00(client, db_session):
+    _assert_session_at_tehran_time(client, db_session, "12:00:00", "London Only")
+
+
+def test_overlap_trade_at_17_00(client, db_session):
+    _assert_session_at_tehran_time(client, db_session, "17:00:00", "London+NY")
+
+
+def test_ny_only_trade_at_20_00(client, db_session):
+    _assert_session_at_tehran_time(client, db_session, "20:00:00", "NY Only")
+
+
+def test_outside_trade_at_23_30(client, db_session):
+    _assert_session_at_tehran_time(client, db_session, "23:30:00", "Outside")
+
+
+def test_session_boundaries(client, db_session):
+    for time, expected in [
+        ("00:00:00", "Outside"),
+        ("07:59:59", "Outside"),
+        ("08:00:00", "Early"),
+        ("09:59:59", "Early"),
+        ("10:00:00", "London Only"),
+        ("15:59:59", "London Only"),
+        ("16:00:00", "London+NY"),
+        ("18:59:59", "London+NY"),
+        ("19:00:00", "NY Only"),
+        ("22:59:59", "NY Only"),
+        ("23:00:00", "Outside"),
+        ("23:59:59", "Outside"),
+    ]:
+        _assert_session_at_tehran_time(client, db_session, time, expected)
 
 
 # ═════════════════════════════════════════════

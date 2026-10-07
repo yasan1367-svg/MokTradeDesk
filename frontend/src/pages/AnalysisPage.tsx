@@ -434,7 +434,7 @@ export default function AnalysisPage() {
 
 <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
   <GlassCard>
-    <h3 className="text-[var(--text-primary)] font-bold mb-4">🌍 نرخ برد بر اساس سشن</h3>
+    <h3 className="text-[var(--text-primary)] font-bold mb-4">🌍 نرخ برد بر اساس سشن (وقت تهران)</h3>
     <SessionBarChart data={analysis.session_analysis || {}} metric="win_rate" />
   </GlassCard>
 
@@ -451,7 +451,7 @@ export default function AnalysisPage() {
   </GlassCard>
 
   <GlassCard>
-    <h3 className="text-[var(--text-primary)] font-bold mb-4">💵 سود خالص بر اساس سشن</h3>
+    <h3 className="text-[var(--text-primary)] font-bold mb-4">💵 سود خالص بر اساس سشن (وقت تهران)</h3>
     <SessionBarChart data={analysis.session_analysis || {}} metric="net_pnl" />
   </GlassCard>
 </div>
@@ -459,7 +459,7 @@ export default function AnalysisPage() {
           {/* تحلیل‌های تفکیکی */}
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 mb-6">
             <AnalysisTable
-              title="تحلیل سشن‌ها"
+              title="تحلیل سشن‌ها (وقت تهران)"
               icon="🌍"
               data={analysis.session_analysis || {}}
               firstColumnLabel="سشن"
