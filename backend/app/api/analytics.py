@@ -17,6 +17,7 @@ from ..models.trading import PersonalTradingAccount
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 from ..utils import jalali
 from ..utils.time_utils import to_tehran, TEHRAN
+from ..utils.time_helpers import tehran_day_bounds
 from ..schemas.analytics import (
     CustomTimeIntervalCreate,
     CustomTimeIntervalResponse,
@@ -403,7 +404,7 @@ def get_dashboard_data(
     max_consecutive_wins = max_wins_dash
 
     now = datetime.now(timezone.utc)
-    ts = now.replace(hour=0, minute=0, second=0, microsecond=0)
+    ts, _ = tehran_day_bounds(now)
     # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
     opn = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None)).count()
     # The dashboard curve and max_dd now project the same domain equity points.
@@ -577,10 +578,8 @@ def get_yesterday_data(
             return dt.replace(tzinfo=timezone.utc)
         return dt
 
-    now = datetime.now(timezone.utc)
-    today_start = now.replace(hour=0, minute=0, second=0, microsecond=0)
-    y_start = today_start - timedelta(days=1)
-    y_end = today_start
+    today_start, _ = tehran_day_bounds()
+    y_start, y_end = tehran_day_bounds(today_start - timedelta(microseconds=1))
 
     yt = []
     _yq = _scope_filter(db.query(Trade), None, None, sc, currency).filter(Trade.close_time != None)

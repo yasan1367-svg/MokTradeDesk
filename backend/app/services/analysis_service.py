@@ -428,17 +428,9 @@ class AnalysisService:
 
     def _profit_factor(self, gross_profit: float, gross_loss: float) -> float:
         """
-        فاکتور سود = سود ناخالص / ضرر ناخالص.
-        اگه هیچ معامله‌ی بازنده‌ای نباشه (gross_loss == 0) ولی سود مثبت باشه،
-        این عملاً بهترین حالت ممکنه - قبلاً اشتباهاً صفر برمی‌گشت که توی امتیازدهی
-        باعث می‌شد این نسخه بدترین امتیاز رو بگیره. اینجا یه سقف منطقی (۱۰۰) می‌ذاریم
-        تا هم عدد قابل‌نمایش/JSON-safe باشه، هم توی فرمول امتیاز درست حساب بشه.
+        Profit factor with the shared edge-case sentinel from metrics.
         """
-        if gross_loss > 0:
-            return gross_profit / gross_loss
-        if gross_profit > 0:
-            return 100.0
-        return 0.0
+        return metrics.profit_factor_from_sums(gross_profit, gross_loss)
 
     def _calculate_max_consecutive_losses(self, trades: List[Trade]) -> int:
         sorted_trades = _chronological(trades)
