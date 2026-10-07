@@ -8,6 +8,7 @@ from ..models.strategy import (
 )
 from ..utils.trade_scope import analysis_trades_filter, version_scope_key
 from ..utils.date_range import filter_by_range
+from ..utils.time_utils import to_tehran
 from . import metrics
 from .version_score import calculate_version_score
 
@@ -546,8 +547,9 @@ class AnalysisService:
                     continue
                 if t.symbol != interval.symbol:
                     continue
-                hour = t.open_time.hour
-                minute = t.open_time.minute
+                tehran = to_tehran(t.open_time)
+                hour = tehran.hour
+                minute = tehran.minute
                 start = interval.start_hour * 60 + interval.start_minute
                 end = interval.end_hour * 60 + interval.end_minute
                 current = hour * 60 + minute
