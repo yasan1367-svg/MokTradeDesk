@@ -222,7 +222,7 @@ class PropRuleEngine:
         # ── منطق مخصوص FUNDED_REAL ──
         is_funded = stage.stage_type == StageType.FUNDED_REAL
         total_withdrawn = stage.total_withdrawn or 0.0
-        profit_share = stage.profit_share_percentage or 80.0
+        profit_share = 80.0 if stage.profit_share_percentage is None else stage.profit_share_percentage
         withdrawable_profit = 0.0
 
         if is_funded:
