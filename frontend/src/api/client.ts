@@ -235,6 +235,7 @@ export interface ImportOptions {
   profileId?: number;
   columnMapping?: Record<string, any>;
   symbolMapping?: Record<string, string>;
+  source_utc_offset_minutes?: number;
 }
 
 const buildImportFormData = (
@@ -256,6 +257,8 @@ const buildImportFormData = (
     formData.append('column_mapping', JSON.stringify(options.columnMapping));
   if (options.symbolMapping)
     formData.append('symbol_mapping', JSON.stringify(options.symbolMapping));
+  if (options.source_utc_offset_minutes !== undefined)
+    formData.append('source_utc_offset_minutes', options.source_utc_offset_minutes.toString());
   return formData;
 };
 

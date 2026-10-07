@@ -40,6 +40,18 @@ export default function ImportPage() {
   const [selectedPersonalAccount, setSelectedPersonalAccount] = useState<number | null>(null);
   const [importTarget, setImportTarget] = useState<'strategy' | 'prop' | 'personal'>('strategy');
   const [fileType, setFileType] = useState<'soft4x' | 'mt4'>('soft4x');
+  const [savedSourceOffset, setSavedSourceOffset] = useState<number | undefined>(() => {
+    try {
+      const saved = localStorage.getItem('mok_import_source_offset');
+      if (saved !== null && ['0', '120', '180', '210'].includes(saved)) {
+        return Number(saved);
+      }
+    } catch {
+      // Storage may be unavailable; keep the format-specific default.
+    }
+    return undefined;
+  });
+  const sourceOffset = savedSourceOffset ?? (fileType === 'soft4x' ? 210 : 0);
   const [symbol, setSymbol] = useState<string>('XAUUSD');
   const [testType, setTestType] = useState<'backtest' | 'forward' | 'real'>('backtest');
   const [file, setFile] = useState<File | null>(null);
@@ -111,7 +123,7 @@ export default function ImportPage() {
   useEffect(() => {
     setPreview(null);
     setAllowPossible(false);
-  }, [fileType, importTarget, selectedVersion, selectedPropStage, selectedPersonalAccount, symbol, testType]);
+  }, [fileType, importTarget, selectedVersion, selectedPropStage, selectedPersonalAccount, symbol, testType, sourceOffset]);
 
   const handleSubmit = async () => {
     if (!file) {
@@ -135,6 +147,7 @@ export default function ImportPage() {
           personalTradingAccountId: importTarget === 'personal' ? selectedPersonalAccount || undefined : undefined,
           symbol: fileType === 'soft4x' ? symbol : undefined,
           testType,
+          source_utc_offset_minutes: sourceOffset,
         },
       );
       setPreview(response.data);
@@ -559,6 +572,37 @@ export default function ImportPage() {
           </div>
 
           {/* دکمه‌ی پیش‌نمایش (فاز ۳۰: Preview قبل از Commit) */}
+          <div className="mt-5">
+            <label htmlFor="source-offset" className="text-[13px] text-[var(--text-primary)] font-bold block mb-2">
+              منطقه زمانی فایل ورودی
+            </label>
+            <select
+              id="source-offset"
+              value={sourceOffset}
+              disabled={loading}
+              onChange={(e) => {
+                const offset = Number(e.target.value);
+                setSavedSourceOffset(offset);
+                try {
+                  localStorage.setItem('mok_import_source_offset', offset.toString());
+                } catch {
+                  // Keep the selection usable even when storage is unavailable.
+                }
+              }}
+              aria-describedby="source-offset-hint"
+              className="w-full bg-[var(--bg-input)] border-2 border-[var(--border-subtle)] rounded-[12px] px-5 py-3.5 text-[var(--text-primary)] text-sm font-bold focus:border-[var(--accent)] focus:bg-[var(--bg-card)] focus:outline-none focus:ring-4 focus:ring-[var(--accent-soft)] transition-all cursor-pointer"
+            >
+              <option value={0}>UTC (GMT+0)</option>
+              <option value={120}>GMT+2</option>
+              <option value={180}>GMT+3 (Istanbul)</option>
+              <option value={210}>Tehran (GMT+3:30)</option>
+            </select>
+            <p id="source-offset-hint" className="text-[12px] text-[var(--text-secondary)] mt-2">
+              ⚠️ منطقه زمانی فایلی که آپلود می‌کنید را حتماً تعیین کنید.
+              {' '}برای Soft4FX معمولاً Tehran و برای MT5 معمولاً UTC یا GMT+3.
+            </p>
+          </div>
+
           <button
             onClick={handleSubmit}
             disabled={loading || !file}
