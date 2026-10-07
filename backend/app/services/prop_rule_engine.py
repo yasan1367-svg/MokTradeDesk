@@ -637,7 +637,7 @@ class PropRuleEngine:
         mode: str,
         floating_pnl: float = 0.0,
     ) -> Dict[str, float]:
-        """Calculate each day's static loss or largest intraday peak-to-trough loss."""
+        """Calculate intraday loss from day start (static) or running peak (trailing)."""
         from datetime import timedelta, timezone
 
         daily_trades: Dict[str, List[Trade]] = {}
@@ -663,7 +663,14 @@ class PropRuleEngine:
                     max_dd = max(max_dd, peak - equity)
                 drawdowns[day] = max_dd
             else:
-                drawdowns[day] = max(0.0, -sum(pnl_values))
+                # Normalize the start-of-day balance to zero: the absolute
+                # balance cancels in balance_start_of_day - min_equity.
+                cumulative = 0.0
+                min_equity = 0.0
+                for pnl in pnl_values:
+                    cumulative += pnl
+                    min_equity = min(min_equity, cumulative)
+                drawdowns[day] = -min_equity
 
         if floating_pnl:
             now = datetime.now(timezone.utc)
@@ -682,7 +689,7 @@ class PropRuleEngine:
                 drawdowns[day] = max(drawdowns.get(day, 0.0), peak - current_equity, 0.0)
             else:
                 realized = sum(metrics.net_pnl(trade) for trade in daily_trades.get(day, []))
-                drawdowns[day] = max(0.0, -(realized + floating_pnl))
+                drawdowns[day] = max(drawdowns.get(day, 0.0), -(realized + floating_pnl), 0.0)
         return drawdowns
 
     @staticmethod
