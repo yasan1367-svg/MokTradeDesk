@@ -109,7 +109,10 @@ class PropRuleEngine:
         # ── مبالغ پایه (دلار) ──
         # فاز ۴۳: کل محاسبات PnL روی net_pnl (= pnl + commission + swap) انجام می‌شود.
         initial = stage.initial_balance or 10000.0
-        day_offset = int(stage.day_boundary_utc_offset or 0)
+        day_offset = stage.day_boundary_utc_offset
+        if day_offset is None:
+            day_offset = 210  # Asia/Tehran = UTC+3:30
+        day_offset = int(day_offset)
         closed_trades = [t for t in trades if t.close_time is not None]
         open_trades = [t for t in trades if t.close_time is None]
         ordered_closed = sorted(closed_trades, key=lambda t: t.close_time or t.open_time)
@@ -608,16 +611,18 @@ class PropRuleEngine:
     # ═════════════════════════════════════════════
     @staticmethod
     def _group_daily_pnl(
-        trades: List[Trade], day_boundary_offset_minutes: int = 0
+        trades: List[Trade], day_boundary_offset_minutes: int = 210
     ) -> Dict[str, float]:
         """گروه‌بندی PnL روزانه با مرز روز مشخص (فاز ۴۷.۲).
 
         `day_boundary_offset_minutes` مرز روز را نسبت به UTC جابه‌جا می‌کند
-        (پیش‌فرض 0 = 00:00 UTC مطابق تصمیم D2 کاربر). زمان naive به‌عنوان UTC
+        (پیش‌فرض 210 = Asia/Tehran، UTC+3:30). زمان naive به‌عنوان UTC
         تفسیر می‌شود.
         """
         from datetime import timedelta, timezone
 
+        if day_boundary_offset_minutes is None:
+            day_boundary_offset_minutes = 210  # Asia/Tehran = UTC+3:30
         daily: Dict[str, float] = {}
         for t in trades:
             if not t.close_time:
@@ -625,7 +630,7 @@ class PropRuleEngine:
             dt = t.close_time
             if dt.tzinfo is None:
                 dt = dt.replace(tzinfo=timezone.utc)
-            local = dt + timedelta(minutes=day_boundary_offset_minutes or 0)
+            local = dt + timedelta(minutes=day_boundary_offset_minutes)
             day_key = local.date().isoformat()
             daily[day_key] = daily.get(day_key, 0.0) + metrics.net_pnl(t)
         return daily
@@ -640,6 +645,8 @@ class PropRuleEngine:
         """Calculate intraday loss from day start (static) or running peak (trailing)."""
         from datetime import timedelta, timezone
 
+        if day_boundary_offset_minutes is None:
+            day_boundary_offset_minutes = 210  # Asia/Tehran = UTC+3:30
         daily_trades: Dict[str, List[Trade]] = {}
         for trade in ordered_trades:
             if trade.close_time is None:
@@ -647,7 +654,7 @@ class PropRuleEngine:
             closed_at = trade.close_time
             if closed_at.tzinfo is None:
                 closed_at = closed_at.replace(tzinfo=timezone.utc)
-            day = (closed_at + timedelta(minutes=day_boundary_offset_minutes or 0)).date().isoformat()
+            day = (closed_at + timedelta(minutes=day_boundary_offset_minutes)).date().isoformat()
             daily_trades.setdefault(day, []).append(trade)
 
         drawdowns: Dict[str, float] = {}
@@ -674,7 +681,7 @@ class PropRuleEngine:
 
         if floating_pnl:
             now = datetime.now(timezone.utc)
-            day = (now + timedelta(minutes=day_boundary_offset_minutes or 0)).date().isoformat()
+            day = (now + timedelta(minutes=day_boundary_offset_minutes)).date().isoformat()
             if mode == "trailing":
                 # A floating equity snapshot is the latest point in today's curve.
                 trades = daily_trades.get(day, [])
