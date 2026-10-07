@@ -462,6 +462,7 @@ class AnalysisService:
             return {
                 "pnl_std_dev": 0,
                 "top_trades_contribution_percent": 0,
+                "top_trades_contribution_label": "Top 3 share of gross winning PnL",
                 "avg_win_avg_loss_ratio": 0,
             }
 
@@ -481,6 +482,7 @@ class AnalysisService:
         return {
             "pnl_std_dev": round(pnl_std_dev, 2),
             "top_trades_contribution_percent": round(top_trades_contribution, 1),
+            "top_trades_contribution_label": "Top 3 share of gross winning PnL",
             "avg_win_avg_loss_ratio": round(avg_win_avg_loss_ratio, 2),
         }
 

@@ -205,8 +205,21 @@ def restore_backup(filename: str) -> dict:
             except OSError:
                 pass
 
-    # ۴) جایگزینی فایل دیتابیس
-    shutil.copy2(path, db_path)
+    # ۴) فایل موقت کنار DB می‌سازیم؛ تا تکمیل copy دیتابیس اصلی دست‌نخورده می‌ماند.
+    temp_path = None
+    try:
+        import tempfile
+
+        fd, temp_path = tempfile.mkstemp(
+            prefix=f".{os.path.basename(db_path)}.", suffix=".restore.tmp",
+            dir=os.path.dirname(os.path.abspath(db_path)),
+        )
+        os.close(fd)
+        shutil.copy2(path, temp_path)
+        os.replace(temp_path, db_path)
+    finally:
+        if temp_path and os.path.exists(temp_path):
+            os.remove(temp_path)
 
     return {
         "message": "بازیابی با موفقیت انجام شد — برنامه را ری‌استارت کن",

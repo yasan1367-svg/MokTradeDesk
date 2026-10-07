@@ -356,7 +356,8 @@ def get_dashboard_data(
     largest_win = float(agg[7] or 0.0)
     largest_loss = abs(float(agg[8] or 0.0))
 
-    wr = (wins_n / closed_count) if closed_count else 0  # 0-1 fraction
+    # API contract: win_rate is expressed as a percentage (0-100).
+    wr = (wins_n / closed_count * 100) if closed_count else 0
     pf = metrics.profit_factor_from_sums(gp, gl)
     avg_win = (gp / wins_n) if wins_n else 0.0
     avg_loss = (gl / losses_n) if losses_n else 0.0
@@ -705,7 +706,8 @@ def get_risk_metrics(
     sharpe = RiskEngine._sharpe(daily_returns)
     sortino = RiskEngine._sortino(daily_returns)
     wins = [r for r in returns if r > 0]; losses = [r for r in returns if r < 0]
-    wr = len(wins) / len(returns) if returns else 0
+    # API contract: win_rate is expressed as a percentage (0-100).
+    wr = len(wins) / len(returns) * 100 if returns else 0
     aw = sum(wins) / len(wins) if wins else 0
     al = abs(sum(losses) / len(losses)) if losses else 0
     rr = (aw / al) if al > 0 else 1
@@ -854,7 +856,9 @@ def get_risk_advanced(
     # ── پایه ──
     wins = [r for r in returns if r > 0]
     losses = [r for r in returns if r < 0]
-    wr = (len(wins) / total) if total else 0.0
+    # API contract: win_rate is expressed as a percentage (0-100).
+    wr = (len(wins) / total * 100) if total else 0.0
+    win_rate_fraction = wr / 100
     avg_win = (sum(wins) / len(wins)) if wins else 0.0
     avg_loss = (abs(sum(losses) / len(losses))) if losses else 0.0
     rr = (avg_win / avg_loss) if avg_loss > 0 else 0.0
@@ -918,9 +922,9 @@ def get_risk_advanced(
 
     # ── Kelly Criterion ──
     if rr <= 0:
-        kelly = wr if wr > 0 else 0.0
+        kelly = win_rate_fraction if win_rate_fraction > 0 else 0.0
     else:
-        kelly = wr - ((1 - wr) / rr)
+        kelly = win_rate_fraction - ((1 - win_rate_fraction) / rr)
 
     # ── Risk of Ruin from valid R outcomes (1% assumed risk per trade) ──
     r_wins = [r for r in valid_r if r > 0]
@@ -952,6 +956,7 @@ def get_risk_advanced(
     return {
         "has_enough_data": total >= 2,
         "total_trades": total,
+        "win_rate": round(wr, 2),
         "sharpe_ratio": round(sharpe, 3),
         "sortino_ratio": round(sortino, 3),
         "calmar_ratio": round(calmar, 3),

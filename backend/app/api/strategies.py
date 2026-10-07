@@ -396,6 +396,7 @@ def _summarize_trades(trades) -> Dict[str, Any]:
     gross_loss = abs(sum(t[2] for t in losses)) if losses else 0
     net_pnl = sum(t[2] for t in trades)
 
+    # API contract: win_rate is expressed as a percentage (0-100).
     win_rate = round((len(wins) / total * 100), 2) if total else 0
     if gross_loss > 0:
         profit_factor = round(gross_profit / gross_loss, 2)

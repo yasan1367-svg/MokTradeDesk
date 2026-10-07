@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, selectinload
 from typing import Optional
@@ -11,6 +13,7 @@ from ..models.personal import JournalReview, Screenshot
 from ..models.strategy import Trade
 from ..utils.uploads import read_upload_limited
 
+logger = logging.getLogger("moktrade")
 router = APIRouter()
 
 
@@ -121,8 +124,8 @@ def delete_review_screenshot(screenshot_id: int, db: Session = Depends(get_db)):
     if os.path.exists(screenshot.file_path):
         try:
             os.remove(screenshot.file_path)
-        except:
-            pass
+        except OSError as exc:
+            logger.warning("Could not remove review screenshot %s: %s", screenshot.file_path, exc)
 
     db.delete(screenshot)
     db.commit()
@@ -175,8 +178,8 @@ def delete_review(review_id: int, db: Session = Depends(get_db)):
         if os.path.exists(screenshot.file_path):
             try:
                 os.remove(screenshot.file_path)
-            except:
-                pass
+            except OSError as exc:
+                logger.warning("Could not remove review screenshot %s: %s", screenshot.file_path, exc)
         db.delete(screenshot)
 
     db.delete(review)

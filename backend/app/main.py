@@ -121,12 +121,13 @@ def startup():
     alembic_cfg.set_main_option("sqlalchemy.url", settings.DATABASE_URL)
 
     # ── فاز ۴۲.۴: Snapshot پیش از migration (قبل از هر تغییر schema) ──
-    try:
-        if _needs_migration(alembic_cfg, settings.DATABASE_URL):
+    if _needs_migration(alembic_cfg, settings.DATABASE_URL):
+        try:
             svc.create_backup(prefix=svc.PREMIGRATE_PREFIX)
             logger.info("💾 pre-migration backup created")
-    except Exception:
-        logger.exception("pre-migration backup failed")
+        except Exception:
+            logger.exception("pre-migration backup failed — startup aborted")
+            raise
 
     # alembic در env.py با fileConfig تنظیمات لاگ را بازنویسی می‌کند؛
     # برای حفظ لاگ اپلیکیشن (فایل + کنسول)، هندلرها و سطح لاگ ذخیره/بازگردانی می‌شوند.
