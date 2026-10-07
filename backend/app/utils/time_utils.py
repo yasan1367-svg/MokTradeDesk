@@ -8,19 +8,21 @@
 """
 from datetime import datetime, timedelta, timezone
 
-from .time_helpers import as_utc
-
 
 def to_utc(dt: datetime, offset_minutes: int = 0) -> datetime:
-    """تبدیل زمان local (با offset) به UTC.
+    """Convert a source-local datetime to UTC.
 
-    - اگر `dt` آگاه از tz باشد ⇒ فقط به UTC منتقل می‌شود.
-    - اگر naive باشد ⇒ مطابق قرارداد مشترک، UTC فرض می‌شود (offset نادیده گرفته می‌شود).
+    - tz-aware: convert to UTC directly.
+    - naive + offset=0: treat as UTC (legacy behavior preserved).
+    - naive + offset!=0: interpret as local with the offset.
     """
     if dt is None:
         return None
     if dt.tzinfo is None:
-        return as_utc(dt)
+        if offset_minutes == 0:
+            return dt.replace(tzinfo=timezone.utc)
+        tz = timezone(timedelta(minutes=offset_minutes))
+        return dt.replace(tzinfo=tz).astimezone(timezone.utc)
     return dt.astimezone(timezone.utc)
 
 
