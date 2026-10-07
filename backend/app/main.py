@@ -13,6 +13,7 @@ from .api import strategies, prop, personal, imports, analytics, trades, symbol_
 from .api import import_engine as import_engine_api
 from .api import settings as settings_api
 from .api import backup as backup_api
+from .api import news as news_api
 from .domain.risk.instrument_spec import InstrumentSpec  # noqa: F401 (register SQLAlchemy model)
 
 # ═════════════════════════════════════════════
@@ -193,6 +194,7 @@ app.include_router(finance.router, prefix="/api/finance", tags=["finance"])
 app.include_router(broker.router, prefix="/api/broker", tags=["broker"])
 app.include_router(trading.router, prefix="/api/trading", tags=["trading"])
 app.include_router(backup_api.router, prefix="/api/backup", tags=["backup"])
+app.include_router(news_api.router, prefix="/api/news", tags=["news"])
 
 @app.get("/")
 def root():

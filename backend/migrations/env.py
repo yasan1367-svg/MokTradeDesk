@@ -67,6 +67,9 @@ from app.models.imports import (
     ImportIdentity,
 )
 
+# News Models (فاز NEWS)
+from app.models.economic_event import EconomicEvent  # noqa: F401
+
 # ═════════════════════════════════════════════
 # Alembic Config
 # ═════════════════════════════════════════════
