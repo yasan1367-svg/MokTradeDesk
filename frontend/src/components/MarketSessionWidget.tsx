@@ -186,7 +186,7 @@ function getActivePoursamadiWindow(
   for (const interval of sym) {
     const start = interval.start_hour * 3600 + interval.start_minute * 60;
     const end = interval.end_hour * 3600 + interval.end_minute * 60;
-    if (tehranSeconds >= start && tehranSeconds < end) {
+    if (tehranSeconds >= start && tehranSeconds <= end) {
       return { interval, remainingMs: (end - tehranSeconds) * 1000 };
     }
   }
@@ -508,7 +508,7 @@ export default function MarketSessionWidget({ nowProvider = () => new Date() }: 
                     {group.map((iv) => {
                       const startSec = iv.start_hour * 3600 + iv.start_minute * 60;
                       const endSec = iv.end_hour * 3600 + iv.end_minute * 60;
-                      const isActive = nowSec >= startSec && nowSec < endSec;
+                      const isActive = nowSec >= startSec && nowSec <= endSec;
                       const remainingMs = isActive ? (endSec - nowSec) * 1000 : 0;
                       const labelColor = iv.label === 'A' ? 'var(--profit)' : iv.label === 'B' ? 'var(--accent)' : 'var(--text-muted)';
                       const _h = (v: number) => String(v).replace(/\d/g, (d: string) => '۰۱۲۳۴۵۶۷۸۹'[Number(d)]);
