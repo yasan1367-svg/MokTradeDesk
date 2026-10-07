@@ -534,6 +534,7 @@ def build_context(
     profile_id: Optional[int] = None,
     column_mapping: Optional[Dict[str, Any]] = None,
     symbol_mapping: Optional[Dict[str, str]] = None,
+    source_utc_offset_minutes: Optional[int] = None,
 ) -> ImportContext:
     """ساخت ImportContext با اعمال مقادیر پیش‌فرض ImportProfile."""
     profile: Optional[ImportProfile] = None
@@ -589,8 +590,12 @@ def build_context(
         symbol=resolved_symbol,
         source_format=fmt,
         profile_id=profile.id if profile else None,
-        server_utc_offset_minutes=_resolve_server_offset(
-            db, _to_int(resolved_stage), _to_int(resolved_account)
+        server_utc_offset_minutes=(
+            source_utc_offset_minutes
+            if source_utc_offset_minutes is not None
+            else _resolve_server_offset(
+                db, _to_int(resolved_stage), _to_int(resolved_account)
+            )
         ),
         column_mapping=merged_columns,
         symbol_mapping=merged_symbols,

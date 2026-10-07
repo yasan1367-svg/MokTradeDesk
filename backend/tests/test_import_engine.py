@@ -23,7 +23,7 @@ from app.models.imports import (
 from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
 from app.models.strategy import Strategy, StrategyVersion, Trade, TestType
 from app.models.trading import Broker, PersonalTradingAccount
-from app.services.import_engine import ImportEngine, normalize_test_type
+from app.services.import_engine import ImportContext, ImportEngine, build_context, normalize_test_type
 
 
 # ═════════════════════════════════════════════
@@ -82,6 +82,27 @@ def _stage(db, *, profit_share=80.0):
     db.commit()
     db.refresh(stage)
     return stage
+
+
+@pytest.mark.parametrize("source_offset, expected_offset", [(210, 210), (0, 0), (None, 180)])
+def test_source_offset_override(db_session, source_offset, expected_offset):
+    stage = _stage(db_session)
+    stage.account.server_utc_offset_minutes = 180
+    db_session.commit()
+
+    ctx = build_context(
+        db_session,
+        source_format="soft4x_xlsx",
+        prop_stage_id=stage.id,
+        source_utc_offset_minutes=source_offset,
+    )
+
+    assert ctx.server_utc_offset_minutes == expected_offset
+    serialized = ctx.to_json()
+    assert serialized["server_utc_offset_minutes"] == expected_offset
+    assert ImportContext.from_json(serialized) == ctx
+    serialized.pop("server_utc_offset_minutes")
+    assert ImportContext.from_json(serialized).server_utc_offset_minutes == 0
 
 
 def _xlsx_bytes(rows, headers=None):

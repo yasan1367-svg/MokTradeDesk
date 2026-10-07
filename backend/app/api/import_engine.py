@@ -173,6 +173,7 @@ def build_context_from_form(
     column_mapping: Optional[str],
     symbol_mapping: Optional[str],
     file_name: Optional[str],
+    source_utc_offset_minutes: Optional[int] = None,
 ):
     """ساخت ImportContext از فرم multipart (با پیش‌فرض‌های ImportProfile)."""
     fmt = (
@@ -191,6 +192,7 @@ def build_context_from_form(
         profile_id=profile_id,
         column_mapping=parse_json_form(column_mapping, "column_mapping"),
         symbol_mapping=parse_json_form(symbol_mapping, "symbol_mapping"),
+        source_utc_offset_minutes=source_utc_offset_minutes,
     )
     return ctx, fmt
 
@@ -213,6 +215,7 @@ async def preview_import(
     column_mapping: Optional[str] = Form(None),
     symbol_mapping: Optional[str] = Form(None),
     user_id: Optional[int] = Form(None),
+    source_utc_offset_minutes: Optional[int] = Form(None),
     db: Session = Depends(get_db),
 ):
     """Preview یک فایل بدون هیچ تغییری در معاملات (خروجی برای تأیید کاربر)."""
@@ -229,6 +232,7 @@ async def preview_import(
             column_mapping=column_mapping,
             symbol_mapping=symbol_mapping,
             file_name=file.filename,
+            source_utc_offset_minutes=source_utc_offset_minutes,
         )
         ensure_extension(fmt, file.filename)
 
