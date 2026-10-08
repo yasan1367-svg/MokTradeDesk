@@ -115,8 +115,7 @@ def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Opti
                 and_(Trade.test_type.in_([TestType.BACKTEST, TestType.FORWARD]), currency == Currency.USDT),
             ))
         )
-    if df_bound or dt_bound:
-        query = query.filter(Trade.close_time.isnot(None))
+    query = query.filter(Trade.close_time.isnot(None))
     if df_bound:
         query = query.filter(Trade.close_time >= df_bound)
     if dt_bound:

@@ -82,6 +82,43 @@ def test_dashboard_backtest_scope(client, db_session):
     assert body["summary"]["net_pnl"] == 600.0
 
 
+def test_historical_summary_excludes_open_trades(client, db_session):
+    strategy = Strategy(name="HistoricalClosedOnly")
+    db_session.add(strategy)
+    db_session.flush()
+    version = StrategyVersion(strategy_id=strategy.id, version_name="v1")
+    db_session.add(version)
+    db_session.flush()
+
+    closed_trade = _trade(version.id, 100.0, day=10, test_type=TestType.BACKTEST)
+    open_trade = _trade(version.id, 1000.0, day=10, test_type=TestType.BACKTEST)
+    open_trade.close_time = None
+    open_trade.close_price = None
+    db_session.add_all([closed_trade, open_trade])
+    db_session.commit()
+
+    # No date must still exclude stored open PnL from historical aggregates.
+    for bounds, expected_net, expected_count in [
+        ({}, 100.0, 1),
+        ({"date_from": "2025-06-10"}, 100.0, 1),
+        ({"date_to": "2025-06-10"}, 100.0, 1),
+        ({"date_from": "2025-06-11"}, 0.0, 0),
+        ({"date_to": "2025-06-09"}, 0.0, 0),
+    ]:
+        response = client.get(
+            "/api/analytics/dashboard", params={"scope": "backtest", **bounds}
+        )
+        assert response.status_code == 200, response.text
+        body = response.json()
+        summary = body["summary"]
+        assert summary["net_pnl"] == expected_net, bounds
+        assert summary["total_trades"] == expected_count, bounds
+        assert summary["closed_trades"] == expected_count, bounds
+        assert summary["open_trades"] == 1, bounds
+        curve = body["equity_curve"]
+        assert curve[-1]["equity"] - curve[0]["equity"] == expected_net, bounds
+
+
 def test_dashboard_all_scope(client, db_session):
     _seed(db_session)
     body = client.get("/api/analytics/dashboard", params={"scope": "all"}).json()
