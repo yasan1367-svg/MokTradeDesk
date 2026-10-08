@@ -198,9 +198,40 @@ def test_basic_metrics_win_rate_and_profit_factor():
 
 def test_profit_factor_edge_cases():
     svc = AnalysisService(db=None)
-    assert svc._profit_factor(100, 0) == 100.0
+    assert svc._profit_factor(100, 0) == 999.0
     assert svc._profit_factor(0, 0) == 0.0
     assert svc._profit_factor(150, 50) == pytest.approx(3.0)
+
+
+@pytest.mark.parametrize("pnls, expected", [
+    ([], 0.0),
+    ([0.0], 0.0),
+    ([100.0], 999.0),
+    ([-50.0], 0.0),
+    ([150.0, -50.0], 3.0),
+    ([1000.0, -1.0], 1000.0),
+])
+def test_real_summary_profit_factor_contract(client, db_session, pnls, expected):
+    from app.models.finance import Currency
+    from app.services import metrics
+
+    version = _ver(db_session, "pf-contract")
+    account = _pta(db_session, "pf-contract")
+    account.currency = Currency.USDT
+    trades = []
+    for pnl in pnls:
+        trade = _make_trade(pnl, version_id=version.id)
+        trade.test_type = TestType.REAL_PERSONAL
+        trade.personal_trading_account_id = account.id
+        db_session.add(trade)
+        trades.append(trade)
+    db_session.commit()
+
+    response = client.get("/api/finance/real-summary", params={"currency": "USDT"})
+    assert response.status_code == 200, response.text
+    assert response.json()["profit_factor"] == expected
+    assert metrics.calculate_basic_metrics(trades)["profit_factor"] == expected
+    assert AnalysisService(db_session)._calculate_basic_metrics(trades)["profit_factor"] == expected
 
 
 def test_commission_and_swap_reduce_net_pnl():

@@ -106,6 +106,19 @@ def win_loss_streaks(values: List[float]) -> tuple[int, int]:
     return max_w, max_l
 
 
+def profit_factor_status(gross_profit: float, gross_loss: float) -> Dict[str, Any]:
+    """Return an explicit PF value/status for new callers, without sentinels.
+
+    Gross profit is nonnegative; gross loss may be signed or absolute.
+    Both zero is undefined; profit without losses has no finite value.
+    """
+    if gross_profit == 0 and gross_loss == 0:
+        return {"value": None, "status": "undefined"}
+    if gross_loss == 0:
+        return {"value": None, "status": "no_losses"}
+    return {"value": gross_profit / abs(gross_loss), "status": "finite"}
+
+
 def profit_factor_from_sums(gross_profit: float, gross_loss: float) -> float:
     """Return profit factor with consistent edge-case behavior.
     

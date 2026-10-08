@@ -1513,7 +1513,7 @@ def get_real_summary(
     gross_loss = round(abs(float(agg[5] or 0.0)), 2)
 
     win_rate = round((winning_trades / total_trades * 100), 2) if total_trades else 0.0
-    profit_factor = round(gross_profit / gross_loss, 2) if gross_loss > 0 else (100.0 if gross_profit > 0 else 0.0)
+    profit_factor = round(metrics.profit_factor_from_sums(gross_profit, gross_loss), 2)
 
     # ── 2) Max drawdown from complete equity curve ──
     rows = (

@@ -49,3 +49,18 @@ Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 - **Verification:** All six new cases failed before the fix and passed afterward. From C:\MokTradeDesk\backend: `venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_finance.py -v` returned **29 passed, 1 failed, 9 warnings**. The existing test_profit_factor_edge_cases expects 100 but receives 999; PF remains unchanged and outside this fix.
 - **Status:** DONE
 - **Local only:** No Git commands or GitHub operations.
+
+---
+
+## P1-02 — Profit Factor Contract Unification
+- **Date:** 2026-10-08
+- **Status:** DONE for the requested minimal scope.
+- **Files:** C:\MokTradeDesk\backend\app\api\finance.py, C:\MokTradeDesk\backend\app\services\metrics.py, C:\MokTradeDesk\backend\tests\test_finance.py, C:\MokTradeDesk\backend\tests\test_metrics.py
+- **Problem:** Finance Real Summary returned 100 for profit without losses, whereas the shared metrics helper and AnalysisService returned 999; the Finance edge-case test expected the obsolete 100.
+- **Chosen contract:** Existing numeric callers retain profit_factor_from_sums: positive gross loss gives profit/loss, profit without losses gives 999.0, and both zero gives 0.0. Finite ratios are not capped (1000 remains 1000). No response schema change.
+- **Fix:** Finance Real Summary now calls round(metrics.profit_factor_from_sums(gross_profit, gross_loss), 2). AnalysisService._profit_factor already delegated to that helper, and both basic-metrics paths already used it; no production change was needed there. Updated test_profit_factor_edge_cases to expect 999.0.
+- **New helper:** profit_factor_status returns {value: None, status: undefined} for both zero, {value: None, status: no_losses} for profit without losses, and {value: profit/abs(loss), status: finite} otherwise. Added for future callers only; existing APIs were not migrated.
+- **Tests:** Added six cross-path cases covering Finance Real Summary, metrics.calculate_basic_metrics and AnalysisService, plus seven status-helper cases including signed losses and finite 999/1000.
+- **Verification:** From C:\MokTradeDesk\backend, `venv\Scripts\python.exe -m pytest tests/test_finance.py tests/test_metrics.py tests/test_phase43_unified_metrics.py -v`: **61 passed, 0 failed, 9 deprecation warnings**. The previously failing PF test now passes.
+- **Deferred:** Frontend >=999 infinity rendering is unchanged as requested. Other inline 100 sentinels discovered in C:\MokTradeDesk\backend\app\api\strategies.py remain outside the minimal scope; this is not repository-wide unification. Finance's existing gross-sum rounding is unchanged.
+- **Local only:** No Git commands or GitHub operations.

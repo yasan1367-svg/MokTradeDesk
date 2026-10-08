@@ -105,6 +105,19 @@ def test_profit_factor():
     assert metrics.profit_factor([100, -50, 50]) == pytest.approx(3.0)
 
 
+@pytest.mark.parametrize("profit, loss, value, status", [
+    (0, 0, None, "undefined"),
+    (100, 0, None, "no_losses"),
+    (0, 50, 0.0, "finite"),
+    (150, 50, 3.0, "finite"),
+    (150, -50, 3.0, "finite"),
+    (1000, 1, 1000.0, "finite"),
+    (999, 1, 999.0, "finite"),
+])
+def test_profit_factor_status(profit, loss, value, status):
+    assert metrics.profit_factor_status(profit, loss) == {"value": value, "status": status}
+
+
 def test_profit_factor_no_loss():
     assert metrics.profit_factor([10, 20]) == 999.0
     assert metrics.profit_factor([-10]) == 0.0
