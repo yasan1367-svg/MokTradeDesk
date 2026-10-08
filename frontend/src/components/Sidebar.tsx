@@ -33,6 +33,7 @@ const NAV_GROUPS = [
     items: [
       { key: 'prop', icon: '🏢', label: 'پراپ' },
       { key: 'payouts', icon: '💸', label: 'برداشت‌ها' },
+      { key: 'brokers', icon: '🏢', label: 'بروکرها' },
     ],
   },
   {

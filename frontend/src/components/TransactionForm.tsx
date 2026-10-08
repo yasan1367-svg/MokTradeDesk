@@ -77,7 +77,6 @@ export default function TransactionForm({
   const isConvert = type === 'convert';
   const isExternalIncome = type === 'external_income';
   const isExternalExpense = type === 'external_expense';
-  const isExternal = isExternalIncome || isExternalExpense;
   const needsTransferFields = type === 'transfer' || isConvert;
   const sourceAccount = accounts.find((account) => account.id === fromAccountId);
   const destinationAccount = accounts.find((account) => account.id === toAccountId);

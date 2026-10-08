@@ -407,6 +407,49 @@ export const getBrokers = () => api.get('/api/trading/brokers');
 export const getPersonalTradingAccounts = (params?: { broker_id?: number }) =>
   api.get('/api/trading/accounts', { params });
 
+// ─────────────────────────────────────────────
+// Trading CRUD — Broker + PersonalTradingAccount
+// ─────────────────────────────────────────────
+export const createBroker = (data: {
+  name: string;
+  website?: string;
+  notes?: string;
+  is_active?: boolean;
+}) => api.post('/api/trading/brokers', data);
+
+export const updateBroker = (brokerId: number, data: {
+  name?: string;
+  website?: string;
+  notes?: string;
+  is_active?: boolean;
+}) => api.patch(`/api/trading/brokers/${brokerId}`, data);
+
+export const deleteBroker = (brokerId: number) =>
+  api.delete(`/api/trading/brokers/${brokerId}`);
+
+export const createPersonalTradingAccount = (data: {
+  broker_id: number;
+  account_number: string;
+  account_label?: string;
+  currency?: string;
+  initial_balance?: number;
+  current_balance?: number;
+  is_active?: boolean;
+}) => api.post('/api/trading/accounts', data);
+
+export const updatePersonalTradingAccount = (accountId: number, data: {
+  broker_id?: number;
+  account_number?: string;
+  account_label?: string;
+  currency?: string;
+  initial_balance?: number;
+  current_balance?: number;
+  is_active?: boolean;
+}) => api.patch(`/api/trading/accounts/${accountId}`, data);
+
+export const deletePersonalTradingAccount = (accountId: number) =>
+  api.delete(`/api/trading/accounts/${accountId}`);
+
 export const getStageTrades = (stageId: number) =>
   api.get(`/api/prop/stages/${stageId}/trades`);
 

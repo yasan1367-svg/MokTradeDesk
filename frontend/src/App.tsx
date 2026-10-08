@@ -24,11 +24,12 @@ const ImportPage = lazy(() => import('./pages/ImportPage'));
 const FinancePage = lazy(() => import('./pages/FinancePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const PayoutHistoryPage = lazy(() => import('./pages/PayoutHistoryPage'));
+const BrokersPage = lazy(() => import('./pages/BrokersPage'));
 
 // preload صفحهٔ پیش‌فرض (Dashboard) — فاز ۱۵.۴
 const preloadDashboard = () => { void import('./pages/DashboardPage'); };
 
-type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'payouts' | 'settings';
+type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'payouts' | 'brokers' | 'settings';
 
 const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   dashboard: { title: '📊 داشبورد', subtitle: 'نمای کلی عملکرد معاملاتی' },
@@ -43,6 +44,7 @@ const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   import: { title: '📥 واردات', subtitle: 'واردات معاملات از فایل' },
   finance: { title: '💰 مالی', subtitle: 'مدیریت حساب‌ها و تراکنش‌های مالی' },
   payouts: { title: '💸 برداشت‌ها', subtitle: 'تاریخچهٔ برداشت‌های پراپ و بروکر' },
+  brokers: { title: '🏢 بروکرها', subtitle: 'مدیریت بروکرها و حساب‌های معاملاتی شخصی' },
   settings: { title: '⚙️ تنظیمات', subtitle: 'تنظیمات نرم‌افزار' },
 };
 
@@ -231,6 +233,7 @@ export default function App() {
             {page === 'import' && <ErrorBoundary label="واردات"><ImportPage /></ErrorBoundary>}
             {page === 'finance' && <ErrorBoundary label="مالی"><FinancePage /></ErrorBoundary>}
             {page === 'payouts' && <ErrorBoundary label="برداشت‌ها"><PayoutHistoryPage /></ErrorBoundary>}
+            {page === 'brokers' && <ErrorBoundary label="بروکرها"><BrokersPage /></ErrorBoundary>}
             {page === 'settings' && <ErrorBoundary label="تنظیمات"><SettingsPage /></ErrorBoundary>}
           </Suspense>
         </div>

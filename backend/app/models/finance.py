@@ -156,7 +156,13 @@ class FinancialTransaction(Base):
     to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     related_trade_id = Column(Integer, ForeignKey("trades.id"), nullable=True)
     related_prop_account_id = Column(Integer, ForeignKey("prop_accounts.id"), nullable=True)
-    cash_flow = Column(Enum(CashFlow), nullable=False, default=CashFlow.NONE, server_default="none", index=True)
+    cash_flow = Column(
+        Enum(CashFlow, values_callable=lambda x: [e.value for e in x], native_enum=False, length=10),
+        nullable=False,
+        default=CashFlow.NONE,
+        server_default="none",
+        index=True,
+    )
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
