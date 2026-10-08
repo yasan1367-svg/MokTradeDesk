@@ -1446,9 +1446,11 @@ def get_real_pnl(
 def get_real_summary(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
 ):
     """خلاصهٔ متریک‌های REAL (فقط FUNDED_REAL + REAL_PERSONAL)
-    بدون تأثیر فیلتر دامنه — فاز ۱۰-C-۳-A.
+    با بازهٔ اختیاری close_time؛ دامنه همواره REAL باقی می‌ماند.
 
     Returns:
       net_pnl, win_rate, profit_factor, max_dd, total_trades,
@@ -1490,6 +1492,8 @@ def get_real_summary(
             or_(real_personal_filter, real_prop_filter),
         )
     )
+
+    base_q = filter_by_range(base_q, Trade.close_time, date_from, date_to)
 
     # ── 1) Aggregates ──
     agg = base_q.with_entities(

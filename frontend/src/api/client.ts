@@ -150,7 +150,7 @@ export const getDashboardData = (params?: {
 export const getYesterdayData = (params?: { scope?: TradeScope; currency?: CurrencyCode }) =>
   api.get('/api/analytics/yesterday', { params });
 
-export const getRealSummary = (params?: { currency?: CurrencyCode }) =>
+export const getRealSummary = (params?: { currency?: CurrencyCode; date_from?: string; date_to?: string }) =>
   api.get('/api/finance/real-summary', { params });
 
 export const getRiskAdvanced = (params?: {
@@ -487,6 +487,8 @@ export const forkVersion = (
 // Trades Management
 // ─────────────────────────────────────────────
 export const getTrades = (params?: {
+  scope?: TradeScope;
+  date_field?: 'open_time' | 'close_time';
   version_id?: number;
   prop_account_id?: number;
   prop_stage_id?: number;

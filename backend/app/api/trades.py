@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, UploadFile, File, Form
 from sqlalchemy.orm import Session, joinedload
 from sqlalchemy import func, and_, or_
 from sqlalchemy.exc import IntegrityError
-from typing import List, Optional
+from typing import List, Literal, Optional
 from datetime import datetime
 from pydantic import BaseModel
 import os
@@ -12,7 +12,7 @@ import logging
 from ..core.database import get_db
 from ..models.strategy import Trade, TradeSource, TestType, StrategyVersion
 from ..models.personal import Screenshot
-from ..models.prop import PropAccount, PropStage
+from ..models.prop import PropAccount, PropStage, StageType
 from ..models.trading import PersonalTradingAccount
 from ..models.finance import Currency
 from ..utils.trade_metrics import calculate_r_multiple
@@ -297,6 +297,8 @@ def get_trades(
     sort_by: str = "close_time",
     sort_order: str = "desc",
     db: Session = Depends(get_db),
+    scope: Optional[Literal["real", "backtest", "forward", "all"]] = None,
+    date_field: Literal["open_time", "close_time"] = "open_time",
 ):
     """لیست معاملات با فیلترهای پیشرفته و صفحه‌بندی"""
     query = db.query(Trade)
@@ -318,6 +320,18 @@ def get_trades(
         if currency is None:
             query = query.join(PropStage, Trade.prop_stage_id == PropStage.id)
         query = query.filter(PropStage.prop_account_id == prop_account_id)
+
+    if scope == "real":
+        if currency is None and not prop_account_id:
+            query = query.outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+        query = query.filter(or_(
+            Trade.test_type == TestType.REAL_PERSONAL,
+            and_(Trade.test_type == TestType.REAL_PROP, PropStage.stage_type == StageType.FUNDED_REAL),
+        ))
+    elif scope == "backtest":
+        query = query.filter(Trade.test_type == TestType.BACKTEST)
+    elif scope == "forward":
+        query = query.filter(Trade.test_type == TestType.FORWARD)
 
     if version_id:
         query = query.filter(Trade.version_id == version_id)
@@ -344,7 +358,9 @@ def get_trades(
     if search:
         query = query.filter(Trade.note.like(f"%{search}%"))
     # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
-    query = filter_by_range(query, Trade.open_time, date_from, date_to)
+    # Legacy callers retain open-time filtering; historical callers opt into close time.
+    date_column = Trade.close_time if date_field == "close_time" else Trade.open_time
+    query = filter_by_range(query, date_column, date_from, date_to)
     if pnl_min is not None:
         query = query.filter(Trade.pnl >= pnl_min)
     if pnl_max is not None:

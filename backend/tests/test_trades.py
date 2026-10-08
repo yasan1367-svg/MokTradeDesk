@@ -46,6 +46,76 @@ def _mk_trade(db, *, source=TradeSource.MANUAL, symbol="XAUUSD", pnl=10.0, versi
 # ═════════════════════════════════════════════
 # TradeValidator — Classification
 # ═════════════════════════════════════════════
+def test_recent_trades_close_date_and_legacy_open_date(client, db_session):
+    trade = _mk_trade(db_session)
+    trade.close_time = datetime(2025, 1, 3, 23, 59, 59, 999999, tzinfo=timezone.utc)
+    db_session.commit()
+    params = {"status": "closed", "scope": "backtest", "currency": "USDT",
+              "date_from": "2025-01-03", "date_to": "2025-01-03"}
+    response = client.get("/api/trades/", params={**params, "date_field": "close_time"})
+    assert response.status_code == 200, response.text
+    assert [row["id"] for row in response.json()["trades"]] == [trade.id]
+    for field in [None, "open_time"]:
+        legacy_params = {**params, **({"date_field": field} if field else {})}
+        response = client.get("/api/trades/", params=legacy_params)
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 0
+    for dates in [{"date_from": "2025-01-04"}, {"date_to": "2025-01-02"}]:
+        response = client.get("/api/trades/", params={"date_field": "close_time", **dates})
+        assert response.status_code == 200, response.text
+        assert response.json()["total"] == 0
+    assert client.get("/api/trades/", params={"date_field": "invalid"}).status_code == 422
+    assert client.get("/api/trades/", params={"scope": "invalid"}).status_code == 422
+
+
+def test_recent_trades_scope_matches_dashboard(client, db_session):
+    from app.models.finance import Currency
+    from app.models.prop import StageType
+
+    from app.models.trading import Broker, PersonalTradingAccount
+    broker = Broker(name="Scope broker")
+    db_session.add(broker)
+    db_session.flush()
+    personal = PersonalTradingAccount(broker_id=broker.id, account_number="scope",
+                                      account_label="scope", currency=Currency.USDT)
+    db_session.add(personal)
+    funded = _mk_prop_stage(db_session, "funded-scope")
+    funded.stage_type = StageType.FUNDED_REAL
+    challenge = _mk_prop_stage(db_session, "challenge-scope")
+    version = _mk_version(db_session, "scope-filter")
+    ids = {}
+    for label, kind, stage in [
+        ("personal", TestType.REAL_PERSONAL, None),
+        ("funded", TestType.REAL_PROP, funded),
+        ("challenge", TestType.REAL_PROP, challenge),
+        ("backtest", TestType.BACKTEST, None),
+        ("forward", TestType.FORWARD, None),
+    ]:
+        trade = _mk_trade(db_session, version_id=version.id)
+        trade.test_type = kind
+        trade.prop_stage_id = stage.id if stage else None
+        trade.personal_trading_account_id = personal.id if label == "personal" else None
+        ids[label] = trade.id
+    db_session.commit()
+
+    for currency in [None, "USDT"]:
+        for scope, labels in [("real", ["personal", "funded"]),
+                              ("backtest", ["backtest"]), ("forward", ["forward"]),
+                              ("all", list(ids))]:
+            params = {"scope": scope, "status": "closed", "date_field": "close_time"}
+            if currency:
+                params["currency"] = currency
+            response = client.get("/api/trades/", params=params)
+            assert response.status_code == 200, response.text
+            assert {row["id"] for row in response.json()["trades"]} == {ids[label] for label in labels}
+        params = {"scope": "real", "prop_account_id": funded.prop_account_id}
+        if currency:
+            params["currency"] = currency
+        response = client.get("/api/trades/", params=params)
+        assert response.status_code == 200, response.text
+        assert [row["id"] for row in response.json()["trades"]] == [ids["funded"]]
+
+
 def test_validate_classification_backtest():
     ok, err = TradeValidator.validate_classification("backtest", None, None, None)
     assert ok is False and "version_id" in err

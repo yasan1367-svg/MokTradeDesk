@@ -58,6 +58,42 @@ def _pta(db, label="PTA", balance=0.0):
 # ═════════════════════════════════════════════
 # تاریخ شمسی
 # ═════════════════════════════════════════════
+def test_real_summary_filters_on_close_time(client, db_session):
+    from app.models.finance import Currency
+
+    version = _ver(db_session, "real-summary-dates")
+    account = _pta(db_session, "real-summary-dates")
+    account.currency = Currency.USDT
+    for day, pnl in [(1, 50.0), (2, 100.0), (3, -20.0), (4, 1000.0)]:
+        trade = _make_trade(pnl, day=day, version_id=version.id)
+        trade.test_type = TestType.REAL_PERSONAL
+        trade.personal_trading_account_id = account.id
+        trade.open_time = datetime(2025, 2, 28, tzinfo=timezone.utc)
+        if day == 3:
+            trade.close_time = datetime(2025, 3, 3, 23, 59, 59, 999999, tzinfo=timezone.utc)
+        if day == 4:
+            trade.close_time = None
+        db_session.add(trade)
+    db_session.commit()
+
+    for dates, expected_net, expected_count in [
+        ({}, 130.0, 3),
+        ({"date_from": "2025-03-02"}, 80.0, 2),
+        ({"date_to": "2025-03-02"}, 150.0, 2),
+        ({"date_from": "2025-03-02", "date_to": "2025-03-03"}, 80.0, 2),
+        ({"date_from": "2025-03-04"}, 0.0, 0),
+    ]:
+        response = client.get("/api/finance/real-summary", params={"currency": "USDT", **dates})
+        assert response.status_code == 200, response.text
+        body = response.json()
+        assert body["net_pnl"] == expected_net
+        assert body["total_trades"] == expected_count
+        assert body["scope"] == "FUNDED_REAL + REAL_PERSONAL"
+        if dates == {"date_from": "2025-03-02", "date_to": "2025-03-03"}:
+            assert body["sparkline"] == [100.0, 80.0]
+            assert body["max_dd"] == 20.0
+
+
 def test_gregorian_to_jalali_known_dates():
     assert finance._gregorian_to_jalali(2025, 3, 21) == (1404, 1, 1)
     assert finance._gregorian_to_jalali(2026, 3, 21) == (1405, 1, 1)
