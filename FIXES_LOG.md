@@ -2,6 +2,18 @@
 
 Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 
+## P1-05 — KPI Semantics (R, Breakeven, Loss Label)
+- **Date:** 2026-10-08
+- **Status:** DONE for the minimal applicable changes.
+- **Files:** C:\MokTradeDesk\backend\app\api\analytics.py; C:\MokTradeDesk\backend\app\services\metrics.py; C:\MokTradeDesk\backend\tests\test_analytics.py; C:\MokTradeDesk\backend\tests\test_metrics.py; C:\MokTradeDesk\frontend\src\pages\DashboardPage.tsx.
+- **Analytics:** Summary adds breakeven_trades, r_sample_count and missing_r_count; AVG and COUNT use the same closed scoped R population, including zero R. No R samples now returns null rather than 0. Today explicitly counts net<0 losses and net=0 breakevens, preserving request-time cap and win-rate denominator.
+- **Frontend:** Missing Backtest average R renders an em dash; actual zero remains 0.00. MiniBars gross_loss label changed from بزرگترین ضرر to مجموع زیان.
+- **Loss-sign scope:** No avg_loss display exists in the current Dashboard; its loss KPI uses max_dd. No metric substitution or new card added. Analytics avg_loss remains a positive magnitude; shared calculate_basic_metrics signed loss fields remain unchanged (cross-API sign unification is not part of this minimal fix).
+- **Streaks:** streaks now resets both current counters on zero, matching win_loss_streaks; historical maxima remain intact.
+- **Tests:** Added test_breakeven_not_counted_as_loss (net after commission/swap), test_avg_r_null_when_no_r_samples (empty and missing samples), test_r_sample_count_reported (zero counts, open R excluded), and five cases comparing both streak helpers. Updated an existing exact Today-response assertion for the new breakeven field.
+- **Validation:** Requested Analytics + metrics suite: **54 passed, 9 warnings**. Frontend npm run build: **passed (TypeScript + Vite)**. No manual browser inspection or full backend suite run.
+- **Local only:** No Git commands or GitHub operations.
+
 ## P1-04 — Equity Baseline and Currency Metadata
 - **Date:** 2026-10-08
 - **Status:** DONE (minimal metadata/tooltip fix).

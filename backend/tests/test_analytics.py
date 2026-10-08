@@ -86,6 +86,53 @@ def _seed(db, rows):
     db.commit()
 
 
+def test_breakeven_not_counted_as_loss(client, db_session, monkeypatch):
+    now = _utc("2026-10-08T12:00:00")
+    _freeze(monkeypatch, now)
+    _seed(db_session, [(now - timedelta(hours=1), pnl) for pnl in (20, -10, 5)])
+    # Positive raw PnL, but breakeven after costs.
+    trade = db_session.query(Trade).filter(Trade.pnl == 5).one()
+    trade.commission = -3
+    trade.swap = -2
+    db_session.commit()
+    response = client.get("/api/analytics/dashboard", params={"scope": "backtest"})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["summary"]["breakeven_trades"] == 1
+    assert body["summary"]["avg_loss"] == 10
+    assert body["today"] == {
+        "pnl": 10, "trades_count": 3, "winning_trades": 1,
+        "losing_trades": 1, "breakeven_trades": 1, "win_rate": 33.33,
+    }
+
+
+@pytest.mark.parametrize("count", [0, 2])
+def test_avg_r_null_when_no_r_samples(client, db_session, count):
+    _seed(db_session, [(_utc("2026-10-08T10:00:00"), 10)] * count)
+    response = client.get("/api/analytics/dashboard", params={"scope": "backtest"})
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["avg_r_multiple"] is None
+    assert summary["r_sample_count"] == 0
+    assert summary["missing_r_count"] == count
+
+
+def test_r_sample_count_reported(client, db_session):
+    _seed(db_session, [(_utc("2026-10-08T10:00:00"), 10)] * 4)
+    trades = db_session.query(Trade).order_by(Trade.id).all()
+    for trade, r in zip(trades, [0, 2, None, 100]):
+        trade.r_multiple = r
+    trades[-1].close_time = None  # Open R must not enter the sample.
+    db_session.commit()
+    response = client.get("/api/analytics/dashboard", params={"scope": "backtest"})
+    assert response.status_code == 200
+    summary = response.json()["summary"]
+    assert summary["closed_trades"] == 3
+    assert summary["r_sample_count"] == 2
+    assert summary["missing_r_count"] == 1
+    assert summary["avg_r_multiple"] == 1
+
+
 @pytest.mark.parametrize("value,end,expected", [
     ("2026-10-08", False, "2026-10-07T20:30:00"),
     ("2026-10-08", True, "2026-10-08T20:30:00"),
@@ -137,6 +184,7 @@ def test_today_and_periods_exclude_future_closes(client, db_session, monkeypatch
     assert body["today"] == {
         "pnl": 80, "trades_count": 2, "win_rate": 50,
         "winning_trades": 1, "losing_trades": 1,
+        "breakeven_trades": 0,
     }
     for period in ("month", "quarter", "year"):
         assert body["periods"][period]["pnl"] == 80

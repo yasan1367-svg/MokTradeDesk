@@ -373,7 +373,10 @@ def get_dashboard_data(
     win_ratio = (wins_n / closed_count) if closed_count else 0.0
     loss_ratio = (losses_n / closed_count) if closed_count else 0.0
     expectancy = (win_ratio * avg_win) - (loss_ratio * avg_loss)
-    avg_r_multiple = closed_scope.with_entities(func.avg(Trade.r_multiple)).scalar()
+    avg_r_multiple, r_sample_count = closed_scope.with_entities(
+        func.avg(Trade.r_multiple), func.count(Trade.r_multiple)
+    ).one()
+    r_sample_count = int(r_sample_count)
 
     # ── ۲) سکانس مرتب برای streak و محاسبه‌های دامنه‌ای equity/drawdown ──
     narrow = (
@@ -460,6 +463,8 @@ def get_dashboard_data(
         func.sum(case((and_(Trade.close_time >= pms, Trade.close_time < cm), net), else_=0.0)),
         func.sum(case((Trade.close_time >= cq, net), else_=0.0)),
         func.sum(case((Trade.close_time >= ys, net), else_=0.0)),
+        func.sum(case((and_(Trade.close_time >= ts, net < 0), 1), else_=0)),
+        func.sum(case((and_(Trade.close_time >= ts, net == 0), 1), else_=0)),
     ).one()
     tdp = float(per[0] or 0.0)
     td_count = int(per[1] or 0)
@@ -468,6 +473,8 @@ def get_dashboard_data(
     pv = float(per[4] or 0.0)
     qp = float(per[5] or 0.0)
     yp = float(per[6] or 0.0)
+    today_losses_n = int(per[7] or 0)
+    today_breakeven_n = int(per[8] or 0)
     mcp = ((mp - pv) / abs(pv) * 100) if pv != 0 else (100 if mp > 0 else -100 if mp < 0 else 0)
     today_wr = (today_wins_n / td_count * 100) if td_count else 0
 
@@ -520,9 +527,12 @@ def get_dashboard_data(
             "total_trades": total_trades,
             "open_trades": opn,
             "closed_trades": closed_count,
+            "breakeven_trades": closed_count - wins_n - losses_n,
+            "r_sample_count": r_sample_count,
+            "missing_r_count": closed_count - r_sample_count,
             "gross_profit": round(gp, 2),
             "gross_loss": round(gl, 2),
-            "avg_r_multiple": round(float(avg_r_multiple), 4) if avg_r_multiple is not None else 0.0,
+            "avg_r_multiple": round(float(avg_r_multiple), 4) if r_sample_count else None,
             "avg_win": round(avg_win, 2),
             "avg_loss": round(avg_loss, 2),
             "largest_win": round(largest_win, 2),
@@ -536,7 +546,8 @@ def get_dashboard_data(
             "trades_count": td_count,
             "win_rate": round(today_wr, 2),
             "winning_trades": today_wins_n,
-            "losing_trades": td_count - today_wins_n,
+            "losing_trades": today_losses_n,
+            "breakeven_trades": today_breakeven_n,
         },
         "sparkline": spd,
         "equity_curve": equity_curve,

@@ -75,6 +75,9 @@ def streaks(nets: List[float]) -> Dict[str, Any]:
             current_losses += 1
             current_wins = 0
             max_losses = max(max_losses, current_losses)
+        else:
+            current_wins = 0
+            current_losses = 0
 
     return {
         "max_wins": max_wins,

@@ -508,7 +508,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           color="loss"
           chart={<MiniBars
             data={[
-              { label: 'بزرگترین ضرر', value: realSummary.gross_loss ?? 0 },
+              { label: 'مجموع زیان', value: realSummary.gross_loss ?? 0 },
               { label: 'حداکثر افت', value: realSummary.max_dd ?? 0 },
             ]}
             colors={['var(--loss)', 'var(--loss-border)']}
@@ -996,7 +996,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               </div>
               <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
                 <span className="text-xs text-[var(--text-secondary)]">
-                  {Number(backtestSummary.summary?.closed_trades || 0)} معامله · R-Multiple: {Number(backtestSummary.summary?.avg_r_multiple || 0).toFixed(2)}
+                  {Number(backtestSummary.summary?.closed_trades || 0)} معامله · R-Multiple: {backtestSummary.summary?.avg_r_multiple == null ? '—' : Number(backtestSummary.summary.avg_r_multiple).toFixed(2)}
                 </span>
                 <button
                   type="button"

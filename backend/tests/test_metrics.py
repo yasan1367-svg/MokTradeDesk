@@ -101,6 +101,22 @@ def test_streaks_empty():
     }
 
 
+@pytest.mark.parametrize("nets,expected", [
+    ([1, 0, 1], (1, 0, 1, 0)),
+    ([-1, 0, -1], (0, 1, 0, 1)),
+    ([1, 1, 0], (2, 0, 0, 0)),
+    ([-1, -1, 0], (0, 2, 0, 0)),
+    ([0, 0], (0, 0, 0, 0)),
+])
+def test_both_streak_helpers_reset_on_breakeven(nets, expected):
+    wins, losses, current_wins, current_losses = expected
+    assert metrics.streaks(nets) == {
+        "max_wins": wins, "max_losses": losses,
+        "current_win_streak": current_wins, "current_loss_streak": current_losses,
+    }
+    assert metrics.win_loss_streaks(nets) == (wins, losses)
+
+
 def test_profit_factor():
     assert metrics.profit_factor([100, -50, 50]) == pytest.approx(3.0)
 
