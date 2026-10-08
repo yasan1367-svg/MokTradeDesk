@@ -86,14 +86,18 @@ export default function BrokersPage() {
           key={editBroker ? `edit-${editBroker.id}` : 'create'}
           initialData={editBroker}
           onSave={async (data) => {
-            if (editBroker) {
-              await updateBroker(editBroker.id, data);
-              toast.success('بروکر به‌روزرسانی شد');
-            } else {
-              await createBroker(data);
-              toast.success('بروکر ساخته شد');
+            try {
+              if (editBroker) {
+                await updateBroker(editBroker.id, data);
+                toast.success('بروکر به‌روزرسانی شد');
+              } else {
+                await createBroker(data);
+                toast.success('بروکر ساخته شد');
+              }
+              setShowBrokerForm(false); setEditBroker(null); await loadAll();
+            } catch (err: any) {
+              toast.error(err?.response?.data?.detail || 'خطا در ذخیره بروکر');
             }
-            setShowBrokerForm(false); setEditBroker(null); await loadAll();
           }}
           onCancel={() => { setShowBrokerForm(false); setEditBroker(null); }}
         />
@@ -104,14 +108,18 @@ export default function BrokersPage() {
           key={editAccount ? `edit-${editAccount.id}` : `create-${selectedBrokerId}`}
           initialData={editAccount}
           onSave={async (data) => {
-            if (editAccount) {
-              await updatePersonalTradingAccount(editAccount.id, data);
-              toast.success('حساب معاملاتی به‌روزرسانی شد');
-            } else {
-              await createPersonalTradingAccount({ ...data, broker_id: selectedBrokerId });
-              toast.success('حساب معاملاتی ساخته شد');
+            try {
+              if (editAccount) {
+                await updatePersonalTradingAccount(editAccount.id, data);
+                toast.success('حساب معاملاتی به‌روزرسانی شد');
+              } else {
+                await createPersonalTradingAccount({ ...data, broker_id: selectedBrokerId });
+                toast.success('حساب معاملاتی ساخته شد');
+              }
+              setShowAccountForm(false); setEditAccount(null); setSelectedBrokerId(null); await loadAll();
+            } catch (err: any) {
+              toast.error(err?.response?.data?.detail || 'خطا در ذخیره حساب');
             }
-            setShowAccountForm(false); setEditAccount(null); setSelectedBrokerId(null); await loadAll();
           }}
           onCancel={() => { setShowAccountForm(false); setEditAccount(null); setSelectedBrokerId(null); }}
         />
@@ -236,8 +244,8 @@ function BrokerForm({ initialData, onSave, onCancel }: {
     try {
       await onSave({
         name: name.trim(),
-        website: website.trim() || undefined,
-        notes: notes.trim() || undefined,
+        website: website.trim() || null,
+        notes: notes.trim() || null,
         is_active: isActive,
       });
     } finally { setSaving(false); }
@@ -298,7 +306,7 @@ function AccountForm({ initialData, onSave, onCancel }: {
     try {
       await onSave({
         account_number: accountNumber.trim(),
-        account_label: accountLabel.trim() || undefined,
+        account_label: accountLabel.trim() || null,
         currency,
         initial_balance: parseFloat(initialBalance) || 0,
         is_active: isActive,
