@@ -1,5 +1,6 @@
 import io
 import csv
+from xml.sax.saxutils import escape
 from datetime import datetime, timezone
 from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
@@ -438,14 +439,27 @@ def export_analysis_pdf(
 # ═════════════════════════════════════════════
 @router.get("/dashboard/pdf")
 @limiter.limit(EXPORT_RATE_LIMIT)
-def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
+def export_dashboard_pdf(
+    request: Request,
+    db: Session = Depends(get_db),
+    date_from: Optional[str] = None,
+    date_to: Optional[str] = None,
+    scope: str = Query("real", description="real | backtest | forward | all"),
+    currency: Currency = Query(Currency.USDT),
+    version_id: Optional[int] = Query(None),
+):
     """Export dashboard summary as PDF"""
     from reportlab.lib.pagesizes import A4
     from reportlab.lib.units import inch
     from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer
     from reportlab.lib.styles import getSampleStyleSheet
-    from ..api.analytics import get_dashboard_data
-    dashboard_data = get_dashboard_data(db=db, scope="real", currency=Currency.USDT, version_id=None)
+    from ..api.analytics import get_dashboard_data, normalize_scope
+    scope = normalize_scope(scope)
+    generated_at = datetime.now(timezone.utc).isoformat()
+    dashboard_data = get_dashboard_data(
+        db=db, date_from=date_from, date_to=date_to,
+        scope=scope, currency=currency, version_id=version_id,
+    )
     buffer = io.BytesIO()
     doc = SimpleDocTemplate(
         buffer, pagesize=A4,
@@ -463,6 +477,14 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
     els.append(Paragraph(_fa("گزارش خلاصه Dashboard"), styles["Title"]))
     els.append(Spacer(1, 8))
     els.append(Paragraph(_fa(f"تاریخ گزارش: {_pdate()}"), n))
+    for label, value in (
+        ("Date from", date_from or "Unbounded"),
+        ("Date to", date_to or "Unbounded"),
+        ("Scope", scope), ("Currency", currency.value),
+        ("Version", str(version_id) if version_id is not None else "All"),
+        ("generated_at (UTC)", generated_at),
+    ):
+        els.append(Paragraph(f"{label}: {escape(value)}", n))
     els.append(Spacer(1, 20))
     if not dashboard_data:
         els.append(Paragraph(_fa("داده‌ای برای نمایش وجود ندارد"), n))
@@ -471,17 +493,17 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
         els.append(Paragraph(_fa("خلاصه وضعیت"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("شاخص"), _fa("مقدار")],
-            [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} USDT "],
+            [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} {currency.value} "],
             [_fa("نرخ برد"), f"{s.get('win_rate', 0):.1f}%"],
             [_fa("فاکتور سود"), f"{s.get('profit_factor', 0):.2f}"],
-            [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} USDT "],
+            [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} {currency.value} "],
         ], [200, 200], "")
         els.append(Spacer(1, 15))
         t = dashboard_data.get("today", {})
         els.append(Paragraph(_fa("عملکرد امروز"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("شاخص"), _fa("مقدار")],
-            [_fa("سود/زیان"), f"{t.get('pnl', 0):.2f} USDT "],
+            [_fa("سود/زیان"), f"{t.get('pnl', 0):.2f} {currency.value} "],
             [_fa("تعداد معاملات"), str(t.get('trades_count', 0))],
             [_fa("نرخ برد"), f"{t.get('win_rate', 0):.1f}%"],
         ], [200, 200], "")
@@ -490,9 +512,9 @@ def export_dashboard_pdf(request: Request, db: Session = Depends(get_db)):
         els.append(Paragraph(_fa("عملکرد دوره‌ای"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("دوره"), _fa("سود/زیان")],
-            [_fa("ماه جاری"), f"{p.get('month', {}).get('pnl', 0):.2f} USDT "],
-            [_fa("فصل جاری"), f"{p.get('quarter', {}).get('pnl', 0):.2f} USDT "],
-            [_fa("سال جاری"), f"{p.get('year', {}).get('pnl', 0):.2f} USDT "],
+            [_fa("ماه جاری"), f"{p.get('month', {}).get('pnl', 0):.2f} {currency.value} "],
+            [_fa("فصل جاری"), f"{p.get('quarter', {}).get('pnl', 0):.2f} {currency.value} "],
+            [_fa("سال جاری"), f"{p.get('year', {}).get('pnl', 0):.2f} {currency.value} "],
         ], [200, 200], "")
         pp = dashboard_data.get("prop_progress", [])
         if pp:

@@ -178,8 +178,13 @@ export const exportAnalysisPdf = (versionId: number, testType?: string) =>
     params: { version_id: versionId, ...(testType ? { test_type: testType } : {}) },
     responseType: 'blob',
   });
-export const exportDashboardPdf = () =>
-  api.get('/api/export/dashboard/pdf', { responseType: 'blob' });
+export const exportDashboardPdf = (params?: {
+  date_from?: string;
+  date_to?: string;
+  scope?: TradeScope;
+  currency?: CurrencyCode;
+  version_id?: number;
+}) => api.get('/api/export/dashboard/pdf', { params, responseType: 'blob' });
 // ─────────────────────────────────────────────
 // Import
 // ─────────────────────────────────────────────

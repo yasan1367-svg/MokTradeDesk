@@ -80,3 +80,18 @@ Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 - **Full backend run (once):** `venv\Scripts\python.exe -m pytest -v`: **625 passed, 5 failed, 1 xfailed, 9 warnings**. Complete output saved locally to C:\MokTradeDesk\backend\p1_01_full_suite.log; final summary independently read after terminal closure warning.
 - **Full-suite failures:** test_phase36_indexes_exist expects missing ix_trades_is_deleted; three test_phase4_initial_sl cases (test_patch_sl_does_not_change_r_when_initial_sl_exists, test_patch_open_price_without_initial_sl_warns, test_patch_open_price_with_initial_sl_no_warn) raise KeyError: id; test_phase58_migration_adds_modes_and_preserves_legacy_total_mode raises NoSuchTableError: trades. These areas were not changed; no pre-change full-suite baseline was run, so failures are not asserted to be pre-existing.
 - **Local only:** No Git commands or GitHub operations.
+
+---
+
+## P1-03 — Export PDF Dashboard Filters
+- **Date:** 2026-10-08
+- **Status:** DONE for filter forwarding and PDF metadata.
+- **Files:** C:\MokTradeDesk\backend\app\api\export.py; C:\MokTradeDesk\frontend\src\api\client.ts; C:\MokTradeDesk\frontend\src\pages\DashboardPage.tsx; C:\MokTradeDesk\backend\tests\test_export.py (new).
+- **A — Backend:** export_dashboard_pdf accepts date_from/date_to/scope/currency/version_id and explicitly forwards all five to get_dashboard_data. Omitted filters retain Dashboard defaults (real/USDT/all versions); supplied values are no longer overridden.
+- **B — Client:** exportDashboardPdf accepts typed optional filter parameters and sends them as the request query string while retaining blob response handling.
+- **C — Dashboard:** Export computes the current selected date range and forwards scope/currency. The selected Backtest version is included only when scope=backtest, avoiding accidental restriction of Real exports by the independent Backtest selector.
+- **PDF:** Header prints date bounds, scope, currency, version (All when absent), and generated_at in UTC. User-provided strings are XML-escaped for ReportLab. Monetary labels now use the selected currency rather than hardcoded USDT.
+- **Scope limitation:** PDF remains one Analytics summary, not a snapshot of every independently filtered Dashboard panel. In backtest scope the export applies both global dates/currency and the selected version; the independent on-screen Backtest panel retains its existing request. Existing Analytics filtering semantics for individual response sections are unchanged.
+- **Tests:** test_export_dashboard_pdf_respects_filters generates a real PDF and spies on the real Analytics call: only two selected-version Backtest trades inside Tehran date boundaries contribute (net=30), excluding out-of-range, other-type, other-version and open trades. Also verifies header flowables, defaults, non-USDT forwarding and invalid filter validation.
+- **Verification:** From C:\MokTradeDesk\backend, `venv\Scripts\python.exe -m pytest tests/test_export.py -v`: **6 passed, 9 warnings**. From C:\MokTradeDesk\frontend, `npm run build`: **passed (TypeScript + Vite)**. No manual PDF visual inspection performed.
+- **Local only:** No Git commands or GitHub operations.

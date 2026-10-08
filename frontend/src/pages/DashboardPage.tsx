@@ -319,7 +319,11 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
   const handleExportPdf = async () => {
     try {
-      const res = await exportDashboardPdf();
+      const r = computeRange(rangeKey, customFrom, customTo);
+      const res = await exportDashboardPdf({
+        date_from: r.from, date_to: r.to, scope, currency,
+        version_id: scope === 'backtest' ? selectedVersionId ?? undefined : undefined,
+      });
       const blob = new Blob([res.data], { type: 'application/pdf' });
       const url = window.URL.createObjectURL(blob);
       const a = document.createElement('a');
