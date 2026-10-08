@@ -1,0 +1,128 @@
+"""P1-01: Tehran date boundaries, request-time periods, and Yesterday labels."""
+from datetime import datetime, timedelta, timezone
+
+import pytest
+
+from app.api import analytics
+from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
+from app.utils import time_helpers
+
+
+def _utc(value):
+    return datetime.fromisoformat(value).replace(tzinfo=timezone.utc)
+
+
+def _freeze(monkeypatch, now):
+    class FrozenDateTime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return now.astimezone(tz) if tz else now.replace(tzinfo=None)
+
+    monkeypatch.setattr(analytics, "datetime", FrozenDateTime)
+    monkeypatch.setattr(time_helpers, "datetime", FrozenDateTime)
+
+
+def _seed(db, rows):
+    strategy = Strategy(name="Date contract")
+    db.add(strategy)
+    db.flush()
+    version = StrategyVersion(strategy_id=strategy.id, version_name="dates")
+    db.add(version)
+    db.flush()
+    for close_time, pnl in rows:
+        db.add(Trade(
+            version_id=version.id, symbol="XAUUSD", direction="buy",
+            open_time=close_time - timedelta(hours=1), close_time=close_time,
+            open_price=2000.0, close_price=2000.0, size=1.0,
+            pnl=pnl, commission=0.0, swap=0.0,
+            source=TradeSource.MANUAL, test_type=TestType.BACKTEST,
+        ))
+    db.commit()
+
+
+@pytest.mark.parametrize("value,end,expected", [
+    ("2026-10-08", False, "2026-10-07T20:30:00"),
+    ("2026-10-08", True, "2026-10-08T20:30:00"),
+    (" 2026-10-08 ", True, "2026-10-08T20:30:00"),
+    ("2026-10-08T00:00:00", True, "2026-10-08T00:00:00"),
+    ("2026-10-08T12:00:00.123456+03:30", True, "2026-10-08T08:30:00.123456"),
+    ("2026-10-08T12:00:00Z", False, "2026-10-08T12:00:00"),
+])
+def test_parse_bound(value, end, expected):
+    assert analytics._parse_bound(value, end=end) == _utc(expected)
+
+
+@pytest.mark.parametrize("value", [None, "", " ", "invalid", "2026-02-30"])
+@pytest.mark.parametrize("end", [False, True])
+def test_parse_bound_empty_or_invalid(value, end):
+    assert analytics._parse_bound(value, end=end) is None
+
+
+@pytest.mark.parametrize("date_from,date_to", [
+    ("2026-10-08", "2026-10-08"),
+    ("2026-10-08T00:00:00+03:30", "2026-10-09T00:00:00+03:30"),
+])
+def test_dashboard_half_open_boundaries(client, db_session, date_from, date_to):
+    start = _utc("2026-10-07T20:30:00")
+    end = _utc("2026-10-08T20:30:00")
+    _seed(db_session, [
+        (start - timedelta(microseconds=1), 1000), (start, 10),
+        (end - timedelta(microseconds=1), 20), (end, 2000),
+    ])
+    response = client.get("/api/analytics/dashboard", params={
+        "scope": "backtest", "date_from": date_from, "date_to": date_to,
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["summary"]["net_pnl"] == 30
+    assert response.json()["summary"]["closed_trades"] == 2
+
+
+def test_today_and_periods_exclude_future_closes(client, db_session, monkeypatch):
+    now = _utc("2026-10-08T10:00:00")
+    _freeze(monkeypatch, now)
+    _seed(db_session, [
+        (_utc("2026-10-07T20:30:00"), 100), (now, -20),
+        (now + timedelta(microseconds=1), 500),
+        (now + timedelta(days=1), 1000),
+    ])
+    response = client.get("/api/analytics/dashboard", params={"scope": "backtest"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["today"] == {
+        "pnl": 80, "trades_count": 2, "win_rate": 50,
+        "winning_trades": 1, "losing_trades": 1,
+    }
+    for period in ("month", "quarter", "year"):
+        assert body["periods"][period]["pnl"] == 80
+
+
+def test_today_intersects_selected_dates(client, db_session, monkeypatch):
+    now = _utc("2026-10-08T10:00:00")
+    _freeze(monkeypatch, now)
+    _seed(db_session, [(now, 100)])
+    response = client.get("/api/analytics/dashboard", params={
+        "scope": "backtest", "date_to": "2026-10-07",
+    })
+    assert response.status_code == 200, response.text
+    assert response.json()["today"]["pnl"] == 0
+    assert response.json()["today"]["trades_count"] == 0
+
+
+def test_yesterday_tehran_label_and_boundaries(client, db_session, monkeypatch):
+    _freeze(monkeypatch, _utc("2026-10-08T21:00:00"))  # Oct 9 in Tehran
+    start = _utc("2026-10-07T20:30:00")
+    end = _utc("2026-10-08T20:30:00")
+    _seed(db_session, [
+        (start - timedelta(microseconds=1), 1000), (start, 10),
+        (end - timedelta(microseconds=1), 20), (end, 2000),
+    ])
+    # Selected Dashboard dates must not constrain Yesterday.
+    response = client.get("/api/analytics/yesterday", params={
+        "scope": "backtest", "date_from": "2020-01-01", "date_to": "2020-01-01",
+    })
+    assert response.status_code == 200, response.text
+    body = response.json()
+    assert body["date"] == "1405/07/16"
+    assert body["day_of_week"] == "پنج‌شنبه"
+    assert body["net_pnl"] == 30
+    assert body["total_trades"] == 2

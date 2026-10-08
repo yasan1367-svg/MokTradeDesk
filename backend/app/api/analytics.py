@@ -45,18 +45,21 @@ def _net_expr():
 
 
 def _parse_bound(value: Optional[str], end: bool = False):
-    """تبدیل رشتهٔ ISO به datetime آگاه از timezone (UTC)"""
+    """Parse Tehran calendar dates or explicit ISO timestamp bounds as UTC."""
     if not value:
         return None
+    value = value.strip()
     try:
         dt = datetime.fromisoformat(value)
     except ValueError:
         return None
+    if len(value) == 10:  # YYYY-MM-DD: inclusive Tehran calendar date
+        start_utc, end_utc = tehran_day_bounds(dt.replace(tzinfo=TEHRAN))
+        return end_utc if end else start_utc
+    # Preserve explicit timestamp precision; naive timestamps remain UTC.
     if dt.tzinfo is None:
-        if end and dt.hour == 0 and dt.minute == 0 and dt.second == 0:
-            dt = dt.replace(hour=23, minute=59, second=59)
         dt = dt.replace(tzinfo=timezone.utc)
-    return dt
+    return dt.astimezone(timezone.utc)
 
 
 # فاز ۴۴.۱ — دامنهٔ معاملات (scope) برای داشبورد/ریسک/تقویم
@@ -119,7 +122,7 @@ def _scope_filter(query, df_bound, dt_bound, scope: str = "real", currency: Opti
     if df_bound:
         query = query.filter(Trade.close_time >= df_bound)
     if dt_bound:
-        query = query.filter(Trade.close_time <= dt_bound)
+        query = query.filter(Trade.close_time < dt_bound)
     return query
 
 
@@ -321,6 +324,7 @@ def get_dashboard_data(
     from ..models.prop import PropStage, StageStatus
     from sqlalchemy.orm import joinedload
 
+    now = datetime.now(timezone.utc)
     sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
@@ -403,7 +407,6 @@ def get_dashboard_data(
     max_consecutive_losses = max_losses_dash
     max_consecutive_wins = max_wins_dash
 
-    now = datetime.now(timezone.utc)
     ts, _ = tehran_day_bounds(now)
     # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
     opn = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None)).count()
@@ -443,7 +446,7 @@ def get_dashboard_data(
     cq = now.replace(month=qm, day=1, hour=0, minute=0, second=0, microsecond=0)
     ys = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
     pms = cm.replace(year=cm.year - 1, month=12) if cm.month == 1 else cm.replace(month=cm.month - 1)
-    per = closed_scope.with_entities(
+    per = closed_scope.filter(Trade.close_time <= now).with_entities(
         func.sum(case((Trade.close_time >= ts, net), else_=0.0)),
         func.sum(case((Trade.close_time >= ts, 1), else_=0)),
         func.sum(case((and_(Trade.close_time >= ts, net > 0), 1), else_=0)),
@@ -567,7 +570,7 @@ def get_yesterday_data(
     currency: Currency = Query(Currency.USDT),
     db: Session = Depends(get_db),
 ):
-    """داده‌های عملکرد روز گذشته (بر اساس close_time، UTC) — فاز ۴۴.۱: scope"""
+    """Yesterday's performance by close_time within the Tehran calendar day."""
     from ..models.strategy import Trade
     from .finance import _gregorian_to_jalali
 
@@ -621,12 +624,13 @@ def get_yesterday_data(
             by_source[src]["losing"] += 1
 
     total = len(yt)
-    jy, jm, jd = _gregorian_to_jalali(y_start.year, y_start.month, y_start.day)
+    y_local = to_tehran(y_start)
+    jy, jm, jd = _gregorian_to_jalali(y_local.year, y_local.month, y_local.day)
 
     return {
         "date": f"{jy}/{jm:02d}/{jd:02d}",
         "currency": currency.value,
-        "day_of_week": _WEEKDAYS_FA[y_start.weekday()],
+        "day_of_week": _WEEKDAYS_FA[y_local.weekday()],
         "total_trades": total,
         "winning_trades": winning,
         "losing_trades": losing,

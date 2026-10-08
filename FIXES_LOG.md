@@ -64,3 +64,19 @@ Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 - **Verification:** From C:\MokTradeDesk\backend, `venv\Scripts\python.exe -m pytest tests/test_finance.py tests/test_metrics.py tests/test_phase43_unified_metrics.py -v`: **61 passed, 0 failed, 9 deprecation warnings**. The previously failing PF test now passes.
 - **Deferred:** Frontend >=999 infinity rendering is unchanged as requested. Other inline 100 sentinels discovered in C:\MokTradeDesk\backend\app\api\strategies.py remain outside the minimal scope; this is not repository-wide unification. Finance's existing gross-sum rounding is unchanged.
 - **Local only:** No Git commands or GitHub operations.
+
+---
+
+## P1-01 — Date / Timezone Contract
+- **Date:** 2026-10-08
+- **Status:** DONE for approved A/B/C scope; full-suite failures and cross-API timezone gap documented below.
+- **Files:** C:\MokTradeDesk\backend\app\api\analytics.py; C:\MokTradeDesk\backend\tests\test_analytics.py (new).
+- **A — Half-open dates:** Replace UTC 23:59:59 inclusive end with Tehran calendar-day boundaries from tehran_day_bounds and close_time < end_utc. Date-only inputs (stripped length 10) use [Tehran midnight, next Tehran midnight), expressed in UTC. Explicit ISO timestamps remain exact instants, normalized to UTC; naive explicit timestamps remain UTC. Empty/invalid inputs return None. Shared Dashboard/risk filtering uses this contract.
+- **B — Request-time cap:** Capture now once before Dashboard database queries; add close_time <= now to the shared Today/period aggregate. This covers Today PnL/count/win-rate and month/quarter/year. There is no separate Today aggregate to cap. Exactly-now trades remain eligible. Today still intersects selected dates; period starts retain their existing definitions.
+- **C — Yesterday label:** Convert y_start with to_tehran before Jalali conversion and weekday lookup. Preserve existing half-open eligibility and independence from Dashboard selected dates; correct endpoint docstring.
+- **Deferred:** C:\MokTradeDesk\backend\app\utils\date_range.py remains unchanged and UTC-based for Finance/Trades. Analytics now uses Tehran dates; cross-API timezone unification remains deferred. Month/quarter/year starts remain UTC; historical summary is not globally capped at now.
+- **Tests added:** 21 cases in test_analytics.py: date-only/explicit timestamp parsing, empty/invalid inputs, inclusive start/final microsecond/exclusive end, future-close exclusion and exactly-now inclusion for Today and periods, Today selected-range intersection, Yesterday Tehran Jalali date/weekday and boundaries.
+- **Focused run:** From C:\MokTradeDesk\backend, `venv\Scripts\python.exe -m pytest tests/test_analytics.py tests/test_phase53_risk_metrics.py tests/test_phase44_scope.py -v`: **38 passed, 9 warnings**.
+- **Full backend run (once):** `venv\Scripts\python.exe -m pytest -v`: **625 passed, 5 failed, 1 xfailed, 9 warnings**. Complete output saved locally to C:\MokTradeDesk\backend\p1_01_full_suite.log; final summary independently read after terminal closure warning.
+- **Full-suite failures:** test_phase36_indexes_exist expects missing ix_trades_is_deleted; three test_phase4_initial_sl cases (test_patch_sl_does_not_change_r_when_initial_sl_exists, test_patch_open_price_without_initial_sl_warns, test_patch_open_price_with_initial_sl_no_warn) raise KeyError: id; test_phase58_migration_adds_modes_and_preserves_legacy_total_mode raises NoSuchTableError: trades. These areas were not changed; no pre-change full-suite baseline was run, so failures are not asserted to be pre-existing.
+- **Local only:** No Git commands or GitHub operations.
