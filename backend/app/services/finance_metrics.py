@@ -65,6 +65,7 @@ def funded_pnl(db: Session, currency: Currency = Currency.USDT) -> float:
             Trade.test_type == TestType.REAL_PROP,
             PropStage.stage_type == StageType.FUNDED_REAL,
             PropAccount.currency == currency,
+            Trade.close_time.isnot(None),
         )
         .scalar()
     )

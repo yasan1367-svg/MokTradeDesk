@@ -1338,7 +1338,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
         .filter(
             PS.stage_type == StageType.FUNDED_REAL,
             PropAccount.currency == currency,
-            Trade.pnl.isnot(None),  # فاز ۲۵
+            Trade.close_time.isnot(None),
         )
         .one()
     )
@@ -1352,7 +1352,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
         .join(PersonalTradingAccount, Trade.personal_trading_account_id == PersonalTradingAccount.id)
         .filter(
             PersonalTradingAccount.currency == currency,
-            Trade.pnl.isnot(None),  # فاز ۲۵
+            Trade.close_time.isnot(None),
         )
         .one()
     )

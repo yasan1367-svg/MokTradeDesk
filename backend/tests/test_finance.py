@@ -58,6 +58,74 @@ def _pta(db, label="PTA", balance=0.0):
 # ═════════════════════════════════════════════
 # تاریخ شمسی
 # ═════════════════════════════════════════════
+def _real_eligibility_trade(db, kind, pnl):
+    from app.models.finance import Currency
+    from app.models.prop import PropAccount, PropFirm, PropStage, StageType
+
+    version = _ver(db, "eligibility")
+    trade = _make_trade(pnl, version_id=version.id)
+    if kind == "broker":
+        account = _pta(db, "eligibility")
+        account.currency = Currency.USDT
+        trade.test_type = TestType.REAL_PERSONAL
+        trade.personal_trading_account_id = account.id
+    else:
+        firm = PropFirm(name="Eligibility firm")
+        db.add(firm)
+        db.flush()
+        account = PropAccount(prop_firm_id=firm.id, account_label="Eligibility", currency=Currency.USDT)
+        db.add(account)
+        db.flush()
+        stage = PropStage(prop_account_id=account.id, stage_type=StageType.FUNDED_REAL)
+        db.add(stage)
+        db.flush()
+        trade.test_type = TestType.REAL_PROP
+        trade.prop_stage_id = stage.id
+    db.add(trade)
+    return trade
+
+
+@pytest.mark.parametrize("kind", ["broker", "prop_stage_3"])
+def test_finance_excludes_open_trades_with_pnl(client, db_session, kind):
+    from app.services.finance_metrics import funded_pnl
+
+    closed = _real_eligibility_trade(db_session, kind, 100.0)
+    opened = _make_trade(500.0, version_id=closed.version_id)
+    opened.test_type = closed.test_type
+    opened.personal_trading_account_id = closed.personal_trading_account_id
+    opened.prop_stage_id = closed.prop_stage_id
+    opened.close_time = None
+    opened.close_price = None
+    db_session.add(opened)
+    db_session.commit()
+
+    if kind == "prop_stage_3":
+        assert funded_pnl(db_session) == 100.0
+    response = client.get("/api/finance/real-pnl", params={"currency": "USDT"})
+    assert response.status_code == 200, response.text
+    assert response.json()[kind] == {"pnl": 100.0, "trades": 1}
+    assert response.json()["total"] == {"pnl": 100.0, "trades": 1}
+
+
+@pytest.mark.parametrize("kind", ["broker", "prop_stage_3"])
+@pytest.mark.parametrize("swap", [0.0, -2.0])
+def test_finance_includes_closed_with_null_pnl(client, db_session, kind, swap):
+    from app.services.finance_metrics import funded_pnl
+
+    trade = _real_eligibility_trade(db_session, kind, None)
+    trade.commission = -1.0
+    trade.swap = swap
+    db_session.commit()
+    expected = -1.0 + swap
+
+    if kind == "prop_stage_3":
+        assert funded_pnl(db_session) == expected
+    response = client.get("/api/finance/real-pnl", params={"currency": "USDT"})
+    assert response.status_code == 200, response.text
+    assert response.json()[kind] == {"pnl": expected, "trades": 1}
+    assert response.json()["total"] == {"pnl": expected, "trades": 1}
+
+
 def test_real_summary_filters_on_close_time(client, db_session):
     from app.models.finance import Currency
 

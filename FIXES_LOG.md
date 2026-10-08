@@ -38,3 +38,14 @@ Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 - **Local only:** No Git commands, GitHub operations, commits, or pushes.
 
 ---
+
+## P0-03 — Finance Closed Eligibility
+- **Date:** 2026-10-08
+- **File:** C:\MokTradeDesk\backend\app\api\finance.py, C:\MokTradeDesk\backend\app\services\finance_metrics.py
+- **Problem:** pnl IS NOT NULL was used instead of close_time IS NOT NULL in _compute_real_pnl; funded_pnl lacked closed eligibility.
+- **Fix:** Use close_time IS NOT NULL everywhere in the requested realized paths: both _compute_real_pnl branches and funded_pnl. Preserve account/stage/currency filters and net_pnl_sql (COALESCE(pnl, 0) + commission + swap).
+- **Scope:** Only the requested eligibility predicates changed; _stage_net_pnl and other calculations remain unchanged.
+- **Test:** test_finance_excludes_open_trades_with_pnl, test_finance_includes_closed_with_null_pnl in C:\MokTradeDesk\backend\tests\test_finance.py. Six parameterized cases cover broker and funded prop, open +500 versus closed +100, fees-only -1, and additional swap -2; funded cases also assert funded_pnl directly.
+- **Verification:** All six new cases failed before the fix and passed afterward. From C:\MokTradeDesk\backend: `venv\Scripts\python.exe -m pytest -p no:cacheprovider tests/test_finance.py -v` returned **29 passed, 1 failed, 9 warnings**. The existing test_profit_factor_edge_cases expects 100 but receives 999; PF remains unchanged and outside this fix.
+- **Status:** DONE
+- **Local only:** No Git commands or GitHub operations.
