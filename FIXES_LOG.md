@@ -2,6 +2,16 @@
 
 Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 
+## P1-06 — Dashboard Stale Response Race
+- **Date:** 2026-10-08
+- **Status:** DONE.
+- **Files:** C:\MokTradeDesk\frontend\src\pages\DashboardPage.tsx; C:\MokTradeDesk\frontend\src\__tests__\dashboardPage.test.tsx; C:\MokTradeDesk\FIXES_LOG.md.
+- **Before:** Main loadDashboard allowed older successes/errors/finalizers to overwrite current data, error and loading state. Backtest already used an effect-local cancellation flag.
+- **After:** Independent main/backtest generation counters guard success, error, toast and loading completion paths. Effect cleanup invalidates pending generations on dependency changes and unmount. Backtest's counter advances only for its own lifecycle; main completion does not invalidate it. Empty versions clear backtest loading. The version-list fetch also has an unmount cleanup guard.
+- **Tests:** Updated the existing Dashboard fixture/API mocks and outdated layout assertions. Added test_stale_response_is_discarded, stale success/error while a newer main request is pending, stale backtest success/error with independent main loading, and main success/error after unmount (provider remains mounted to detect late toasts).
+- **Validation:** npm test -- src/__tests__/dashboardPage.test.tsx: **9 passed**. npm run build: **passed (TypeScript + Vite)**. No full frontend suite or manual browser inspection performed.
+- **Scope:** Logical cancellation only; HTTP requests are not aborted. No backend changes. No Git commands or GitHub operations.
+
 ## P1-05 — KPI Semantics (R, Breakeven, Loss Label)
 - **Date:** 2026-10-08
 - **Status:** DONE for the minimal applicable changes.

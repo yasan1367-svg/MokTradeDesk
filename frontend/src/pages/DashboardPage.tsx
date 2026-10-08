@@ -1,4 +1,4 @@
-import { useCallback, useState, useEffect } from 'react';
+import { useCallback, useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, AreaChart, Area } from 'recharts';
 import StatCard from '../components/ui/StatCard';
 import { Card, CardHeader } from '../components/ui/Card';
@@ -145,6 +145,8 @@ function MiniBars({ data, colors, height = 80, currency = 'USDT' }: { data: { la
 }
 
 export default function DashboardPage({ onNavigate }: { onNavigate?: (page: string) => void }) {
+  const loadIdRef = useRef(0);
+  const backtestLoadIdRef = useRef(0);
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -190,13 +192,16 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
   // بارگذاری نسخه‌های استراتژی برای خلاصهٔ Backtest
   useEffect(() => {
+    let cancelled = false;
     getAllVersions()
-      .then((res) => setVersions(res.data || []))
-      .catch(() => setVersions([]));
+      .then((res) => { if (!cancelled) setVersions(res.data || []); })
+      .catch(() => { if (!cancelled) setVersions([]); });
+    return () => { cancelled = true; };
   }, []);
 
   const loadDashboard = useCallback(
     async (showToast = false) => {
+      const myId = ++loadIdRef.current;
       const r = computeRange(rangeKey, customFrom, customTo);
       setRefreshing(true);
       try {
@@ -215,6 +220,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           getNetProfit({ currency }),
           getAssetTrend(),
         ]);
+        if (myId !== loadIdRef.current) return;
         setData(dash.data);
         setYesterday(yest.data);
         setRealSummary(realSum.data);
@@ -228,12 +234,15 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         setError(null);
         if (showToast) toast.success('داشبورد به‌روزرسانی شد');
       } catch (err: any) {
+        if (myId !== loadIdRef.current) return;
         const msg = err?.response?.data?.detail || 'خطا در بارگذاری داشبورد';
         setError(msg);
         toast.error(msg);
       } finally {
-        setLoading(false);
-        setRefreshing(false);
+        if (myId === loadIdRef.current) {
+          setLoading(false);
+          setRefreshing(false);
+        }
       }
     },
     [rangeKey, customFrom, customTo, scope, currency, toast],
@@ -241,11 +250,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
   useEffect(() => {
     loadDashboard();
+    return () => { ++loadIdRef.current; };
   }, [loadDashboard]);
 
   useEffect(() => {
+    const myId = ++backtestLoadIdRef.current;
     if (versions.length === 0) {
       setBacktestSummary(null);
+      setBacktestLoading(false);
       return;
     }
 
@@ -259,14 +271,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
     }
 
     localStorage.setItem('mok_dashboard_version', String(selected.id));
-    let cancelled = false;
     setBacktestLoading(true);
     getDashboardData({ scope: 'backtest', currency: 'USDT', version_id: selected.id })
-      .then((res) => { if (!cancelled) setBacktestSummary(res.data); })
-      .catch(() => { if (!cancelled) setBacktestSummary(null); })
-      .finally(() => { if (!cancelled) setBacktestLoading(false); });
+      .then((res) => { if (myId === backtestLoadIdRef.current) setBacktestSummary(res.data); })
+      .catch(() => { if (myId === backtestLoadIdRef.current) setBacktestSummary(null); })
+      .finally(() => { if (myId === backtestLoadIdRef.current) setBacktestLoading(false); });
 
-    return () => { cancelled = true; };
+    return () => { ++backtestLoadIdRef.current; };
   }, [versions, selectedVersionId]);
 
   // ذخیرهٔ فیلتر در localStorage
