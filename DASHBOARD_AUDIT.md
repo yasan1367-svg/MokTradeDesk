@@ -1,4 +1,4 @@
-# Dashboard Audit — Task 1/13
+﻿# Dashboard Audit — Task 1/13
 
 ## Structure & Files
 
@@ -374,3 +374,105 @@ Base URL در API از `VITE_API_BASE_URL` گرفته می‌شود؛ fallback �
 - مهم‌ترین تکرارهای دقیق: PnL دوره‌ها بین Today و «پیشرفت اهداف»، و جدول FinancialAssetBalances بین Dashboard و Finance. اشتراک نمودارها با Analysis به‌تنهایی تکرار دقیق داده نیست.
 - Theme در App است؛ «Prop Goals» هدف پراپ نیست؛ Refresh و PDF همه contextهای صفحه را پوشش نمی‌دهند. این موارد فقط مستند شدند و هیچ اصلاح کدی انجام نشد.
 - بررسی بر مبنای خواندن source محلی، تطبیق JSX، wrapperهای API، صفحات مقصد و شاخه‌های مربوط در backend انجام شد؛ صحت جامع محاسبات مالی و رفتار runtime خارج از دامنه این Task است. build/test اجرا نشد چون تغییر فقط Markdown است. Git/GitHub استفاده نشد و محتوای Task 1 برای افزودن این بخش بازنویسی نشد.
+
+## Task 3a/13 — KPI Data Flow
+
+### دامنه و مسیرهای مشترک
+
+مبنای این بخش source محلی است؛ شماره خطوط به نسخه بررسی‌شده اشاره دارند. چهار کارت بالای Dashboard از **Real Summary** می‌آیند، نه `data.summary` درخواست اصلی. خلاصه بک‌تست، Today و شمارنده کلی از **Analytics Dashboard** می‌آیند. Average Win/Loss در پاسخ Analytics وجود دارند، اما در Dashboard مصرف نمایشی ندارند؛ برای آن‌ها مسیر دریافت ثبت شده، نه یک کارت فرضی. هیچ تغییر کد یا اصلاح محاسبه انجام نشده است.
+
+برای خوانایی توضیحات، **R** یعنی `GET /api/finance/real-summary?currency={USDT|IRR}`، **A** یعنی `GET /api/analytics/dashboard` با `date_from/date_to` اختیاری حاصل `computeRange` و `scope/currency` انتخابی، و **B** یعنی همان endpoint با `scope=backtest&currency=USDT&version_id={selected.id}` و بدون تاریخ. این حروف صرفاً ارجاع به requestهای واقعی‌اند:
+
+- R: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:206` → `getRealSummary` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:153` → `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446` → `setRealSummary` در `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:219`.
+- A: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:204` → `getDashboardData` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:142` → `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309` → `setData` در `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:217`.
+- B: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:263` → همان wrapper/endpoint A → `setBacktestSummary` در خط 264 همان فایل. Date/Scope/Currency نوار اصلی روی این request مستقل اعمال نمی‌شوند.
+- Yesterday: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:205` → `getYesterdayData` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:150` → `GET /api/analytics/yesterday?scope={scope}&currency={currency}` → `get_yesterday_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:566`.
+
+**DB مشترک R:** query پایه در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1483` روی `trades` با LEFT OUTER JOIN به `personal_trading_accounts`، `prop_stages` و `prop_accounts`؛ فقط `close_time IS NOT NULL` و یکی از دو شاخه REAL_PERSONAL با ارز حساب شخصی یا REAL_PROP با مرحله FUNDED_REAL و ارز حساب پراپ. Date/Scope/Account انتخابی ندارد. aggregate در خط 1495 با `COUNT/SUM/CASE/COALESCE` و `.one()` است؛ query جداگانه مرتب‌شده برای DD در خط 1515 اجرا می‌شود.
+
+**DB مشترک A/B:** `_scope_filter` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:100` روی `trades`، با joinهای حساب شخصی/مرحله/حساب پراپ برای محدودکردن ارز و `_apply_scope` در خط 81 برای نوع معامله. شبیه‌سازی فقط با ارز USDT پذیرفته می‌شود؛ انتخاب ارز تبدیل ارز نیست. اگر هر مرز تاریخ وجود داشته باشد، خطوط 118–123 فقط معاملات بسته را با مقایسه `close_time` نگه می‌دارند؛ بدون تاریخ، `scoped_q` می‌تواند معاملات باز را نیز شامل شود. `version_id` در خط 333 فیلتر مستقیم `trades.version_id` است، نه query روی نتایج تحلیل ذخیره‌شده. aggregate خط 338 از `COUNT/SUM/CASE/MAX/MIN` و `.one()` استفاده می‌کند. این KPIها از `analysis_results` یا `analysis_runs` خوانده نمی‌شوند و وجود import مربوط به AnalysisService به معنی فراخوانی آن در این مسیر نیست.
+
+نام جدول‌ها با مدل‌ها تطبیق داده شد: `i:\trade\MokTradeDesk\backend\app\models\strategy.py:127` → `trades`؛ `i:\trade\MokTradeDesk\backend\app\models\trading.py:46` → `personal_trading_accounts`؛ `i:\trade\MokTradeDesk\backend\app\models\prop.py:142` و `:160` → `prop_accounts/prop_stages`.
+
+### 1. Net PnL
+
+**Net PnL**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:466` — کارت Real مقدار `realSummary.net_pnl` را با علامت مثبت شرطی و برچسب ارز می‌خواند؛ خط 973 مقدار `backtestSummary.summary?.net_pnl || 0` را با `Number(...).toLocaleString('en-US')` و USDT ثابت نشان می‌دهد. خط 538 از `today.pnl` و خط 593 از `yesterday.net_pnl` استفاده می‌کند؛ این‌ها contextهای متفاوت همین مفهوم‌اند.
+- API: R یعنی `GET /api/finance/real-summary` با `currency`؛ B یعنی `GET /api/analytics/dashboard` با `scope=backtest,currency=USDT,version_id`؛ Today از A با `date_from,date_to,scope,currency` و دیروز از `GET /api/analytics/yesterday` با `scope,currency` می‌آید. wrapperها و callerهای دقیق در مسیرهای مشترک بالا ثبت شده‌اند.
+- Backend: `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446`؛ `SUM(net)` در خط 1497 و گردکردن در 1505، خروجی `net_pnl` در 1543. `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ `SUM(net)` خط 341، `tnp` خط 351 و `summary.net_pnl` خط 507. Today از aggregate شرطی خط 448 و خروجی خط 526؛ `get_yesterday_data` خط 566 از جمع Python در 611–613 و خروجی 635 استفاده می‌کند.
+- Service: R از `_trade_net_expr` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1234` و A/B از `_net_expr` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:42` به `net_pnl_sql` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:27` می‌رسند: `COALESCE(pnl,0)+COALESCE(commission,0)+COALESCE(swap,0)`. دیروز `metrics.net_pnl` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:22` را روی ORM rowها صدا می‌زند. AnalysisService برای این KPI فراخوانی نمی‌شود.
+- DB: R و A/B همان جدول‌ها و queryهای مشترک بالا؛ R فقط بسته‌ها، ولی `SUM(net)` خلاصه A/B روی کل scoped_q است و بدون مرز تاریخ می‌تواند PnL ذخیره‌شده معاملات باز را نیز جمع کند. Today از `closed_scope` با شرط زمان شروع امروز استفاده می‌کند. دیروز در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:586` تمام معاملات بسته scope/ارز را با `.all()` می‌خواند و سپس بازه روز قبل تهران را در Python محدود می‌کند، نه با SQL SUM روزانه.
+- Notes: nullهای سه جزء PnL صفر محسوب و خروجی‌ها تا دو رقم اعشار گرد می‌شوند؛ commission/swap با علامت ذخیره‌شده جمع می‌شوند، نه اینکه دوباره به‌عنوان هزینه کم شوند. fallback بک‌تست صفر است؛ نبود Real Summary یا `total_trades=0` در `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:442` کل ردیف Real را با EmptyState جایگزین می‌کند. Sparkline ردیف Real در backend آخرین ۳۰ روز **دارای معامله** از منحنی تجمعی است، نه تضمین ۳۰ روز تقویمی؛ frontend خط 470 در نبود سری `[0]` می‌گذارد. **«سود خالص» مالی همان net_pnl نیست**؛ مسیر جداگانه آن در یادداشت تکمیلی پایین آمده است.
+
+### 2. Win Rate
+
+**Win Rate**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:475` — `(realSummary.win_rate * 100).toFixed(1)`؛ خط 980 — `(Number(backtestSummary.summary?.win_rate || 0) * 100).toFixed(1)`. همین ضرب در 100 در Today خط 545 و Yesterday خط 598 نیز انجام می‌شود. MiniPie در خط 479 به‌جای این مقدار از تعداد برد/باخت با fallback صفر استفاده می‌کند.
+- API: `GET /api/finance/real-summary?currency={currency}` برای Real؛ `GET /api/analytics/dashboard` با پارامترهای A برای Today و با پارامترهای B برای بک‌تست؛ `GET /api/analytics/yesterday?scope={scope}&currency={currency}` برای دیروز.
+- Backend: `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446`، فرمول در خط 1511: `winning_trades / total_trades * 100`. `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`، فرمول خلاصه در خط 360: `wins_n / closed_count * 100` و Today در خط 464؛ خروجی‌ها در خطوط 508 و 528. `get_yesterday_data` در همان فایل خط 566، فرمول/خروجی درصد در خط 634.
+- Service: تشخیص برد با net خالص از `net_pnl_sql` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:27`؛ تقسیم و تبدیل به درصد داخل endpoint است، نه `AnalysisService` یا `calculate_basic_metrics`. دیروز از `net_pnl` در خط 22 همان سرویس و شمارش Python استفاده می‌کند؛ مرز روز از `tehran_day_bounds` گرفته می‌شود.
+- DB: R از `COUNT(trades.id)` و `SUM(CASE net>0 THEN 1 ELSE 0)` روی query بسته‌های Real استفاده می‌کند. A/B برد را با `close_time IS NOT NULL AND net>0` می‌شمارد و مخرج تعداد بسته‌هاست؛ Today همین الگو را با شرط روز روی closed_scope اعمال می‌کند. جدول‌ها/joinها همان مسیر مشترک‌اند؛ دیروز SELECT ORM و شمارش در Python دارد.
+- Notes: **ناسازگاری قطعی واحد در source:** backend هر چهار مسیر را در مقیاس 0–100 می‌فرستد ولی frontend دوباره ×100 می‌کند؛ مثلاً پاسخ 50 به `5000.0٪` تبدیل می‌شود. این یافته مستند شد و اصلاح نشد. معامله صفر در مخرج بسته‌ها هست ولی برد/باخت محسوب نمی‌شود؛ بنابراین Pie مبتنی بر wins/losses الزاماً مخرج یکسانی با نرخ برد ندارد. در نبود معامله نرخ backend صفر، و خروجی backend دو رقم اعشار است.
+
+### 3. Profit Factor
+
+**Profit Factor**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:484` — `realSummary.profit_factor >= 999 ? '∞' : ...toFixed(2)`؛ خط 987 همین منطق را روی `Number(backtestSummary.summary?.profit_factor || 0)` اجرا می‌کند. MiniBars خطوط 490–491 از gross_profit/gross_loss با fallback صفر است، نه از PF.
+- API: `GET /api/finance/real-summary` با `currency` برای Real؛ `GET /api/analytics/dashboard` با `scope=backtest,currency=USDT,version_id` برای کارت بک‌تست. A نیز `summary.profit_factor` را برمی‌گرداند، ولی چهار کارت بالای صفحه از آن نمی‌خوانند.
+- Backend: `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446`؛ gross_profit/gross_loss در 1508–1509 گرد و PF در 1512 محاسبه می‌شود. `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ grossها در 352–353، فراخوان helper در 361 و خروجی گرد‌شده در 510.
+- Service: R محاسبه PF را inline انجام می‌دهد و helper مشترک PF را صدا نمی‌زند. A/B از `profit_factor_from_sums` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:109` استفاده می‌کنند. هر دو برای net پایه به `net_pnl_sql` در خط 27 همان فایل متکی‌اند؛ سرویس‌ها DB query مجزا برای PF ندارند.
+- DB: `trades` با joinهای مسیر R یا A/B؛ دو `SUM(CASE...)` برای net مثبت و net منفی معاملات بسته. قدرمطلق جمع منفی مخرج می‌شود. کل سود/زیان اینجا بر اساس net معامله بعد از commission/swap است، نه فقط ستون pnl.
+- Notes: در وجود زیان، PF=سود بردها/قدر مطلق زیان باخت‌ها. **در نبود زیان و وجود سود، R مقدار 100.0 و A/B مقدار sentinel برابر 999.0 برمی‌گردانند**؛ UI اولی را `100.00` و دومی را ∞ نشان می‌دهد. اگر هیچ سود/زیانی نباشد هر دو صفرند. R قبل از تقسیم grossها را گرد می‌کند ولی A/B بعد از تقسیم PF را گرد می‌کنند؛ در مقادیر کوچک تفاوت ممکن است. آستانه UI هر PF واقعی ≥999 را نیز بی‌نهایت نشان می‌دهد، نه فقط sentinel را.
+
+### 4. Max Drawdown
+
+**Max Drawdown**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:500` — `realSummary.max_dd` با پیشوند منفی و برچسب ارز، تحت عنوان «حداکثر ضرر». خط 507 همین max_dd را در MiniBars می‌گذارد. `data.summary.max_dd` و `backtestSummary.summary.max_dd` دریافت می‌شوند ولی کارت مستقلی در D آن‌ها را نمایش نمی‌دهد؛ بنابراین منبع عدد کارت visible، R است نه A/B.
+- API: `GET /api/finance/real-summary?currency={currency}` مسیر کارت؛ `GET /api/analytics/dashboard` با پارامترهای A یا B مسیر max_dd موجود در پاسخ تحلیلی/منحنی سرمایه است. هیچ پارامتر انتخاب Account یا تبدیل ارزی در این callerها وجود ندارد.
+- Backend: `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446`؛ SELECT مرتب در 1515–1518، equity تجمعی از صفر در 1521–1524، DD در 1525 و خروجی 1546. `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ query مرتب در 370–379، تعیین سرمایه اولیه در 393، engineها در 397–400 و `summary.max_dd` در 509.
+- Service: R از `max_drawdown` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:44` استفاده می‌کند: بزرگ‌ترین فاصله peak قبلی تا equity جاری. A/B از `_scope_initial_balance` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:204` و adapter `_equity_trade` در خط 233، سپس `calculate_equity_curve` در `i:\trade\MokTradeDesk\backend\app\domain\risk\equity_engine.py:6`، `calculate_peak_to_trough_dd` در `i:\trade\MokTradeDesk\backend\app\domain\risk\drawdown_engine.py:35` و `calculate_static_dd` در همان فایل خط 23 استفاده می‌کنند؛ بیشینه دو dd برگردانده می‌شود. EquityEngine خود `metrics.net_pnl` را فراخوانی می‌کند؛ adapter چون net از قبل محاسبه شده، commission/swap را صفر می‌گذارد تا دوباره جمع نشوند.
+- DB: query R روی همان چهار جدول، projection محدود close_time/net و `ORDER BY close_time ASC, id ASC` با `.all()`؛ aggregate SQL برای DD وجود ندارد و محاسبه در حافظه است. A/B نیز closed_scope را با net، id و شناسه حساب/مرحله می‌خوانند؛ برای سرمایه اولیه Real/all، SELECTهای جدا روی `personal_trading_accounts` و `prop_stages` (با join به `prop_accounts` برای ارز) انجام می‌شود و initial_balance هر شناسه متمایز یک‌بار جمع می‌شود. برای backtest/forward سرمایه فرضی 10000 است؛ نبود مجموع مثبت در مسیر دیگر نیز همین fallback را می‌دهد.
+- Notes: خروجی DD مبلغ غیرمنفی و گرد‌شده تا دو رقم است، نه درصد؛ UI علامت منفی اضافه می‌کند و حتی صفر می‌تواند به‌شکل `-0` دیده شود. R به کل تاریخ Real و ارز محدود است؛ A/B فقط معاملات بسته دامنه منتخب را می‌گیرند و floating PnL وارد منحنی این مسیر نمی‌شود. **MiniBars با برچسب «بزرگترین ضرر» در `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:506` در واقع `gross_loss` یعنی مجموع زیان‌ها را می‌خواند، نه بزرگ‌ترین ضرر تک‌معامله.**
+
+### 5. Trade Count
+
+**Trade Count**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:551` — `summary.total_trades`؛ خط 548 — `summary.open_trades`؛ خط 542 — `today.trades_count`؛ خط 585 — `yesterday.total_trades`؛ خط 994 — `Number(backtestSummary.summary?.closed_trades || 0)`. `realSummary.total_trades` در خط 442 شرط EmptyState است، نه کارت مستقل تعداد. عنوان جداول در خطوط 1044 و 1094 صرفاً `recentTrades.length/openTrades.length` را می‌خواند.
+- API: A یعنی `GET /api/analytics/dashboard` با `date_from,date_to,scope,currency`؛ B با `scope=backtest,currency=USDT,version_id`؛ R یعنی `GET /api/finance/real-summary` با `currency`؛ دیروز `GET /api/analytics/yesterday` با `scope,currency`. طول جدول از `GET /api/trades/` می‌آید: recent با `status=closed,limit=10,sort_by=close_time,sort_order=desc,currency` و open با `status=open,sort_by=open_time,sort_order=desc,currency`؛ این طول آرایه، KPI aggregate فوق نیست.
+- Backend: `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ total/closed در 339–340 و 349–350، open query در 410، Today در 449 و 457، خروجی در 511–513 و 527. `get_real_summary` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1446`؛ COUNT در 1496 و مقدار در 1504/1547. `get_yesterday_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:566`؛ `len(yt)` در 624 و خروجی 631.
+- Service: شمارش داخل endpoint انجام می‌شود؛ helperهای `_scope_filter/_apply_scope` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:100` و `:81` دامنه را می‌سازند. helper محاسبه KPI یا AnalysisService برای COUNT فراخوانی نمی‌شود. مرز Today/Yesterday با `tehran_day_bounds` تعیین می‌شود.
+- DB: R روی query بسته‌های Real، `COUNT(trades.id)` است. A/B total روی scoped_q و closed از `SUM(CASE close_time IS NOT NULL THEN 1 ELSE 0)` است؛ هر دو با joinهای مشترک. open query جدا `COUNT` روی `trades` و در scope=real با join مرحله، فقط `close_time IS NULL` و Scope دارد؛ **Currency/Date/version_id را اعمال نمی‌کند**. Today جمع شرطی روی closed_scope؛ دیروز SELECT تمام بسته‌های scope/ارز و سپس محدودکردن تاریخ و len در Python است.
+- Notes: total در A/B بدون تاریخ می‌تواند باز+بسته باشد؛ با هر مرز تاریخ فقط بسته‌ها باقی می‌مانند. total در R همیشه بسته است و عدد بک‌تست در UI نیز صریحاً closed_trades است. معاملات سربه‌سر در count هستند؛ بنابراین total الزاماً wins+losses نیست. شمارنده open بالای صفحه ممکن است با طول جدول open متفاوت باشد چون اولی Scope دارد ولی Currency ندارد و دومی Currency دارد ولی Scope ارسال نمی‌کند؛ محدودیت پاسخ جدول نیز باید جدا از شمارش کل در نظر گرفته شود.
+
+### 6. Average Win
+
+**Average Win**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:217` — پاسخ A شامل `summary.avg_win` در `data` ذخیره می‌شود؛ خط 264 پاسخ B را در `backtestSummary` نگه می‌دارد. **هیچ خواندن یا render مستقیم `avg_win` در DashboardPage وجود ندارد**؛ R نیز این فیلد را برنمی‌گرداند. این مسیر دریافت داده است، نه KPI قابل‌مشاهده فعلی.
+- API: `GET /api/analytics/dashboard` با `date_from,date_to,scope,currency` برای A یا `scope=backtest,currency=USDT,version_id` برای B؛ wrapper `getDashboardData` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:142`. endpoint مجزای Average Win فراخوانی نمی‌شود.
+- Backend: `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ gross_profit از aggregate خط 342 و wins_n از 344؛ فرمول خط 362: `gp / wins_n if wins_n else 0.0`؛ خروجی `summary.avg_win` در خط 517.
+- Service: فقط net پایه از `_net_expr` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:42` → `net_pnl_sql` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:27`. تقسیم داخل endpoint است؛ با وجود helper `calculate_basic_metrics` در همان سرویس، این endpoint آن را برای avg_win صدا نمی‌زند.
+- DB: `trades` و joinهای A/B؛ در همان aggregate مشترک دو `SUM(CASE...)` برای مجموع net بردها و تعداد بردها با شرط معامله بسته و net>0. query `AVG` مجزا برای avg_win وجود ندارد؛ AVG خط 367 مربوط به `r_multiple` است، نه این KPI.
+- Notes: میانگین مبلغ net مثبت است، نه میانگین R یا PnL خام. معاملات صفر و زیان‌ها از مخرج حذف می‌شوند؛ اگر بردی نباشد صفر، خروجی تا دو رقم اعشار گرد می‌شود. Date/Scope/Currency/version_id همان query اصلی را محدود می‌کنند؛ frontend fallback نمایشی ندارد چون نمایش وجود ندارد.
+
+### 7. Average Loss
+
+**Average Loss**
+- Frontend: `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:217` و `:264` — پاسخ A/B حاوی `summary.avg_loss` ذخیره می‌شود، ولی **هیچ مصرف یا render مستقیم `avg_loss` در DashboardPage نیست**. R این فیلد را ندارد؛ عنوان «حداکثر ضرر» نیز avg_loss نیست و به max_dd وصل است.
+- API: `GET /api/analytics/dashboard` با `date_from,date_to,scope,currency` برای A؛ همان مسیر با `scope=backtest,currency=USDT,version_id` برای B؛ `getDashboardData` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:142`.
+- Backend: `get_dashboard_data` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:309`؛ جمع net زیان‌ها در خط 343، تعداد در 345، قدرمطلق مجموع در 353؛ فرمول خط 363: `gl / losses_n if losses_n else 0.0`؛ خروجی `summary.avg_loss` در 518.
+- Service: net SQL از `net_pnl_sql` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:27`، با واسط `_net_expr` در `i:\trade\MokTradeDesk\backend\app\api\analytics.py:42`؛ قدرمطلق و تقسیم داخل endpoint‌اند، نه فراخوان AnalysisService یا `calculate_basic_metrics`.
+- DB: `trades` و joinهای مشترک A/B؛ `SUM(CASE closed AND net<0 THEN net ELSE 0)` و `SUM(CASE closed AND net<0 THEN 1 ELSE 0)` در همان query aggregate. `AVG` مستقیم DB برای این فیلد استفاده نشده است.
+- Notes: خروجی این endpoint **بزرگی مثبت میانگین زیان** است و تا دو رقم گرد می‌شود؛ بدون باخت صفر. این قرارداد را نباید با `calculate_basic_metrics` در `i:\trade\MokTradeDesk\backend\app\services\metrics.py:149` که میانگین علامت‌دار منفی برمی‌گرداند یکسان گرفت؛ آن helper در مسیر Dashboard استفاده نمی‌شود. معاملات صفر و برنده وارد مخرج نمی‌شوند؛ نمایش/fallback فرانت برای این KPI وجود ندارد.
+
+### یادداشت تکمیلی Net PnL در برابر سود خالص مالی
+
+کارت مالی در `i:\trade\MokTradeDesk\frontend\src\pages\DashboardPage.tsx:833` از `currencyProfit.net_profit` می‌خواند؛ انتخاب شاخه ارز/fallback در خط 301 است. مسیر آن `getNetProfit` در `i:\trade\MokTradeDesk\frontend\src\api\client.ts:784` → `GET /api/finance/net-profit?currency={currency}` → `get_net_profit` در `i:\trade\MokTradeDesk\backend\app\api\finance.py:1558` است. این تابع `_compute_real_pnl` در خط 1325 و `_expenses_total` در خط 1370 همان فایل را صدا می‌زند و `real_pnl - expenses` را تا دو رقم گرد می‌کند؛ Service مستقل AnalysisService ندارد و net معامله باز هم از metrics.net_pnl_sql می‌آید.
+
+DB این شاخه دو SUM/COUNT روی `trades` با INNER JOIN به مرحله/حساب پراپ یا حساب شخصی برای ارز است؛ شرط `Trade.pnl IS NOT NULL` دارد، **نه الزام close_time یا test_type معادل R**. هزینه‌ها SUM(amount) از جدول `transactions` برای typeهای FEE/PURCHASE، ارز منتخب و `is_deleted=False` هستند؛ نام جدول در `i:\trade\MokTradeDesk\backend\app\models\finance.py:133` تعریف شده است. پس اختلاف این کارت با Real Summary را نمی‌توان صرفاً به کسر هزینه نسبت داد؛ دامنه query سود پایه هم متفاوت است. پاسخ by_currency هر دو ارز را محاسبه می‌کند، ولی تبدیل ارز انجام نمی‌دهد.
+
+### نتیجه و اعتبارسنجی Task 3a
+
+- هفت KPI با Frontend/API/Backend/Service/DB/Notes ثبت شدند؛ دو KPI Average Win/Loss صریحاً «دریافت‌شده ولی نمایش‌داده‌نشده» هستند.
+- یافته‌های مهم: ضرب دوباره Win Rate در 100، sentinel متفاوت PF، اختلاف دامنه شمار معاملات باز، اختلاف معاملات باز/بسته در Net PnL مسیرها، و برچسب «بزرگترین ضرر» روی gross_loss. هیچ‌یک در این Task اصلاح نشدند.
+- اعتبارسنجی این Task، تطبیق source و queryها و کنترل سند است؛ برنامه، API زنده یا query واقعی DB اجرا نشده و build/test برنامه برای این تغییر مستنداتی اجرا نمی‌شود. شماره خطوط و محاسبات گزارش‌شده از source هستند، نه نتیجه آزمایش runtime.
+- تنها فایل مجاز برای تغییر `i:\trade\MokTradeDesk\DASHBOARD_AUDIT.md` است؛ متن Taskهای قبلی حفظ و این بخش append شده است. فایل نهایی طبق درخواست با UTF-8 with BOM ذخیره می‌شود. Git/GitHub استفاده نشد.
