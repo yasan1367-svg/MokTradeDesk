@@ -472,7 +472,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         <StatCard
           icon="📈"
           label="نرخ برد"
-          value={`${(realSummary.win_rate * 100).toFixed(1)}٪`}
+          value={`${realSummary.win_rate.toFixed(1)}٪`}
           change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
           changeType="neutral"
           color="accent"
@@ -542,7 +542,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               <span className="font-bold">{today.trades_count}</span> معامله
             </div>
             <div className="text-sm text-[var(--text-secondary)]">
-              نرخ برد امروز: <span className="font-bold">{(today.win_rate * 100).toFixed(1)}٪</span>
+              نرخ برد امروز: <span className="font-bold">{today.win_rate.toFixed(1)}٪</span>
             </div>
             <div className="text-sm text-[var(--text-secondary)]">
               <span className="font-bold">{summary.open_trades}</span> معامله باز
@@ -595,7 +595,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-secondary)]">Win Rate</span>
-                <span className="font-bold text-[var(--text-primary)]">{(yesterday.win_rate * 100).toFixed(1)}٪</span>
+                <span className="font-bold text-[var(--text-primary)]">{yesterday.win_rate.toFixed(1)}٪</span>
               </div>
               <div className="flex items-center justify-between text-sm">
                 <span className="text-[var(--text-secondary)]">برد / باخت</span>
@@ -977,7 +977,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                 <StatCard
                   icon="📈"
                   label="نرخ برد"
-                  value={`${(Number(backtestSummary.summary?.win_rate || 0) * 100).toFixed(1)}٪`}
+                  value={`${Number(backtestSummary.summary?.win_rate || 0).toFixed(1)}٪`}
                   color="accent"
                   sparkData={[0]}
                 />
