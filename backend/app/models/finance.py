@@ -51,6 +51,7 @@ class CategoryType(str, enum.Enum):
 
 
 class TransactionType(str, enum.Enum):
+    CONVERT = "convert"
     DEPOSIT = "deposit"
     WITHDRAWAL = "withdrawal"
     PROFIT = "profit"
@@ -59,7 +60,16 @@ class TransactionType(str, enum.Enum):
     PURCHASE = "purchase"
     TRANSFER = "transfer"        # فاز ۳۷: انتقال بین حساب‌ها (درآمد/هزینه نیست)
     ADJUSTMENT = "adjustment"    # فاز ۳۷: اصلاح دستی موجودی (مثبت/منفی)
+    EXTERNAL_INCOME = "external_income"
+    EXTERNAL_EXPENSE = "external_expense"
     # فاز ۳۸.۴ (Clean Break): `EXCHANGE` حذف شد ⇒ معادل آن `TRANSFER` است.
+
+
+class CashFlow(str, enum.Enum):
+    """جریان نقدی تراکنش — برای گزارش هزینه/درآمد (فاز ۴۷)."""
+    NONE = "none"       # بدون اثر (انتقال داخلی، تبدیل، تعدیل)
+    EXPENSE = "expense" # هزینه (پول از حساب اصلی خارج شد)
+    INCOME = "income"   # درآمد (پول به حساب اصلی وارد شد)
 
 
 # ═════════════════════════════════════════════
@@ -136,6 +146,8 @@ class FinancialTransaction(Base):
     account_id = Column(Integer, ForeignKey("accounts.id"), nullable=False, index=True)
     category_id = Column(Integer, ForeignKey("categories.id"), nullable=True)
     amount = Column(Float, nullable=False)
+    to_amount = Column(Float, nullable=True)
+    to_currency = Column(Enum(Currency), nullable=True)
     currency = Column(Enum(Currency), nullable=False, default=Currency.USDT)
     date = Column(DateTime, nullable=False, default=lambda: datetime.now(timezone.utc), index=True)
     description = Column(Text, nullable=True)
@@ -144,6 +156,7 @@ class FinancialTransaction(Base):
     to_account_id = Column(Integer, ForeignKey("accounts.id"), nullable=True)
     related_trade_id = Column(Integer, ForeignKey("trades.id"), nullable=True)
     related_prop_account_id = Column(Integer, ForeignKey("prop_accounts.id"), nullable=True)
+    cash_flow = Column(Enum(CashFlow), nullable=False, default=CashFlow.NONE, server_default="none", index=True)
     is_deleted = Column(Boolean, default=False)
     created_at = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 

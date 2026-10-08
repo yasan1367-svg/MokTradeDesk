@@ -60,6 +60,7 @@ class WalletError(ValueError):
 # قرارداد جهت‌دار
 # ═════════════════════════════════════════════
 BALANCE_DIRECTION: Dict[TransactionType, str] = {
+    TransactionType.CONVERT: "convert",
     TransactionType.DEPOSIT: "+",
     TransactionType.PROFIT: "+",
     TransactionType.WITHDRAWAL: "-",
@@ -68,6 +69,8 @@ BALANCE_DIRECTION: Dict[TransactionType, str] = {
     TransactionType.PURCHASE: "-",
     TransactionType.TRANSFER: "move",      # دو طرفه (مبدأ − / مقصد +)
     TransactionType.ADJUSTMENT: "signed",  # علامت از مبلغ
+    TransactionType.EXTERNAL_INCOME: "+",
+    TransactionType.EXTERNAL_EXPENSE: "-",
 }
 
 #: انواعی که موجودی را زیاد می‌کنند (برای گزارش‌ها/تست‌ها).
@@ -171,7 +174,10 @@ class WalletService:
                 return
             out[account_id] = out.get(account_id, 0.0) + delta
 
-        if direction == "move":
+        if direction == "convert":
+            _bump(tx.from_account_id, -amount)
+            _bump(tx.to_account_id, float(tx.to_amount or 0.0))
+        elif direction == "move":
             # انتقال یک‌طرفه (مبدأ یا مقصد نامشخص) = تبدیل/جابجایی که **بیرون از نرم‌افزار**
             # رخ داده (قرارداد قدیمی `/finance/transactions` و سناریوی کاربر:
             # «تبدیل در صرافی انجام می‌شود») ⇒ فقط ثبت می‌شود، بدون اثر روی موجودی.
@@ -255,8 +261,49 @@ class WalletService:
 
     @staticmethod
     def validate_accounts(db: Session, tx: FinancialTransaction) -> None:
+        if tx.type == TransactionType.CONVERT:
+            if tx.from_account_id is None or tx.to_account_id is None:
+                raise WalletError("Conversion requires source and destination accounts")
+            if tx.from_account_id == tx.to_account_id:
+                raise WalletError("Conversion accounts must differ")
+            accounts = _load_accounts(db, [tx.from_account_id, tx.to_account_id])
+            source = accounts.get(tx.from_account_id)
+            destination = accounts.get(tx.to_account_id)
+            if source is None or destination is None:
+                raise WalletError("Account not found")
+            if source.currency == destination.currency:
+                raise WalletError("Currencies must differ; use transfer")
+            WalletService.validate_amount(tx.type, tx.amount)
+            WalletService.validate_amount(tx.type, tx.to_amount)
+            if tx.account_id != tx.to_account_id:
+                raise WalletError("Conversion account must be destination")
+            if tx.currency != source.currency or tx.to_currency != destination.currency:
+                raise WalletError("Conversion currencies must match their accounts")
+            return
+        if tx.to_amount is not None or tx.to_currency is not None:
+            raise WalletError("Destination amount/currency are only allowed for convert")
         if tx.type is None or tx.currency is None:
             raise WalletError("نوع تراکنش و ارز الزامی هستند")
+        # EXTERNAL_INCOME: فقط مقصد لازمه (بدون مبدأ)
+        if tx.type == TransactionType.EXTERNAL_INCOME:
+            if tx.account_id is None:
+                raise WalletError("حساب مقصد الزامی است")
+            account = _load_accounts(db, [tx.account_id]).get(tx.account_id)
+            if account is None:
+                raise WalletError("حساب مالی پیدا نشد")
+            if tx.currency is not None and account.currency != tx.currency:
+                raise WalletError("ارز تراکنش باید با ارز حساب مقصد یکسان باشد")
+            return
+        # EXTERNAL_EXPENSE: فقط مبدأ لازمه (بدون مقصد)
+        if tx.type == TransactionType.EXTERNAL_EXPENSE:
+            if tx.account_id is None:
+                raise WalletError("حساب مبدأ الزامی است")
+            account = _load_accounts(db, [tx.account_id]).get(tx.account_id)
+            if account is None:
+                raise WalletError("حساب مالی پیدا نشد")
+            if tx.currency is not None and account.currency != tx.currency:
+                raise WalletError("ارز تراکنش باید با ارز حساب مبدأ یکسان باشد")
+            return
         account_ids = [tx.account_id]
         if tx.type == TransactionType.TRANSFER:
             if tx.from_account_id is not None and tx.to_account_id is not None:
@@ -274,6 +321,38 @@ class WalletService:
                 raise WalletError("حساب مالی پیدا نشد")
             if account.currency != tx.currency:
                 raise WalletError("ارز تراکنش و تمام حساب‌های مرتبط باید یکسان باشد")
+
+    @staticmethod
+    def convert(
+        db: Session, *, from_account_id: int, to_account_id: int,
+        amount: float, to_amount: float, date=None,
+        description: Optional[str] = None, category_id: Optional[int] = None,
+        commit: bool = True,
+    ) -> FinancialTransaction:
+        accounts = _load_accounts(db, [from_account_id, to_account_id])
+        source = accounts.get(from_account_id)
+        destination = accounts.get(to_account_id)
+        if source is None or destination is None:
+            raise WalletError("Account not found")
+        tx = FinancialTransaction(
+            type=TransactionType.CONVERT, account_id=to_account_id,
+            from_account_id=from_account_id, to_account_id=to_account_id,
+            amount=amount, currency=source.currency,
+            to_amount=to_amount, to_currency=destination.currency,
+            date=date or datetime.now(timezone.utc), description=description,
+            category_id=category_id,
+        )
+        WalletService.validate_accounts(db, tx)
+        WalletService._assert_sufficient(db, tx, allow_overdraft=True)
+        db.add(tx)
+        db.flush()
+        WalletService.apply_effects(db, tx)
+        if commit:
+            db.commit()
+            db.refresh(tx)
+        else:
+            db.flush()
+        return tx
 
     # ── ثبت تراکنش ──
     @staticmethod
@@ -315,6 +394,8 @@ class WalletService:
             WalletError: مبلغ نامعتبر، حساب نامعتبر یا موجودی ناکافی.
         """
         tx_type = _as_type(type)
+        if tx_type == TransactionType.CONVERT:
+            raise WalletError("Use WalletService.convert for conversions")
         direction = _direction_of(tx_type)
 
         # ── اعتبارسنجی مبلغ ──
@@ -533,9 +614,9 @@ class WalletService:
                 "date": tx.date.isoformat() if tx.date else None,
                 "type": tx.type.value if tx.type else None,
                 "direction": "in" if delta > 0 else ("out" if delta < 0 else "none"),
-                "amount": tx.amount,
+                "amount": abs(delta) if tx.type == TransactionType.CONVERT else tx.amount,
                 "signed_amount": round(delta, 2),
-                "currency": tx.currency.value if tx.currency else None,
+                "currency": (tx.to_currency.value if tx.type == TransactionType.CONVERT and account_id == tx.to_account_id else tx.currency.value) if tx.currency else None,
                 "description": tx.description,
                 "category_name": tx.category.name if tx.category else None,
                 "peer_account_id": peer_id,

@@ -652,6 +652,7 @@ export const getFinanceAccounts = (params?: { type?: string; currency?: string }
   api.get('/api/finance/accounts', { params });
 
 export const createFinanceAccount = (data: {
+  create_pair?: boolean;
   name: string;
   type: string;
   currency?: string;
@@ -690,6 +691,8 @@ export const getFinanceTransactions = (params?: {
 }) => api.get('/api/finance/transactions', { params });
 
 export const createFinanceTransaction = (data: {
+  to_amount?: number | null;
+  to_currency?: string | null;
   account_id: number;
   amount: number;
   type: string;

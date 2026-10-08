@@ -66,6 +66,8 @@ type Category = {
 };
 
 type Transaction = {
+  to_amount?: number | null; to_currency?: string | null;
+  from_account_name?: string; to_account_name?: string;
   id: number; account_id: number; account_name?: string;
   category_id?: number | null; category_name?: string;
   amount: number; currency: string; date: string;
@@ -87,6 +89,7 @@ const ACCOUNT_TYPE_NAMES: Record<string, string> = {
 };
 
 const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
+  convert: { bg: 'bg-[var(--purple)]/10', text: 'text-[var(--purple)]' },
   deposit: { bg: 'bg-[var(--profit)]/10', text: 'text-[var(--profit)]' },
   withdrawal: { bg: 'bg-[var(--loss)]/10', text: 'text-[var(--loss)]' },
   transfer: { bg: 'bg-[var(--purple)]/10', text: 'text-[var(--purple)]' },  // فاز ۳۸.۴: جایگزین `exchange`
@@ -98,12 +101,14 @@ const TRANSACTION_TYPE_STYLES: Record<string, { bg: string; text: string }> = {
 
 // برچسب و رنگ فارسی انواع تراکنش (برای نمودار دایره‌ای)
 const TRANSACTION_TYPE_LABELS: Record<string, string> = {
+  convert: 'تبدیل ارز',
   deposit: 'واریز', withdrawal: 'برداشت', transfer: 'انتقال',
   profit: 'سود', loss: 'ضرر', fee: 'کارمزد', purchase: 'خرید',
   deposit_to_broker: 'واریز به بروکر', withdrawal_from_broker: 'برداشت از بروکر',
 };
 
 const TRANSACTION_TYPE_COLORS: Record<string, string> = {
+  convert: 'var(--purple)',
   deposit: 'var(--profit)', withdrawal: 'var(--loss)', transfer: 'var(--purple)',  // فاز ۳۸.۴: exchange → transfer
   profit: 'var(--profit)', loss: 'var(--loss)', fee: 'var(--warning)', purchase: 'var(--loss)',
 };
@@ -643,6 +648,7 @@ export default function FinancePage() {
                 <option value="deposit">💵 واریز</option>
                 <option value="withdrawal">🏧 برداشت</option>
                 <option value="transfer">🔄 انتقال</option>
+                <option value="convert">🔁 تبدیل ارز</option>
                 <option value="profit">📈 سود</option>
                 <option value="loss">📉 ضرر</option>
                 <option value="fee">💸 کارمزد</option>
@@ -676,15 +682,15 @@ export default function FinancePage() {
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 mb-1">
                           <span className={`px-2 py-0.5 rounded-lg text-[11px] font-bold ${style.bg} ${style.text}`}>{t.type}</span>
-                          <span className="text-xs text-[var(--text-secondary)]">{t.account_name || `حساب ${t.account_id}`}</span>
+                          <span className="text-xs text-[var(--text-secondary)]">{t.type === 'convert' ? `از ${t.from_account_name || t.from_account_id} → ${t.to_account_name || t.to_account_id}` : t.account_name || `حساب ${t.account_id}`}</span>
                           {t.category_name && <span className="text-xs text-[var(--text-secondary)]">• {t.category_name}</span>}
                         </div>
                         {t.description && <div className="text-sm text-[var(--text-secondary)] truncate">{t.description}</div>}
                         <div className="text-xs text-[var(--text-secondary)] mt-1">{t.date?.split('T')[0]}</div>
                       </div>
                       <div className="text-left shrink-0">
-                        <div className="text-lg font-black text-[var(--text-primary)]">{t.amount?.toLocaleString() ?? '0'}</div>
-                        <div className="text-[10px] font-bold text-[var(--text-secondary)]">{t.currency}</div>
+                        <div dir="ltr" className="text-lg font-black text-[var(--text-primary)]">{t.type === 'convert' ? `${t.amount.toLocaleString()} ${t.currency} → ${t.to_amount?.toLocaleString()} ${t.to_currency}` : t.amount?.toLocaleString() ?? '0'}</div>
+                        {t.type !== 'convert' && <div className="text-[10px] font-bold text-[var(--text-secondary)]">{t.currency}</div>}
                       </div>
                       <div className="flex gap-1 shrink-0">
                         <InfoTooltip content="ویرایش تراکنش">

@@ -13,6 +13,7 @@ from ..models.finance import (
     Currency,
     CategoryType,
     TransactionType,
+    CashFlow,
 )
 from ..models.trading import BrokerCashMovement
 from ..models.prop import PropWithdrawal
@@ -59,6 +60,7 @@ def _validate_account_currency(account_type: AccountType, currency: Currency) ->
 
 
 class AccountCreate(BaseModel):
+    create_pair: bool = False
     name: str
     type: AccountType
     currency: Currency = Currency.USDT
@@ -90,6 +92,8 @@ class CategoryUpdate(BaseModel):
 
 
 class TransactionCreate(BaseModel):
+    to_amount: Optional[float] = None
+    to_currency: Optional[Currency] = None
     account_id: int
     category_id: Optional[int] = None
     amount: float
@@ -104,6 +108,8 @@ class TransactionCreate(BaseModel):
 
 
 class TransactionUpdate(BaseModel):
+    to_amount: Optional[float] = None
+    to_currency: Optional[Currency] = None
     category_id: Optional[int] = None
     amount: Optional[float] = None
     currency: Optional[Currency] = None
@@ -177,6 +183,35 @@ def create_account(account: AccountCreate, db: Session = Depends(get_db)):
     تا دفتر کل و موجودی هم‌یشه هم‌خوان بمانند (reconcile.delta == 0).
     """
     data = account.model_dump()
+    create_pair = data.pop("create_pair")
+    if create_pair:
+        _validate_account_currency(account.type, Currency.IRR)
+        name = account.name.strip()
+        if not name:
+            raise HTTPException(status_code=400, detail="Account name is required")
+        names = [f"{name}_IRR", f"{name}_USDT"]
+        if db.query(FinancialAccount.id).filter(FinancialAccount.name.in_(names)).first():
+            raise HTTPException(status_code=409, detail="Paired account name already exists")
+        created = []
+        try:
+            for pair_name, currency in zip(names, (Currency.IRR, Currency.USDT)):
+                item = FinancialAccount(name=pair_name, type=account.type,
+                                        currency=currency, balance=0.0,
+                                        card_number=account.card_number)
+                db.add(item)
+                db.flush()
+                if account.balance != 0:
+                    WalletService.post(db, account_id=item.id, type=TransactionType.ADJUSTMENT,
+                                       amount=account.balance, currency=currency,
+                                       description="موجودی اولیه", commit=False)
+                created.append(item)
+            db.commit()
+        except WalletError as exc:
+            db.rollback()
+            raise HTTPException(status_code=400, detail=str(exc))
+        return {"accounts": [{"id": a.id, "name": a.name, "type": a.type.value,
+                              "currency": a.currency.value, "balance": a.balance}
+                             for a in created], "message": "حساب دوگانه ساخته شد"}
     _validate_account_currency(data["type"], data["currency"])
     initial_balance = data.pop("balance", 0.0) or 0.0
     db_account = FinancialAccount(balance=0.0, **data)
@@ -389,6 +424,10 @@ def get_transactions(
             "category_id": t.category_id,
             "category_name": t.category.name if t.category else None,
             "amount": t.amount,
+            "to_amount": t.to_amount,
+            "to_currency": t.to_currency.value if t.to_currency else None,
+            "from_account_name": t.from_account.name if t.from_account else None,
+            "to_account_name": t.to_account.name if t.to_account else None,
             "currency": t.currency.value if t.currency else None,
             "date": t.date.isoformat() if t.date else None,
             "description": t.description,
@@ -411,6 +450,23 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
     """
     data = tx.model_dump()
     try:
+        if tx.type == TransactionType.CONVERT:
+            if tx.from_account_id is None or tx.to_account_id is None:
+                raise WalletError("Conversion requires source and destination accounts")
+            for field, account_id in (("currency", tx.from_account_id), ("to_currency", tx.to_account_id)):
+                account = db.get(FinancialAccount, account_id)
+                if account is None:
+                    raise WalletError("Account not found")
+                if field in tx.model_fields_set and data[field] != account.currency:
+                    raise WalletError("Conversion currencies must match their accounts")
+            db_tx = WalletService.convert(
+                db, from_account_id=tx.from_account_id, to_account_id=tx.to_account_id,
+                amount=tx.amount, to_amount=tx.to_amount, date=tx.date,
+                description=tx.description, category_id=tx.category_id,
+            )
+            return {"id": db_tx.id, "message": "تراکنش ثبت شد"}
+        if tx.to_amount is not None or tx.to_currency is not None:
+            raise WalletError("Destination amount/currency are only allowed for convert")
         db_tx = WalletService.post(
             db,
             account_id=data["account_id"],
@@ -426,6 +482,34 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
             related_prop_account_id=data.get("related_prop_account_id"),
             allow_overdraft=True,
         )
+        # فاز ۴۷: تشخیص خودکار جریان نقدی
+        from_acc = db.get(FinancialAccount, data.get("from_account_id")) if data.get("from_account_id") else None
+        to_acc = db.get(FinancialAccount, data.get("to_account_id")) if data.get("to_account_id") else None
+
+        flow = CashFlow.NONE
+        tx_type = tx.type
+
+        # خارجی‌ها: مستقیم
+        if tx_type == TransactionType.EXTERNAL_INCOME:
+            flow = CashFlow.INCOME
+        elif tx_type == TransactionType.EXTERNAL_EXPENSE:
+            flow = CashFlow.EXPENSE
+        # انتقال بین بانک و غیربانک
+        elif tx_type == TransactionType.TRANSFER:
+            if from_acc and to_acc:
+                if from_acc.type == AccountType.BANK and to_acc.type != AccountType.BANK:
+                    flow = CashFlow.EXPENSE
+                elif to_acc.type == AccountType.BANK and from_acc.type != AccountType.BANK:
+                    flow = CashFlow.INCOME
+        # انواع ثابت
+        elif tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS):
+            flow = CashFlow.EXPENSE
+        elif tx_type == TransactionType.PROFIT:
+            flow = CashFlow.INCOME
+
+        db_tx.cash_flow = flow
+        db.commit()
+        db.refresh(db_tx)
     except WalletError as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
@@ -462,15 +546,22 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
         if tx.date is None:
             tx.date = datetime.now(timezone.utc)
         # فاز ۴۵.۴: قرارداد فاز ۳۳ — برای TRANSFER، account_id همان مقصد است
-        if tx.type == TransactionType.TRANSFER and tx.to_account_id is not None:
+        if tx.type in (TransactionType.TRANSFER, TransactionType.CONVERT) and tx.to_account_id is not None:
             if tx.from_account_id == tx.to_account_id:
                 raise WalletError("حساب مبدأ و مقصد نباید یکی باشد")
             tx.account_id = tx.to_account_id
-        elif tx.type != TransactionType.TRANSFER:
+        elif tx.type not in (TransactionType.TRANSFER, TransactionType.CONVERT):
             tx.from_account_id = None
             tx.to_account_id = None
         # چک مبلغ جدید (وگرنه ویرایش به صفر، اثر قبلی را بی‌صدا حذف می‌کرد)
         WalletService.validate_amount(tx.type, tx.amount)
+        if tx.type == TransactionType.CONVERT:
+            source = db.get(FinancialAccount, tx.from_account_id) if tx.from_account_id is not None else None
+            destination = db.get(FinancialAccount, tx.to_account_id) if tx.to_account_id is not None else None
+            if source and "currency" not in data.model_fields_set:
+                tx.currency = source.currency
+            if destination and "to_currency" not in data.model_fields_set:
+                tx.to_currency = destination.currency
         WalletService.validate_accounts(db, tx)
         WalletService.apply_effects(db, tx, sign=+1)
     except (WalletError, ValueError) as exc:
@@ -538,8 +629,8 @@ def get_finance_summary(
     by_currency: dict[str, dict] = {}
     for c in (Currency.USDT, Currency.IRR):
         by_currency[c.value] = {
-            "total_income": round(_bank_income_sum(db, c), 2),
-            "total_expense": round(_tx_sum(db, EXPENSE_TYPES_F, c), 2),
+            "total_income": round(_cash_flow_sum(db, c, CashFlow.INCOME), 2),
+            "total_expense": round(_cash_flow_sum(db, c, CashFlow.EXPENSE), 2),
             "total_transfers": round(_tx_sum(db, [TransactionType.TRANSFER], c), 2),
             "transaction_count": _tx_count(db, c),
         }
@@ -1275,6 +1366,20 @@ def _tx_count(db: Session, currency: Currency) -> int:
             FinancialTransaction.currency == currency,
         )
         .count()
+    )
+
+
+def _cash_flow_sum(db: Session, currency: Currency, flow: CashFlow) -> float:
+    """مجموع مبلغ تراکنش‌های یک جریان نقدی (income/expense) در یک ارز."""
+    from sqlalchemy import func
+    return float(
+        db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
+        .filter(
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.cash_flow == flow,
+            FinancialTransaction.currency == currency,
+        )
+        .scalar() or 0.0
     )
 
 

@@ -42,6 +42,8 @@ export default function AccountForm({
     ? CURRENCIES.filter((item) => item.value === 'USDT')
     : CURRENCIES;
   const [balance, setBalance] = useState('0');
+  const [createPair, setCreatePair] = useState(false);
+  const pairAllowed = !['trust_wallet', 'crypto_wallet'].includes(type);
   const [cardNumber, setCardNumber] = useState('');
   // فاز ۳۸.۳ — فیلدهای بی‌اثر `broker_name` / `prop_firm_name` / `prop_firm_id` حذف شدند
   // (در `AccountCreate` بک‌اند وجود ندارند ⇒ Pydantic بی‌صدا دور می‌ریخت)
@@ -67,6 +69,7 @@ export default function AccountForm({
     try {
       await onSave({
         name: name.trim(),
+        ...(mode === 'create' ? { create_pair: createPair && pairAllowed } : {}),
         type,
         currency,
         balance: parseFloat(balance) || 0,
@@ -124,10 +127,18 @@ export default function AccountForm({
           </div>
 
           {/* ارز */}
+          {mode === 'create' && (
+            <div className="md:col-span-2">
+              <label><input type="checkbox" checked={createPair && pairAllowed}
+                disabled={!pairAllowed} onChange={(e) => setCreatePair(e.target.checked)} /> ایجاد حساب دوگانه (IRR + USDT)</label>
+              {createPair && pairAllowed && <p className="text-xs text-[var(--text-secondary)]">موجودی اولیه با همان مقدار عددی برای هر دو حساب، در ارز مربوط به آن ثبت می‌شود. مقدار صفر بدون تراکنش اولیه است.</p>}
+            </div>
+          )}
           <div>
             <label className="text-[var(--text-secondary)] text-xs block mb-1">ارز</label>
             <select
               value={currency}
+              disabled={mode === 'create' && createPair && pairAllowed}
               onChange={(e) => setCurrency(e.target.value)}
               className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-4 py-3 text-[var(--text-primary)] focus:border-[var(--accent)] focus:outline-none transition-all"
             >

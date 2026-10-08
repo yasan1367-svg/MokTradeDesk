@@ -8,6 +8,98 @@ from app.models.strategy import Trade, TradeSource, TestType
 from app.services.analysis_service import AnalysisService
 
 
+def _conversion_accounts(db, destination_currency="USDT"):
+    from app.models.finance import FinancialAccount, AccountType, Currency
+    accounts = [FinancialAccount(name="source", type=AccountType.BANK, currency=Currency.IRR, balance=0),
+                FinancialAccount(name="destination", type=AccountType.EXCHANGE, currency=Currency(destination_currency), balance=0)]
+    db.add_all(accounts)
+    db.commit()
+    return accounts
+
+
+def _conversion_payload(accounts, **changes):
+    source, destination = accounts
+    return dict(account_id=destination.id, from_account_id=source.id,
+                to_account_id=destination.id, type="convert", amount=600000,
+                to_amount=10, **changes)
+
+
+@pytest.mark.parametrize("balance", [0, 25])
+def test_create_pair_creates_two_accounts(db_session, balance):
+    from app.models.finance import FinancialAccount, FinancialTransaction
+    result = finance.create_account(finance.AccountCreate(name=" Bit24 ", type="exchange", create_pair=True, balance=balance), db_session)
+    assert [a["name"] for a in result["accounts"]] == ["Bit24_IRR", "Bit24_USDT"]
+    assert [a.balance for a in db_session.query(FinancialAccount).all()] == [balance, balance]
+    assert db_session.query(FinancialTransaction).count() == (2 if balance else 0)
+    from fastapi import HTTPException
+    with pytest.raises(HTTPException) as exc:
+        finance.create_account(finance.AccountCreate(name="Bit24", type="exchange", create_pair=True), db_session)
+    assert exc.value.status_code == 409
+
+
+def test_convert_debits_and_credits(db_session):
+    from app.models.finance import FinancialTransaction
+    from app.services.wallet_service import WalletService
+    accounts = _conversion_accounts(db_session)
+    result = finance.create_transaction(finance.TransactionCreate(**_conversion_payload(accounts)), db_session)
+    tx = db_session.get(FinancialTransaction, result["id"])
+    assert [a.balance for a in accounts] == [-600000, 10]
+    assert all(WalletService.reconcile(db_session, a.id)["is_balanced"] for a in accounts)
+    assert WalletService.ledger(db_session, accounts[1].id)[0]["currency"] == "USDT"
+    assert WalletService.ledger(db_session, accounts[1].id)[0]["amount"] == 10
+    assert WalletService.deltas(tx) == {accounts[0].id: -600000, accounts[1].id: 10}
+    finance.update_transaction(tx.id, finance.TransactionUpdate(amount=300000, to_amount=5), db_session)
+    assert [a.balance for a in accounts] == [-300000, 5]
+    finance.delete_transaction(tx.id, db_session)
+    assert [a.balance for a in accounts] == [0, 0]
+
+
+def test_convert_rejects_same_currency(db_session):
+    from fastapi import HTTPException
+    accounts = _conversion_accounts(db_session, "IRR")
+    with pytest.raises(HTTPException):
+        finance.create_transaction(finance.TransactionCreate(**_conversion_payload(accounts)), db_session)
+
+
+def test_convert_rejects_same_account(db_session):
+    from fastapi import HTTPException
+    accounts = _conversion_accounts(db_session)
+    payload = _conversion_payload(accounts)
+    payload["to_account_id"] = accounts[0].id
+    with pytest.raises(HTTPException):
+        finance.create_transaction(finance.TransactionCreate(**payload), db_session)
+
+
+def test_convert_requires_to_amount(db_session):
+    from fastapi import HTTPException
+    payload = _conversion_payload(_conversion_accounts(db_session))
+    del payload["to_amount"]
+    with pytest.raises(HTTPException):
+        finance.create_transaction(finance.TransactionCreate(**payload), db_session)
+
+
+def test_convert_currency_derived_from_accounts(db_session):
+    from app.models.finance import FinancialTransaction, Currency
+    from fastapi import HTTPException
+    accounts = _conversion_accounts(db_session)
+    payload = _conversion_payload(accounts)
+    result = finance.create_transaction(finance.TransactionCreate(**payload), db_session)
+    tx = db_session.get(FinancialTransaction, result["id"])
+    assert (tx.currency, tx.to_currency) == (Currency.IRR, Currency.USDT)
+    payload["currency"] = "USDT"
+    with pytest.raises(HTTPException):
+        finance.create_transaction(finance.TransactionCreate(**payload), db_session)
+
+
+def test_transfer_still_works_for_same_currency(db_session):
+    accounts = _conversion_accounts(db_session, "IRR")
+    payload = _conversion_payload(accounts)
+    payload.update(type="transfer", currency="IRR", amount=10)
+    del payload["to_amount"]
+    finance.create_transaction(finance.TransactionCreate(**payload), db_session)
+    assert [a.balance for a in accounts] == [-10, 10]
+
+
 def _make_trade(pnl, *, r=None, day=1, version_id=None):
     return Trade(
         symbol="XAUUSD",
