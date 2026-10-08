@@ -4,11 +4,12 @@ interface EquityCurveChartProps {
   trades?: any[];
   initialBalance?: number;
   height?: number;
+  currency?: string;
   /** سری آماده از endpoint داشبورد: [{date, equity}] */
   data?: { date: string; equity: number }[];
 }
 
-export default function EquityCurveChart({ trades = [], initialBalance = 0, height = 250, data: series }: EquityCurveChartProps) {
+export default function EquityCurveChart({ trades = [], initialBalance = 0, height = 250, data: series, currency = 'USDT' }: EquityCurveChartProps) {
   let data: { index: number; date: string; equity: number; pnl?: number }[];
 
   if (series && series.length > 0) {
@@ -84,7 +85,7 @@ export default function EquityCurveChart({ trades = [], initialBalance = 0, heig
             color: 'var(--text-primary)',
             fontSize: '12px',
           }}
-          formatter={(value: any) => [`${value} USDT `, 'سرمایه']}
+          formatter={(value: any) => [`${value} ${currency} `, 'سرمایه']}
           labelFormatter={(label) => `معامله #${label}`}
         />
         <Area

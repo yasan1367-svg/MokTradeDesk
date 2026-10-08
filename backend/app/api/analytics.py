@@ -204,6 +204,12 @@ ASSUMED_BALANCE = 10000.0
 
 
 def _scope_initial_balance(db, scope: str, personal_account_ids, prop_stage_ids, currency=None) -> float:
+    return _scope_initial_balance_with_source(
+        db, scope, personal_account_ids, prop_stage_ids, currency
+    )[0]
+
+
+def _scope_initial_balance_with_source(db, scope: str, personal_account_ids, prop_stage_ids, currency=None):
     """Get initial equity for the trade scope, or use the simulation default.
 
     Personal account balances and prop-stage balances are summed once per
@@ -211,7 +217,7 @@ def _scope_initial_balance(db, scope: str, personal_account_ids, prop_stage_ids,
     balance; their associated trading stage does.
     """
     if scope in ("backtest", "forward"):
-        return ASSUMED_BALANCE
+        return ASSUMED_BALANCE, "fallback_10000"
 
     balance = 0.0
     personal_ids = {account_id for account_id in (personal_account_ids or []) if account_id is not None}
@@ -229,7 +235,7 @@ def _scope_initial_balance(db, scope: str, personal_account_ids, prop_stage_ids,
             prop_query = prop_query.join(PropAccount).filter(PropAccount.currency == currency)
         balance += sum(float(stage.initial_balance or 0.0) for stage in prop_query.all())
 
-    return balance if balance > 0 else ASSUMED_BALANCE
+    return (balance, "accounts") if balance > 0 else (ASSUMED_BALANCE, "fallback_10000")
 
 
 def _equity_trade(close_time, net):
@@ -393,7 +399,7 @@ def get_dashboard_data(
         if _stage_id is not None:
             prop_stage_ids.add(_stage_id)
 
-    initial_balance = _scope_initial_balance(
+    initial_balance, baseline_source = _scope_initial_balance_with_source(
         db, sc, personal_account_ids, prop_stage_ids, currency
     )
     equity_trades = [_equity_trade(close_time, net_pnl) for close_time, net_pnl in seq]
@@ -506,6 +512,7 @@ def get_dashboard_data(
     return {
         "currency": currency.value,
         "summary": {
+            "currency": currency.value,
             "net_pnl": round(tnp, 2),
             "win_rate": round(wr, 2),
             "max_dd": round(md, 2),
@@ -533,6 +540,14 @@ def get_dashboard_data(
         },
         "sparkline": spd,
         "equity_curve": equity_curve,
+        # Synthetic starting capital, not the actual opening balance of the period.
+        "equity_metadata": {
+            "currency": currency.value,
+            "baseline": float(initial_balance),
+            "baseline_source": baseline_source,
+            "closed_only": True,
+            "scope": sc,
+        },
         "pnl_distribution": pnl_distribution,
         "win_loss": win_loss,
         "spendable_money": {

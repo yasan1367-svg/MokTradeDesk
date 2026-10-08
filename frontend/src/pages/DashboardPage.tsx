@@ -1023,7 +1023,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card>
           <CardHeader title="📉 منحنی سرمایه" subtitle={`${(equity_curve || []).length} روز`} />
-          <EquityCurveChart data={equity_curve || []} height={240} />
+          <EquityCurveChart data={equity_curve || []} height={240} currency={currency} />
         </Card>
         <Card>
           <CardHeader

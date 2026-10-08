@@ -2,6 +2,17 @@
 
 Track of all fixes applied from DASHBOARD_DATA_CONTRACT_AUDIT.md.
 
+## P1-04 — Equity Baseline and Currency Metadata
+- **Date:** 2026-10-08
+- **Status:** DONE (minimal metadata/tooltip fix).
+- **Files:** C:\MokTradeDesk\backend\app\api\analytics.py; C:\MokTradeDesk\backend\tests\test_analytics.py; C:\MokTradeDesk\frontend\src\components\charts\EquityCurveChart.tsx; C:\MokTradeDesk\frontend\src\pages\DashboardPage.tsx.
+- **Backend:** Dashboard now returns equity_metadata with currency, numeric baseline, baseline_source (accounts/fallback_10000), closed_only=true and normalized scope; summary also includes currency. Source is recorded at the baseline decision branch, so an actual account sum of 10000 is correctly labeled accounts. The numeric _scope_initial_balance contract remains compatible for other callers.
+- **Frontend:** EquityCurveChart accepts optional currency (USDT default preserves the Analysis caller); its tooltip uses that prop. Dashboard passes currency={currency}.
+- **Unchanged semantics:** Baseline remains synthetic starting capital based on referenced accounts/stages or fallback 10000, not the actual opening balance of the selected period. Equity values, closed-only filtering and KPI calculations are unchanged.
+- **Tests:** test_equity_metadata_includes_baseline_and_currency covers IRR with no accounts, zero balance, account balance exactly 10000 and account balance 250000; checks all metadata, summary currency and curve baseline. Initial test fixture omitted required version_id; corrected before final validation.
+- **Validation:** Requested tests/test_analytics.py -v: **25 passed, 9 warnings**. Additional risk/scope/export regression run: **23 cases passed** (100%, no failures). Frontend npm run build: **passed (TypeScript + Vite)**. No manual browser inspection.
+- **Local only:** No Git commands or GitHub operations.
+
 ---
 
 ## P0-01 — Historical Query Closed-Only

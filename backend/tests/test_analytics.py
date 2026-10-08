@@ -6,6 +6,52 @@ import pytest
 from app.api import analytics
 from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
 from app.utils import time_helpers
+from app.models.finance import Currency
+from app.models.trading import Broker, PersonalTradingAccount
+
+
+@pytest.mark.parametrize("balance,source", [
+    (None, "fallback_10000"), (0.0, "fallback_10000"),
+    (10000.0, "accounts"), (250000.0, "accounts"),
+])
+def test_equity_metadata_includes_baseline_and_currency(client, db_session, balance, source):
+    if balance is not None:
+        strategy = Strategy(name="Equity metadata")
+        db_session.add(strategy)
+        db_session.flush()
+        version = StrategyVersion(strategy_id=strategy.id, version_name="IRR")
+        db_session.add(version)
+        db_session.flush()
+        broker = Broker(name="IRR equity metadata")
+        db_session.add(broker)
+        db_session.flush()
+        account = PersonalTradingAccount(
+            broker_id=broker.id, account_number="metadata",
+            currency=Currency.IRR, initial_balance=balance,
+        )
+        db_session.add(account)
+        db_session.flush()
+        db_session.add(Trade(
+            version_id=version.id,
+            personal_trading_account_id=account.id,
+            symbol="TEST", direction="buy", size=1, open_price=100,
+            open_time=datetime(2026, 10, 1, tzinfo=timezone.utc),
+            close_time=datetime(2026, 10, 2, tzinfo=timezone.utc),
+            close_price=110, pnl=10, commission=0, swap=0,
+            source=TradeSource.MANUAL, test_type=TestType.REAL_PERSONAL,
+        ))
+        db_session.commit()
+
+    response = client.get("/api/analytics/dashboard", params={"currency": "IRR"})
+    assert response.status_code == 200, response.text
+    body = response.json()
+    baseline = balance if balance and balance > 0 else 10000.0
+    assert body["equity_metadata"] == {
+        "currency": "IRR", "baseline": baseline, "baseline_source": source,
+        "closed_only": True, "scope": "real",
+    }
+    assert body["summary"]["currency"] == "IRR"
+    assert body["equity_curve"][0]["equity"] == baseline
 
 
 def _utc(value):
