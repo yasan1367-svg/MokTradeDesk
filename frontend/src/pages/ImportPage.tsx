@@ -26,7 +26,7 @@ interface PropStage {
 // فاز ۵۳.۵.۱ — حساب معاملاتی شخصی (مقصد REAL_PERSONAL)
 interface PersonalAccount {
   id: number;
-  account_label: string;
+  account_label: string | null;
   account_number: string;
   broker_name: string;
 }
@@ -500,7 +500,7 @@ export default function ImportPage() {
                   <option value="">— انتخاب حساب —</option>
                   {personalAccounts.map((a) => (
                     <option key={a.id} value={a.id}>
-                      {a.broker_name} / {a.account_label}
+                      {a.broker_name} / {a.account_label || a.account_number}
                     </option>
                   ))}
                 </select>
