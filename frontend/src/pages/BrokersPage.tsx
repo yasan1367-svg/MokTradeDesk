@@ -83,6 +83,7 @@ export default function BrokersPage() {
 
       {showBrokerForm && (
         <BrokerForm
+          key={editBroker ? `edit-${editBroker.id}` : 'create'}
           initialData={editBroker}
           onSave={async (data) => {
             if (editBroker) {
@@ -100,6 +101,7 @@ export default function BrokersPage() {
 
       {showAccountForm && selectedBrokerId !== null && (
         <AccountForm
+          key={editAccount ? `edit-${editAccount.id}` : `create-${selectedBrokerId}`}
           initialData={editAccount}
           onSave={async (data) => {
             if (editAccount) {

@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session, selectinload
 from typing import Optional
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field, field_validator
 
 from ..core.database import get_db
 from ..models.trading import Broker, BrokerCashMovement, PersonalTradingAccount
@@ -20,37 +20,73 @@ router = APIRouter()
 # Schemas
 # ═════════════════════════════════════════════
 class BrokerCreate(BaseModel):
-    name: str
+    name: str = Field(..., min_length=1, max_length=200)
     website: Optional[str] = None
     notes: Optional[str] = None
     is_active: bool = True
 
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('نام بروکر نمی‌تواند خالی باشد')
+        return v
+
 
 class BrokerUpdate(BaseModel):
-    name: Optional[str] = None
+    name: Optional[str] = Field(None, min_length=1, max_length=200)
     website: Optional[str] = None
     notes: Optional[str] = None
     is_active: Optional[bool] = None
+
+    @field_validator('name')
+    @classmethod
+    def name_not_blank(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError('نام بروکر نمی‌تواند خالی باشد')
+        return v
 
 
 class PersonalTradingAccountCreate(BaseModel):
     broker_id: int
-    account_number: str
+    account_number: str = Field(..., min_length=1, max_length=100)
     account_label: Optional[str] = None
     currency: Currency = Currency.USDT
-    initial_balance: float = 0.0
-    current_balance: Optional[float] = None  # اگر None باشد = initial_balance
+    initial_balance: float = Field(0.0, ge=0)
+    current_balance: Optional[float] = Field(None, ge=0)  # اگر None باشد = initial_balance
     is_active: bool = True
+
+    @field_validator('account_number')
+    @classmethod
+    def account_number_not_blank(cls, v: str) -> str:
+        v = v.strip()
+        if not v:
+            raise ValueError('شماره حساب نمی‌تواند خالی باشد')
+        return v
 
 
 class PersonalTradingAccountUpdate(BaseModel):
     broker_id: Optional[int] = None
-    account_number: Optional[str] = None
+    account_number: Optional[str] = Field(None, min_length=1, max_length=100)
     account_label: Optional[str] = None
     currency: Optional[Currency] = None
-    initial_balance: Optional[float] = None
-    current_balance: Optional[float] = None
+    initial_balance: Optional[float] = Field(None, ge=0)
+    current_balance: Optional[float] = Field(None, ge=0)
     is_active: Optional[bool] = None
+
+    @field_validator('account_number')
+    @classmethod
+    def account_number_not_blank(cls, v):
+        if v is None:
+            return v
+        v = v.strip()
+        if not v:
+            raise ValueError('شماره حساب نمی‌تواند خالی باشد')
+        return v
 
 
 def _serialize_broker(b: Broker) -> dict:
@@ -114,7 +150,18 @@ def delete_broker(broker_id: int, db: Session = Depends(get_db)):
     broker = db.query(Broker).filter(Broker.id == broker_id).first()
     if not broker:
         raise HTTPException(status_code=404, detail="بروکر پیدا نشد")
+    # چک معاملات حساب‌های زیرمجموعه
+    from ..models.strategy import Trade
     account_ids = [row.id for row in broker.accounts]
+    if account_ids:
+        trade_count = db.query(Trade).filter(
+            Trade.personal_trading_account_id.in_(account_ids)
+        ).count()
+        if trade_count > 0:
+            raise HTTPException(
+                status_code=409,
+                detail=f"حساب‌های این بروکر {trade_count} معامله دارند؛ ابتدا معاملات را حذف یا جابجا کن",
+            )
     if account_ids and db.query(BrokerCashMovement.id).filter(
         BrokerCashMovement.personal_trading_account_id.in_(account_ids)
     ).first():
@@ -185,6 +232,16 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
     account = db.query(PersonalTradingAccount).filter(PersonalTradingAccount.id == account_id).first()
     if not account:
         raise HTTPException(status_code=404, detail="حساب معاملاتی پیدا نشد")
+    # چک معاملات
+    from ..models.strategy import Trade
+    trade_count = db.query(Trade).filter(
+        Trade.personal_trading_account_id == account.id
+    ).count()
+    if trade_count > 0:
+        raise HTTPException(
+            status_code=409,
+            detail=f"این حساب {trade_count} معامله دارد؛ ابتدا معاملات را حذف یا جابجا کن",
+        )
     if db.query(BrokerCashMovement.id).filter(
         BrokerCashMovement.personal_trading_account_id == account.id
     ).first():
