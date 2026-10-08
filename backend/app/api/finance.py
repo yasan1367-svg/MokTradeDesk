@@ -463,7 +463,10 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
                 db, from_account_id=tx.from_account_id, to_account_id=tx.to_account_id,
                 amount=tx.amount, to_amount=tx.to_amount, date=tx.date,
                 description=tx.description, category_id=tx.category_id,
+                commit=False,
             )
+            db.commit()
+            db.refresh(db_tx)
             return {"id": db_tx.id, "message": "تراکنش ثبت شد"}
         if tx.to_amount is not None or tx.to_currency is not None:
             raise WalletError("Destination amount/currency are only allowed for convert")
@@ -481,8 +484,10 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
             related_trade_id=data.get("related_trade_id"),
             related_prop_account_id=data.get("related_prop_account_id"),
             allow_overdraft=True,
+            commit=False,
         )
         # فاز ۴۷.۱: cash_flow الان در WalletService.post خودکار ست می‌شه
+
         db.commit()
         db.refresh(db_tx)
     except WalletError as exc:
@@ -1686,6 +1691,8 @@ def get_money_flow(db: Session = Depends(get_db)):
         TransactionType.DEPOSIT,
         TransactionType.WITHDRAWAL,
         TransactionType.TRANSFER,  # فاز ۳۸.۴: جایگزین EXCHANGE حذف‌شده
+        TransactionType.EXTERNAL_INCOME,
+        TransactionType.EXTERNAL_EXPENSE,
     ]
     txs = (
         db.query(FinancialTransaction)
@@ -1711,6 +1718,12 @@ def get_money_flow(db: Session = Depends(get_db)):
         own = t.account.type.value if t.account and t.account.type else None
         from_side = t.from_account.type.value if t.from_account and t.from_account.type else None
         to_side = t.to_account.type.value if t.to_account and t.to_account.type else None
+        if t.type == TransactionType.EXTERNAL_INCOME:
+            from_side = "external"
+            to_side = own
+        elif t.type == TransactionType.EXTERNAL_EXPENSE:
+            from_side = own
+            to_side = "external"
         flows.append({
             "from": from_side or own,
             "to": to_side or own,
@@ -1751,7 +1764,10 @@ def get_expenses(
         .options(joinedload(FinancialTransaction.category), joinedload(FinancialTransaction.account))
         .filter(
             FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.type.in_([
+                TransactionType.FEE, TransactionType.PURCHASE,
+                TransactionType.EXTERNAL_EXPENSE,
+            ]),
             FinancialTransaction.currency == target,
         )
         .all()
@@ -1788,7 +1804,10 @@ def get_expenses(
     # فاز ۴۴.۵
     result["currency"] = target.value
     result["by_currency"] = {
-        c.value: round(_tx_sum(db, [TransactionType.FEE, TransactionType.PURCHASE], c), 2)
+        c.value: round(_tx_sum(db, [
+            TransactionType.FEE, TransactionType.PURCHASE,
+            TransactionType.EXTERNAL_EXPENSE,
+        ], c), 2)
         for c in (Currency.USDT, Currency.IRR)
     }
     return result
@@ -1826,8 +1845,8 @@ def get_money_cycle(
     by_currency: dict[str, dict] = {}
     for c in (Currency.USDT, Currency.IRR):
         by_currency[c.value] = {
-            "total_deposits": round(_tx_sum(db, [TransactionType.DEPOSIT], c), 2),
-            "total_withdrawals": round(_tx_sum(db, [TransactionType.WITHDRAWAL], c), 2),
+            "total_deposits": round(_tx_sum(db, [TransactionType.DEPOSIT, TransactionType.EXTERNAL_INCOME], c), 2),
+            "total_withdrawals": round(_tx_sum(db, [TransactionType.WITHDRAWAL, TransactionType.EXTERNAL_EXPENSE], c), 2),
             # فاز ۳۸.۴: کلید JSON (`total_exchanges`) برای سازگاری فرانت حفظ شد؛
             # مقدارش از `TRANSFER` (جانشین EXCHANGE حذف‌شده) محاسبه می‌شود.
             "total_exchanges": round(_tx_sum(db, [TransactionType.TRANSFER], c), 2),
@@ -1903,6 +1922,8 @@ def get_asset_trend(
     from collections import defaultdict
 
     sign = {
+        TransactionType.EXTERNAL_INCOME: 1,
+        TransactionType.EXTERNAL_EXPENSE: -1,
         TransactionType.DEPOSIT: 1,
         TransactionType.PROFIT: 1,
         TransactionType.ADJUSTMENT: 1,  # مبلغ اصلاح خودش علامت مثبت/منفی دارد

@@ -7,6 +7,7 @@ def bank_income_filter():
     """تراکنش‌هایی که نشان‌دهندهٔ ورود پول به سیستم مالی شخص هستند.
 
     - DEPOSIT و PROFIT (صرف‌نظر از نوع حساب مقصد)
+    - EXTERNAL_INCOME فقط با مقصد بانکی
     - TRANSFER از حساب غیربانکی به بانک (money entering the banking system)
     """
     return and_(
@@ -14,6 +15,10 @@ def bank_income_filter():
         FinancialTransaction.amount > 0,
         or_(
             FinancialTransaction.type.in_([TransactionType.DEPOSIT, TransactionType.PROFIT]),
+            and_(
+                FinancialTransaction.type == TransactionType.EXTERNAL_INCOME,
+                FinancialTransaction.account.has(FinancialAccount.type == AccountType.BANK),
+            ),
             and_(
                 FinancialTransaction.type == TransactionType.TRANSFER,
                 FinancialTransaction.account_id == FinancialTransaction.to_account_id,
@@ -31,6 +36,8 @@ def is_bank_income(transaction: FinancialTransaction) -> bool:
         return False
     if transaction.type in (TransactionType.DEPOSIT, TransactionType.PROFIT):
         return True
+    if transaction.type == TransactionType.EXTERNAL_INCOME:
+        return bool(transaction.account and transaction.account.type == AccountType.BANK)
     if (
         transaction.type == TransactionType.TRANSFER
         and transaction.account_id == transaction.to_account_id
