@@ -39,6 +39,8 @@ from ..models.finance import (
     FinancialAccount,
     FinancialTransaction,
     TransactionType,
+    CashFlow,
+    AccountType,
 )
 from ..utils.currency import to_currency
 
@@ -147,6 +149,41 @@ def _normalize_amount(
     elif value <= 0:
         raise WalletError("مبلغ تراکنش باید بزرگ‌تر از صفر باشد")
     return value
+
+
+def detect_cash_flow(
+    tx_type: TransactionType,
+    *,
+    from_account: Optional[FinancialAccount] = None,
+    to_account: Optional[FinancialAccount] = None,
+) -> CashFlow:
+    """تشخیص خودکار جریان نقدی بر اساس نوع تراکنش و حساب‌های مبدأ/مقصد.
+
+    قوانین:
+    - EXTERNAL_INCOME → INCOME
+    - EXTERNAL_EXPENSE → EXPENSE
+    - TRANSFER (بانک ← غیربانک) → EXPENSE
+    - TRANSFER (غیربانک ← بانک) → INCOME
+    - FEE/PURCHASE/LOSS/WITHDRAWAL → EXPENSE
+    - PROFIT → INCOME
+    - بقیه (DEPOSIT، CONVERT، TRANSFER داخلی، ADJUSTMENT) → NONE
+    """
+    if tx_type == TransactionType.EXTERNAL_INCOME:
+        return CashFlow.INCOME
+    if tx_type == TransactionType.EXTERNAL_EXPENSE:
+        return CashFlow.EXPENSE
+    if tx_type == TransactionType.TRANSFER:
+        if from_account and to_account:
+            if from_account.type == AccountType.BANK and to_account.type != AccountType.BANK:
+                return CashFlow.EXPENSE
+            if to_account.type == AccountType.BANK and from_account.type != AccountType.BANK:
+                return CashFlow.INCOME
+        return CashFlow.NONE
+    if tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS, TransactionType.WITHDRAWAL):
+        return CashFlow.EXPENSE
+    if tx_type == TransactionType.PROFIT:
+        return CashFlow.INCOME
+    return CashFlow.NONE
 
 
 # ═════════════════════════════════════════════
@@ -479,6 +516,15 @@ class WalletService:
 
         db.add(tx)
         db.flush()                       # ⇒ tx.id بلافاصله در دسترس است
+        # فاز ۴۷.۱: تشخیص خودکار cash_flow
+        from_acc = present.get(from_account_id) if from_account_id else None
+        to_acc = present.get(to_account_id) if to_account_id else None
+        if direction in ("+", "-", "signed") and account_id in present:
+            if direction == "+" or (direction == "signed" and tx_type != TransactionType.EXTERNAL_EXPENSE):
+                to_acc = present[account_id]
+            else:
+                from_acc = present[account_id]
+        tx.cash_flow = detect_cash_flow(tx_type, from_account=from_acc, to_account=to_acc)
         WalletService.apply_effects(db, tx)
 
         if commit:

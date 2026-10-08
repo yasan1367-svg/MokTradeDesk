@@ -356,20 +356,24 @@ def test_create_account_and_list(client):
     assert accounts[0]["name"] == "Main"
 
 
-def test_create_transaction_and_filter(client):
+@pytest.mark.parametrize("tx_type, expected_income", [
+    ("deposit", 0),
+    ("external_income", 500),
+])
+def test_create_transaction_and_filter(client, tx_type, expected_income):
     acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "bank"}).json()["id"]
     tx = client.post("/api/finance/transactions", json={
-        "account_id": acc_id, "amount": 500, "type": "deposit",
+        "account_id": acc_id, "amount": 500, "type": tx_type,
     })
     assert tx.status_code == 200
 
     txs = client.get("/api/finance/transactions").json()
     assert len(txs) == 1
-    assert txs[0]["type"] == "deposit"
+    assert txs[0]["type"] == tx_type
 
     filtered = client.get("/api/finance/transactions", params={"account_id": acc_id}).json()
     assert len(filtered) == 1
-    assert client.get("/api/finance/summary").json()["total_income"] == 500
+    assert client.get("/api/finance/summary").json()["total_income"] == expected_income
 
 
 def test_reports_monthly(client):

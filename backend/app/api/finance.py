@@ -18,7 +18,7 @@ from ..models.finance import (
 from ..models.trading import BrokerCashMovement
 from ..models.prop import PropWithdrawal
 # فاز ۳۹: تنها نویسندهٔ FinancialAccount.balance
-from ..services.wallet_service import WalletService, WalletError
+from ..services.wallet_service import WalletService, WalletError, detect_cash_flow
 from ..services.financial_reporting import bank_income_filter, is_bank_income
 from ..services import metrics
 from ..utils import jalali
@@ -482,32 +482,7 @@ def create_transaction(tx: TransactionCreate, db: Session = Depends(get_db)):
             related_prop_account_id=data.get("related_prop_account_id"),
             allow_overdraft=True,
         )
-        # فاز ۴۷: تشخیص خودکار جریان نقدی
-        from_acc = db.get(FinancialAccount, data.get("from_account_id")) if data.get("from_account_id") else None
-        to_acc = db.get(FinancialAccount, data.get("to_account_id")) if data.get("to_account_id") else None
-
-        flow = CashFlow.NONE
-        tx_type = tx.type
-
-        # خارجی‌ها: مستقیم
-        if tx_type == TransactionType.EXTERNAL_INCOME:
-            flow = CashFlow.INCOME
-        elif tx_type == TransactionType.EXTERNAL_EXPENSE:
-            flow = CashFlow.EXPENSE
-        # انتقال بین بانک و غیربانک
-        elif tx_type == TransactionType.TRANSFER:
-            if from_acc and to_acc:
-                if from_acc.type == AccountType.BANK and to_acc.type != AccountType.BANK:
-                    flow = CashFlow.EXPENSE
-                elif to_acc.type == AccountType.BANK and from_acc.type != AccountType.BANK:
-                    flow = CashFlow.INCOME
-        # انواع ثابت
-        elif tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS):
-            flow = CashFlow.EXPENSE
-        elif tx_type == TransactionType.PROFIT:
-            flow = CashFlow.INCOME
-
-        db_tx.cash_flow = flow
+        # فاز ۴۷.۱: cash_flow الان در WalletService.post خودکار ست می‌شه
         db.commit()
         db.refresh(db_tx)
     except WalletError as exc:
@@ -564,6 +539,15 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
                 tx.to_currency = destination.currency
         WalletService.validate_accounts(db, tx)
         WalletService.apply_effects(db, tx, sign=+1)
+        # فاز ۴۷.۱: بازمحاسبه cash_flow بعد از ویرایش
+        from_acc = db.get(FinancialAccount, tx.from_account_id) if tx.from_account_id else None
+        to_acc = db.get(FinancialAccount, tx.to_account_id) if tx.to_account_id else None
+        target_acc = db.get(FinancialAccount, tx.account_id) if tx.account_id else None
+        if tx.type in (TransactionType.DEPOSIT, TransactionType.PROFIT, TransactionType.EXTERNAL_INCOME):
+            to_acc = target_acc
+        elif tx.type in (TransactionType.WITHDRAWAL, TransactionType.LOSS, TransactionType.FEE, TransactionType.PURCHASE, TransactionType.EXTERNAL_EXPENSE):
+            from_acc = target_acc
+        tx.cash_flow = detect_cash_flow(tx.type, from_account=from_acc, to_account=to_acc)
     except (WalletError, ValueError) as exc:
         db.rollback()
         raise HTTPException(status_code=400, detail=str(exc))
