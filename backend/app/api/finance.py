@@ -530,8 +530,16 @@ def update_transaction(transaction_id: int, data: TransactionUpdate, db: Session
             if tx.from_account_id == tx.to_account_id:
                 raise WalletError("حساب مبدأ و مقصد نباید یکی باشد")
             tx.account_id = tx.to_account_id
-        elif tx.type not in (TransactionType.TRANSFER, TransactionType.CONVERT):
+        elif tx.type not in (TransactionType.TRANSFER, TransactionType.CONVERT,
+                             TransactionType.EXTERNAL_INCOME, TransactionType.EXTERNAL_EXPENSE):
             tx.from_account_id = None
+            tx.to_account_id = None
+        # فاز ۴۷.۱: انواع خارجی
+        if tx.type == TransactionType.EXTERNAL_INCOME:
+            tx.from_account_id = None
+            tx.to_account_id = tx.account_id
+        elif tx.type == TransactionType.EXTERNAL_EXPENSE:
+            tx.from_account_id = tx.account_id
             tx.to_account_id = None
         # چک مبلغ جدید (وگرنه ویرایش به صفر، اثر قبلی را بی‌صدا حذف می‌کرد)
         WalletService.validate_amount(tx.type, tx.amount)
