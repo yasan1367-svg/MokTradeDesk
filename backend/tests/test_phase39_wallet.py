@@ -633,6 +633,47 @@ def test_withdrawal_api_update_rejects_zero_amount(client, db_session):
     assert _balance(db_session, acc_id) == 750.0
 
 
+def test_withdrawal_api_update_rejects_currency_mismatch_atomically(client, db_session):
+    from app.models.finance import FinancialTransaction
+
+    acc_id = _api_account(client, name="USDT Bank", balance=1000.0)
+    irr_id = client.post("/api/finance/accounts", json={
+        "name": "IRR Bank", "type": "bank", "currency": "IRR", "balance": 0.0,
+    }).json()["id"]
+    wid = client.post("/api/finance/withdrawals", json={
+        "account_id": acc_id, "amount": 250,
+    }).json()["id"]
+
+    response = client.patch(f"/api/finance/withdrawals/{wid}", json={
+        "account_id": irr_id,
+    })
+
+    assert response.status_code == 400
+    assert _balance(db_session, acc_id) == 750.0
+    assert _balance(db_session, irr_id) == 0.0
+    withdrawal = db_session.get(FinancialTransaction, wid)
+    assert withdrawal.account_id == acc_id
+    assert withdrawal.currency.value == "USDT"
+
+
+def test_withdrawal_api_update_allows_matching_account_currency(client, db_session):
+    irr_id = client.post("/api/finance/accounts", json={
+        "name": "IRR Bank", "type": "bank", "currency": "IRR", "balance": 0.0,
+    }).json()["id"]
+    usdt_id = _api_account(client, name="USDT Bank", balance=1000.0)
+    wid = client.post("/api/finance/withdrawals", json={
+        "account_id": usdt_id, "amount": 250,
+    }).json()["id"]
+
+    response = client.patch(f"/api/finance/withdrawals/{wid}", json={
+        "account_id": irr_id, "currency": "IRR", "amount": 300,
+    })
+
+    assert response.status_code == 200, response.text
+    assert _balance(db_session, usdt_id) == 1000.0
+    assert _balance(db_session, irr_id) == -300.0
+
+
 def test_withdrawal_api_delete_reverses_balance(client, db_session):
     acc_id = _api_account(client, name="Bank", balance=1000.0)
     wid = client.post("/api/finance/withdrawals", json={

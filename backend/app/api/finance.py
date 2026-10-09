@@ -871,6 +871,7 @@ def update_withdrawal(withdrawal_id: int, data: WithdrawalUpdate, db: Session = 
         if w.date is None:
             w.date = datetime.now(timezone.utc)
         WalletService.validate_amount(w.type, w.amount)      # مبلغ صفر/منفی مجاز نیست
+        WalletService.validate_accounts(db, w)               # حساب و ارز باید سازگار باشند
         WalletService.apply_effects(db, w, sign=+1)          # اعمال اثر مقدارهای جدید
     except (WalletError, ValueError) as exc:
         db.rollback()
