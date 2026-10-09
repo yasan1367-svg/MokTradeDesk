@@ -196,6 +196,53 @@ def test_personal_account_requires_existing_broker(client):
     assert r.status_code == 404
 
 
+def test_update_account_currency_rejected_when_trade_exists(client, db_session):
+    version = _version(db_session)
+    account = _pta(db_session, label="CurrencyTrade")
+    db_session.add(_mk_trade(
+        db_session, version_id=version.id, test_type=TestType.REAL_PERSONAL,
+        personal_trading_account_id=account.id,
+    ))
+    db_session.commit()
+
+    response = client.patch(f"/api/trading/accounts/{account.id}", json={"currency": "IRR"})
+
+    assert response.status_code == 400, response.text
+    db_session.refresh(account)
+    assert account.currency == Currency.USD
+
+
+def test_update_account_currency_rejected_when_balance_nonzero(client, db_session):
+    account = _pta(db_session, label="CurrencyBalance")
+
+    response = client.patch(f"/api/trading/accounts/{account.id}", json={"currency": "IRR"})
+
+    assert response.status_code == 400, response.text
+    db_session.refresh(account)
+    assert account.currency == Currency.USD
+
+
+def test_delete_account_rejected_when_balance_nonzero(client, db_session):
+    account = _pta(db_session, label="DeleteBalance")
+
+    response = client.delete(f"/api/trading/accounts/{account.id}")
+
+    assert response.status_code == 400, response.text
+    assert db_session.get(PersonalTradingAccount, account.id) is not None
+
+
+def test_delete_empty_account_without_history_succeeds(client, db_session):
+    account = _pta(db_session, label="DeleteEmpty")
+    account.current_balance = 0.0
+    db_session.commit()
+    account_id = account.id
+
+    response = client.delete(f"/api/trading/accounts/{account_id}")
+
+    assert response.status_code == 200, response.text
+    assert db_session.get(PersonalTradingAccount, account_id) is None
+
+
 @pytest.mark.parametrize("resource", ["accounts", "brokers"])
 @pytest.mark.parametrize("with_movement", [False, True])
 def test_delete_with_trades_returns_409(client, db_session, resource, with_movement):
@@ -243,6 +290,8 @@ def test_delete_with_trades_returns_409(client, db_session, resource, with_movem
 @pytest.mark.parametrize("resource", ["accounts", "brokers"])
 def test_delete_without_trades_or_movements(client, db_session, resource):
     account = _pta(db_session)
+    account.current_balance = 0.0
+    db_session.commit()
     account_id = account.id
     resource_id = account.id if resource == "accounts" else account.broker_id
     response = client.delete(f"/api/trading/{resource}/{resource_id}")

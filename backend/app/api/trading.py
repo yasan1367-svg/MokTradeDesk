@@ -220,6 +220,13 @@ def update_account(account_id: int, data: PersonalTradingAccountUpdate, db: Sess
             BrokerCashMovement.personal_trading_account_id == account.id
         ).first():
             raise HTTPException(status_code=400, detail="ارز حسابی که گردش مالی دارد قابل تغییر نیست")
+        from ..models.strategy import Trade
+        if db.query(Trade.id).filter(
+            Trade.personal_trading_account_id == account.id
+        ).first():
+            raise HTTPException(status_code=400, detail="ارز حسابی که معامله دارد قابل تغییر نیست")
+        if abs(float(account.current_balance or 0.0)) > 0.0049:
+            raise HTTPException(status_code=400, detail="ارز حسابی که موجودی غیرصفر دارد قابل تغییر نیست")
     for field, value in payload.items():
         setattr(account, field, value)
     db.commit()
@@ -246,6 +253,8 @@ def delete_account(account_id: int, db: Session = Depends(get_db)):
         BrokerCashMovement.personal_trading_account_id == account.id
     ).first():
         raise HTTPException(status_code=400, detail="برای این حساب گردش مالی ثبت شده؛ ابتدا تاریخچهٔ گردش‌ها را حذف کن")
+    if abs(float(account.current_balance or 0.0)) > 0.0049:
+        raise HTTPException(status_code=400, detail="حساب دارای موجودی غیرصفر است؛ ابتدا موجودی را به صفر برسان")
     db.delete(account)
     db.commit()
     return {"message": "حساب معاملاتی حذف شد"}
