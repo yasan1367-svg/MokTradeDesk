@@ -792,11 +792,15 @@ export default function FinancePage() {
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
               <div className="text-xs text-[var(--text-secondary)] mb-1">💰 مجموع دارایی‌ها</div>
-              <div className="text-2xl font-extrabold text-[var(--text-primary)]">
-                {summary ? Object.values(summary.assets_by_currency).reduce((a, b) => a + b, 0).toLocaleString() : '—'}
-              </div>
-              <div className="text-xs text-[var(--text-secondary)] mt-1">
-                {summary ? Object.entries(summary.assets_by_currency).map(([c, v]) => `${v.toLocaleString()} ${c}`).join(' | ') : '...'}
+              <div className="text-sm font-extrabold text-[var(--text-primary)]">
+                {summary ? (
+                  Object.entries(summary.assets_by_currency).map(([currency, value]) => (
+                    <div key={currency} className="flex justify-between gap-3">
+                      <span>{currency}:</span>
+                      <span>{value.toLocaleString()}</span>
+                    </div>
+                  ))
+                ) : '—'}
               </div>
             </div>
             <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5">
