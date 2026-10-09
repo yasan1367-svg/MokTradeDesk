@@ -193,7 +193,7 @@ export default function PayoutHistoryPage() {
       setShowForm(false);
       setEditingPropId(null);
       setForm({ prop_stage_id: '', amount: '', destination_account_id: '', withdrawal_date: '', note: '' });
-      load();
+      await load();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'خطا در ذخیره برداشت');
     } finally {
@@ -223,7 +223,7 @@ export default function PayoutHistoryPage() {
         await deleteBrokerCashMovement(id);
         toast.success('گردش بروکر حذف شد و موجودی‌ها برگشت خورد');
       }
-      load();
+      await load();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'خطا در حذف برداشت');
     }
@@ -258,7 +258,7 @@ export default function PayoutHistoryPage() {
       setShowForm(false);
       setEditingBrokerId(null);
       setBrokerForm({ ...brokerForm, amount: '', financial_account_id: '', date: '', note: '' });
-      load();
+      await load();
     } catch (e: any) {
       toast.error(e?.response?.data?.detail || 'خطا در ثبت گردش بروکر');
     } finally {

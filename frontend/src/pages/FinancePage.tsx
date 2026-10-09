@@ -623,6 +623,7 @@ export default function FinancePage() {
                 }
                 setShowTransactionForm(false); setEditTransaction(null);
                 await loadTransactions();
+                await loadAccounts();
               }}
               onCancel={() => { setShowTransactionForm(false); setEditTransaction(null); }}
             />
