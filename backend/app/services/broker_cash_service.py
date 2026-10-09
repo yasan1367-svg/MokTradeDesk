@@ -154,8 +154,9 @@ class BrokerCashService:
             date=date,
             note=note,
         )
-        trading.current_balance = float(trading.current_balance or 0.0) + _trading_delta(direction, amount)
         db.add(movement)
+        from .finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).recompute_account_balance(trading.id)
         if commit:
             db.commit()
             db.refresh(movement)
@@ -230,9 +231,6 @@ class BrokerCashService:
         tx.to_account_id = None
         WalletService.apply_effects(db, tx, sign=+1)
 
-        old_trading.current_balance = projected[old_trading.id]
-        if trading.id != old_trading.id:
-            trading.current_balance = projected[trading.id]
         movement.personal_trading_account_id = trading.id
         movement.financial_account_id = financial.id
         movement.direction = direction
@@ -240,6 +238,8 @@ class BrokerCashService:
         movement.currency = currency
         movement.date = date
         movement.note = note
+        from .finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).recompute_accounts(list(projected), commit=False)
         if commit:
             db.commit()
             db.refresh(movement)
@@ -263,8 +263,9 @@ class BrokerCashService:
         if new_balance < -0.005:
             raise ValueError("حذف گردش باعث منفی‌شدن موجودی حساب معاملاتی می‌شود")
         WalletService.reverse(db, tx, commit=False)
-        trading.current_balance = new_balance
         db.delete(movement)
+        from .finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).recompute_account_balance(trading.id)
         if commit:
             db.commit()
         else:

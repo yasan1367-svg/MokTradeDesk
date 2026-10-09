@@ -501,6 +501,8 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     if not is_valid:
         raise HTTPException(status_code=400, detail=error_message)
 
+    old_personal_trading_account_id = trade.personal_trading_account_id
+
     _validate_trade_references(
         db, new_version_id, new_personal_trading_account_id, new_prop_stage_id
     )
@@ -538,6 +540,13 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
     trade.version_id = new_version_id
     trade.personal_trading_account_id = new_personal_trading_account_id
     trade.prop_stage_id = new_prop_stage_id
+
+    affected_account_ids = {
+        account_id for account_id in (
+            old_personal_trading_account_id,
+            new_personal_trading_account_id,
+        ) if account_id is not None
+    }
 
     for field in (
         "note", "symbol", "open_price", "close_price", "size", "sl", "tp",
@@ -586,10 +595,10 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
                         stage_id,
                     )
 
-    # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
-    if trade.close_time is not None and trade.personal_trading_account_id:
+    # P1-01: موجودی حساب قبلی و جدید (در صورت تغییر classification/account).
+    if affected_account_ids:
         from ..services.finance_sync_service import FinanceSyncService
-        FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
+        FinanceSyncService(db).recompute_accounts(list(affected_account_ids))
 
     return {"message": "معامله به‌روزرسانی شد", "warnings": warnings}
 
@@ -646,8 +655,12 @@ def delete_trade(trade_id: int, db: Session = Depends(get_db)):
         raise HTTPException(status_code=404, detail="معامله پیدا نشد")
 
     old_stage_id = trade.prop_stage_id
+    personal_trading_account_id = trade.personal_trading_account_id
     _hard_delete_trade(db, trade)
     db.commit()
+    if personal_trading_account_id is not None:
+        from ..services.finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).recompute_accounts([personal_trading_account_id])
     if old_stage_id is not None:
         try:
             sync_prop_stage_profit(db, old_stage_id)
@@ -674,11 +687,19 @@ def batch_delete_trades(data: BatchDeleteRequest, db: Session = Depends(get_db))
     found_ids = {trade.id for trade in trades}
     skipped = [trade_id for trade_id in unique_ids if trade_id not in found_ids]
     stage_ids = {trade.prop_stage_id for trade in trades if trade.prop_stage_id is not None}
+    affected_accounts = {
+        trade.personal_trading_account_id
+        for trade in trades
+        if trade.personal_trading_account_id is not None
+    }
 
     for trade in trades:
         _hard_delete_trade(db, trade)
 
     db.commit()
+    if affected_accounts:
+        from ..services.finance_sync_service import FinanceSyncService
+        FinanceSyncService(db).recompute_accounts(list(affected_accounts))
     for stage_id in stage_ids:
         try:
             sync_prop_stage_profit(db, stage_id)
@@ -793,8 +814,8 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
                 trade.prop_stage_id,
             )
 
-    # فاز ۲۸: پل خودکار معامله→حسابداری حذف شد (فقط حساب معاملاتی).
-    if trade.close_time is not None and trade.personal_trading_account_id:
+    # P1-01: تازه‌سازی موجودی حساب پس از ثبت معاملهٔ بسته.
+    if trade.personal_trading_account_id:
         from ..services.finance_sync_service import FinanceSyncService
         FinanceSyncService(db).sync_closed_trades(trade_ids=[trade.id])
 

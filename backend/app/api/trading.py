@@ -234,6 +234,20 @@ def update_account(account_id: int, data: PersonalTradingAccountUpdate, db: Sess
     return {"message": "حساب معاملاتی به‌روزرسانی شد", "account": _serialize_pta(account)}
 
 
+@router.post("/accounts/{account_id}/sync-balance")
+def sync_account_balance(account_id: int, db: Session = Depends(get_db)):
+    """بازمحاسبهٔ دستی current_balance از معاملات و گردش وجه بروکر."""
+    account = db.query(PersonalTradingAccount).filter(
+        PersonalTradingAccount.id == account_id
+    ).first()
+    if account is None:
+        raise HTTPException(status_code=404, detail="حساب معاملاتی پیدا نشد")
+    from ..services.finance_sync_service import FinanceSyncService
+    new_balance = FinanceSyncService(db).recompute_account_balance(account_id)
+    db.commit()
+    return {"id": account_id, "current_balance": new_balance}
+
+
 @router.delete("/accounts/{account_id}")
 def delete_account(account_id: int, db: Session = Depends(get_db)):
     account = db.query(PersonalTradingAccount).filter(PersonalTradingAccount.id == account_id).first()
