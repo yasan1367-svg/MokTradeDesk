@@ -160,18 +160,18 @@ def detect_cash_flow(
     """تشخیص خودکار جریان نقدی بر اساس نوع تراکنش و حساب‌های مبدأ/مقصد.
 
     قوانین:
-    - EXTERNAL_INCOME → INCOME
-    - EXTERNAL_EXPENSE → EXPENSE
+    - EXTERNAL_INCOME → INCOME فقط برای مقصد بانکی
+    - EXTERNAL_EXPENSE → EXPENSE فقط برای مبدأ بانکی
     - TRANSFER (بانک ← غیربانک) → EXPENSE
     - TRANSFER (غیربانک ← بانک) → INCOME
-    - FEE/PURCHASE/LOSS/WITHDRAWAL → EXPENSE
-    - PROFIT → INCOME
+    - FEE/PURCHASE/LOSS/WITHDRAWAL → EXPENSE فقط برای مبدأ بانکی
+    - PROFIT → INCOME فقط برای مقصد بانکی
     - بقیه (DEPOSIT، CONVERT، TRANSFER داخلی، ADJUSTMENT) → NONE
     """
     if tx_type == TransactionType.EXTERNAL_INCOME:
-        return CashFlow.INCOME
+        return CashFlow.INCOME if to_account and to_account.type == AccountType.BANK else CashFlow.NONE
     if tx_type == TransactionType.EXTERNAL_EXPENSE:
-        return CashFlow.EXPENSE
+        return CashFlow.EXPENSE if from_account and from_account.type == AccountType.BANK else CashFlow.NONE
     if tx_type == TransactionType.TRANSFER:
         if from_account and to_account:
             if from_account.type == AccountType.BANK and to_account.type != AccountType.BANK:
@@ -180,9 +180,9 @@ def detect_cash_flow(
                 return CashFlow.INCOME
         return CashFlow.NONE
     if tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS, TransactionType.WITHDRAWAL):
-        return CashFlow.EXPENSE
+        return CashFlow.EXPENSE if from_account and from_account.type == AccountType.BANK else CashFlow.NONE
     if tx_type == TransactionType.PROFIT:
-        return CashFlow.INCOME
+        return CashFlow.INCOME if to_account and to_account.type == AccountType.BANK else CashFlow.NONE
     return CashFlow.NONE
 
 

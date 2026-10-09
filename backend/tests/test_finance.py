@@ -390,7 +390,7 @@ def test_reports_monthly(client):
 
 def test_reports_category_breakdown(client):
     acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "bank"}).json()["id"]
-    client.post("/api/finance/transactions", json={"account_id": acc_id, "amount": 300, "type": "deposit"})
+    client.post("/api/finance/transactions", json={"account_id": acc_id, "amount": 300, "type": "external_income"})
 
     body = client.get("/api/finance/reports/category-breakdown").json()
     assert body["total_income"] == 300
@@ -650,4 +650,53 @@ def test_exchange_account_currency_enforcement(client):
     })
     assert r.status_code == 400
     assert "ارز" in r.json()["detail"]
+
+
+@pytest.mark.parametrize(
+    "source_type,destination_type,tx_type,expected_flow",
+    [
+        ("bank", "exchange", "transfer", "expense"),
+        ("exchange", "bank", "transfer", "income"),
+        ("crypto_wallet", "bank", "transfer", "income"),
+        ("bank", "crypto_wallet", "transfer", "expense"),
+        ("bank", "bank", "transfer", "none"),
+    ],
+)
+def test_transfer_cash_flow_by_account_direction(
+    client, db_session, source_type, destination_type, tx_type, expected_flow
+):
+    from app.models.finance import FinancialAccount, FinancialTransaction
+
+    source_id = client.post("/api/finance/accounts", json={
+        "name": "Source", "type": source_type, "currency": "USDT",
+    }).json()["id"]
+    destination_id = client.post("/api/finance/accounts", json={
+        "name": "Destination", "type": destination_type, "currency": "USDT",
+    }).json()["id"]
+    response = client.post("/api/finance/transactions", json={
+        "account_id": destination_id, "from_account_id": source_id,
+        "to_account_id": destination_id, "amount": 25, "type": tx_type,
+    })
+
+    assert response.status_code == 200, response.text
+    tx = db_session.get(FinancialTransaction, response.json()["id"])
+    assert tx.cash_flow.value == expected_flow
+
+
+@pytest.mark.parametrize("account_type,expected_flow", [("bank", "income"), ("crypto_wallet", "none")])
+def test_external_income_cash_flow_depends_on_bank_destination(
+    client, db_session, account_type, expected_flow
+):
+    from app.models.finance import FinancialTransaction
+
+    account_id = client.post("/api/finance/accounts", json={
+        "name": "Income destination", "type": account_type, "currency": "USDT",
+    }).json()["id"]
+    response = client.post("/api/finance/transactions", json={
+        "account_id": account_id, "amount": 25, "type": "external_income",
+    })
+
+    assert response.status_code == 200, response.text
+    tx = db_session.get(FinancialTransaction, response.json()["id"])
+    assert tx.cash_flow.value == expected_flow
 

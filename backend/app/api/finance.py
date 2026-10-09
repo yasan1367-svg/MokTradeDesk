@@ -922,7 +922,7 @@ def get_cashflow_chart(
             extract("month", FinancialTransaction.date).label("month"),
             sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, bank_income_filter())
+        .filter(*base_filter, FinancialTransaction.cash_flow == CashFlow.INCOME)
         .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
@@ -935,7 +935,7 @@ def get_cashflow_chart(
             extract("month", FinancialTransaction.date).label("month"),
             sa_func.sum(FinancialTransaction.amount).label("amount"),
         )
-        .filter(*base_filter, FinancialTransaction.type.in_(EXPENSE_TYPES_F))
+        .filter(*base_filter, FinancialTransaction.cash_flow == CashFlow.EXPENSE)
         .group_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .order_by(extract("year", FinancialTransaction.date), extract("month", FinancialTransaction.date))
         .all()
@@ -1084,7 +1084,7 @@ def get_monthly_report(
             continue
         if is_bank_income(t):
             buckets[jm]["income"] += float(t.amount or 0.0)
-        elif t.type in EXPENSE_TYPES:
+        elif t.cash_flow == CashFlow.EXPENSE:
             buckets[jm]["expense"] += float(t.amount or 0.0)
 
     months = []
@@ -1127,7 +1127,7 @@ def get_category_breakdown(
     for t in txs:
         if is_bank_income(t):
             kind = "income"
-        elif t.type in EXPENSE_TYPES:
+        elif t.cash_flow == CashFlow.EXPENSE:
             kind = "expense"
         else:
             continue
