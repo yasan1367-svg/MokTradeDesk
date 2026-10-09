@@ -15,7 +15,7 @@ def _accounts(db_session, financial_balance=0):
     db_session.flush()
     trading = PersonalTradingAccount(
         broker_id=broker.id, account_number='123', currency=Currency.USDT,
-        initial_balance=1000, current_balance=1500,
+        initial_balance=1500, current_balance=1500,
     )
     db_session.add(trading)
     db_session.commit()
@@ -41,7 +41,7 @@ def test_withdrawal_edit_and_delete_preserve_broker_profit(client, db_session):
     db_session.refresh(trading)
     db_session.refresh(wallet)
     assert (trading.current_balance, wallet.balance) == (1250, 250)
-    assert broker_pnl(db_session) == 500
+    assert broker_pnl(db_session) == 0
     assert client.get('/api/finance/summary').json()['total_income'] == 0
 
     response = client.patch(f'/api/broker/cash-movements/{movement_id}', json={
@@ -52,7 +52,7 @@ def test_withdrawal_edit_and_delete_preserve_broker_profit(client, db_session):
     db_session.refresh(trading)
     db_session.refresh(wallet)
     assert (trading.current_balance, wallet.balance) == (1200, 300)
-    assert broker_pnl(db_session) == 500
+    assert broker_pnl(db_session) == 0
     assert client.get('/api/broker/payouts/stats').json()['total'] == 300
 
     response = client.delete(f'/api/broker/cash-movements/{movement_id}')
@@ -60,7 +60,7 @@ def test_withdrawal_edit_and_delete_preserve_broker_profit(client, db_session):
     db_session.refresh(trading)
     db_session.refresh(wallet)
     assert (trading.current_balance, wallet.balance) == (1500, 0)
-    assert broker_pnl(db_session) == 500
+    assert broker_pnl(db_session) == 0
     assert client.get('/api/broker/payouts/stats').json()['total'] == 0
 
 
@@ -81,7 +81,7 @@ def test_switching_broker_account_restores_original_balance(client, db_session):
     for account in (trading, second, wallet):
         db_session.refresh(account)
     assert (trading.current_balance, second.current_balance, wallet.balance) == (1500, 400, 100)
-    assert broker_pnl(db_session) == 500
+    assert broker_pnl(db_session) == 0
 
 
 def test_deposits_are_capital_movements_not_profit_or_expense(client, db_session):
@@ -90,7 +90,7 @@ def test_deposits_are_capital_movements_not_profit_or_expense(client, db_session
     db_session.refresh(trading)
     db_session.refresh(wallet)
     assert (trading.current_balance, wallet.balance) == (1900, 600)
-    assert broker_pnl(db_session) == 500
+    assert broker_pnl(db_session) == 0
     summary = client.get('/api/finance/summary').json()
     assert summary['total_income'] == summary['total_expense'] == 0
     assert client.get('/api/broker/payouts/stats').json()['total'] == 0

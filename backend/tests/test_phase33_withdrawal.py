@@ -140,14 +140,15 @@ def test_status_transitions_and_income_at_received(client, db_session):
         assert r.json()["income_transaction_id"] is None
     assert db_session.query(FinancialTransaction).count() == 0
 
-    # PROCESSING → RECEIVED (اینجا درآمد ثبت می‌شود)
+    # PROCESSING → RECEIVED (در کیف‌پول فقط دارایی ثبت می‌شود، نه درآمد)
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "received"})
     assert r.status_code == 200
     tx_id = r.json()["income_transaction_id"]
-    assert tx_id is not None
+    assert tx_id is None
 
-    tx = db_session.query(FinancialTransaction).filter(FinancialTransaction.id == tx_id).first()
-    assert tx.type == TransactionType.PROFIT
+    tx = db_session.query(FinancialTransaction).first()
+    assert tx is not None
+    assert tx.type == TransactionType.ADJUSTMENT
     assert tx.amount == 500.0
 
     db_session.refresh(dest)
@@ -156,12 +157,28 @@ def test_status_transitions_and_income_at_received(client, db_session):
     assert stage.total_withdrawn == 500.0
 
     summary = client.get("/api/finance/summary").json()
-    assert summary["total_income"] == 500.0
+    assert summary["total_income"] == 0.0
 
     # idempotent: دوباره RECEIVED ⇒ تراکنش جدید ساخته نمی‌شود
     r = client.post(f"/api/prop/payouts/{pid}/status", json={"status": "received"})
     assert r.status_code == 200
     assert db_session.query(FinancialTransaction).count() == 1
+
+
+def test_bank_payout_is_profit_income(client, db_session):
+    stage = _funded_stage(db_session)
+    bank = _account(db_session, "Bank", AccountType.BANK)
+    pid = _create(client, stage.id, bank.id, 500.0).json()["id"]
+
+    for target in ("approved", "processing", "received"):
+        response = client.post(f"/api/prop/payouts/{pid}/status", json={"status": target})
+        assert response.status_code == 200
+
+    tx = db_session.query(FinancialTransaction).first()
+    assert tx is not None
+    assert tx.type == TransactionType.PROFIT
+    assert tx.amount == 500.0
+    assert client.get("/api/finance/summary").json()["total_income"] == 500.0
 
 
 def test_invalid_transition_rejected(client, db_session):
@@ -198,13 +215,13 @@ def test_transfer_is_not_income(client, db_session):
     wallet = _account(db_session, "Trust Wallet", AccountType.CRYPTO_WALLET)
     exchange = _account(db_session, "Exchange", AccountType.EXCHANGE)
 
-    # دریافت ۵۰۰ در Trust Wallet (درآمد)
+    # دریافت ۵۰۰ در Trust Wallet (دارایی است، نه درآمد)
     pid = _create(client, stage.id, wallet.id, 500.0).json()["id"]
     for target in ("approved", "processing", "received"):
         client.post(f"/api/prop/payouts/{pid}/status", json={"status": target})
 
     income_before = client.get("/api/finance/summary").json()["total_income"]
-    assert income_before == 500.0
+    assert income_before == 0.0
 
     # انتقال Trust Wallet → Exchange (درآمد نیست)
     r = client.post(f"/api/prop/payouts/{pid}/transfer", json={
@@ -213,7 +230,7 @@ def test_transfer_is_not_income(client, db_session):
     assert r.status_code == 200
 
     summary = client.get("/api/finance/summary").json()
-    assert summary["total_income"] == 500.0  # تغییر نکرد
+    assert summary["total_income"] == 0.0  # تغییر نکرد
     assert summary["total_transfers"] == 500.0
 
     db_session.refresh(wallet)

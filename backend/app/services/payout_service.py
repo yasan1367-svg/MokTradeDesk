@@ -180,6 +180,8 @@ class PayoutService:
         label = stage.account.account_label if stage and stage.account else "پراپ"
 
         is_bank = dest.type == AccountType.BANK
+        # P1-04 fix: payout به غیربانک = ADJUSTMENT (نه درآمد)، به بانک = PROFIT (درآمد)
+        tx_type = TransactionType.PROFIT if is_bank else TransactionType.ADJUSTMENT
         cat = PayoutService._get_or_create_category(
             db, INCOME_CATEGORY_NAME, CategoryType.INCOME, "#27AE60", "💰"
         )
@@ -190,7 +192,7 @@ class PayoutService:
         tx = WalletService.post(
             db,
             account_id=dest.id,
-            type=TransactionType.PROFIT,
+            type=tx_type,
             amount=withdrawal.amount,
             currency=withdrawal.currency or Currency.USDT,
             date=withdrawal.withdrawal_date,

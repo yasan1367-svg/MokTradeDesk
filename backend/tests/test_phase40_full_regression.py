@@ -367,7 +367,7 @@ def test_full_cycle_finance_after_prop_payout(client, db_session):
         assert step.status_code == 200, step.text
 
     summary = client.get("/api/finance/summary").json()
-    assert summary["total_income"] == 500.0
+    assert summary["total_income"] == 0.0
 
     db_session.expire_all()
     assert db_session.get(FinancialAccount, dest["id"]).balance == 500.0
@@ -666,7 +666,7 @@ def test_full_cycle_payout_transfer_is_not_income(client, db_session):
     for target in ("approved", "processing", "received"):
         client.post(f"/api/prop/payouts/{payout['id']}/status", json={"status": target})
 
-    assert client.get("/api/finance/summary").json()["total_income"] == 500.0
+    assert client.get("/api/finance/summary").json()["total_income"] == 0.0
 
     r = client.post(
         f"/api/prop/payouts/{payout['id']}/transfer",
@@ -675,7 +675,7 @@ def test_full_cycle_payout_transfer_is_not_income(client, db_session):
     assert r.status_code == 200, r.text
 
     summary = client.get("/api/finance/summary").json()
-    assert summary["total_income"] == 500.0    # درآمد تغییر نکرد
+    assert summary["total_income"] == 0.0      # درآمد همچنان صفر است
     assert summary["total_transfers"] == 500.0
 
     db_session.expire_all()

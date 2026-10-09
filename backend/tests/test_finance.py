@@ -357,7 +357,7 @@ def test_create_account_and_list(client):
 
 
 @pytest.mark.parametrize("tx_type, expected_income", [
-    ("deposit", 0),
+    ("deposit", 500),
     ("external_income", 500),
 ])
 def test_create_transaction_and_filter(client, tx_type, expected_income):

@@ -155,11 +155,13 @@ class BrokerCashService:
             note=note,
         )
         db.add(movement)
+        db.flush()
         from .finance_sync_service import FinanceSyncService
         FinanceSyncService(db).recompute_account_balance(trading.id)
         if commit:
             db.commit()
             db.refresh(movement)
+            db.refresh(trading)
         else:
             db.flush()
         return movement
@@ -238,11 +240,16 @@ class BrokerCashService:
         movement.currency = currency
         movement.date = date
         movement.note = note
+        db.flush()
         from .finance_sync_service import FinanceSyncService
         FinanceSyncService(db).recompute_accounts(list(projected), commit=False)
         if commit:
             db.commit()
             db.refresh(movement)
+            for account_id in projected:
+                account = db.get(PersonalTradingAccount, account_id)
+                if account:
+                    db.refresh(account)
         else:
             db.flush()
         return movement
@@ -264,9 +271,12 @@ class BrokerCashService:
             raise ValueError("حذف گردش باعث منفی‌شدن موجودی حساب معاملاتی می‌شود")
         WalletService.reverse(db, tx, commit=False)
         db.delete(movement)
+        db.flush()
         from .finance_sync_service import FinanceSyncService
         FinanceSyncService(db).recompute_account_balance(trading.id)
+        db.flush()
         if commit:
             db.commit()
+            db.refresh(trading)
         else:
             db.flush()

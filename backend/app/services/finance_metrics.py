@@ -30,6 +30,8 @@ def broker_balance(db: Session, currency: Currency = Currency.USDT) -> float:
 
 def broker_pnl(db: Session, currency: Currency = Currency.USDT) -> float:
     """سود بروکر به‌علاوه برداشت‌های قبلی و منهای واریزهای بعدی."""
+    from ..models.trading import BrokerCashMovement
+
     row = db.query(
         func.coalesce(func.sum(PersonalTradingAccount.current_balance), 0.0),
         func.coalesce(func.sum(PersonalTradingAccount.initial_balance), 0.0),

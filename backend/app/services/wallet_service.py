@@ -164,7 +164,9 @@ def detect_cash_flow(
     - EXTERNAL_EXPENSE → EXPENSE فقط برای مبدأ بانکی
     - TRANSFER (بانک ← غیربانک) → EXPENSE
     - TRANSFER (غیربانک ← بانک) → INCOME
-    - FEE/PURCHASE/LOSS/WITHDRAWAL → EXPENSE فقط برای مبدأ بانکی
+    - DEPOSIT → INCOME فقط برای مقصد بانکی
+    - WITHDRAWAL → EXPENSE فقط برای مبدأ بانکی
+    - FEE/PURCHASE/LOSS → EXPENSE فقط برای مبدأ بانکی
     - PROFIT → INCOME فقط برای مقصد بانکی
     - بقیه (DEPOSIT، CONVERT، TRANSFER داخلی، ADJUSTMENT) → NONE
     """
@@ -179,7 +181,15 @@ def detect_cash_flow(
             if to_account.type == AccountType.BANK and from_account.type != AccountType.BANK:
                 return CashFlow.INCOME
         return CashFlow.NONE
-    if tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS, TransactionType.WITHDRAWAL):
+    if tx_type == TransactionType.DEPOSIT:
+        if to_account and to_account.type == AccountType.BANK:
+            return CashFlow.INCOME
+        return CashFlow.NONE
+    if tx_type == TransactionType.WITHDRAWAL:
+        if from_account and from_account.type == AccountType.BANK:
+            return CashFlow.EXPENSE
+        return CashFlow.NONE
+    if tx_type in (TransactionType.FEE, TransactionType.PURCHASE, TransactionType.LOSS):
         return CashFlow.EXPENSE if from_account and from_account.type == AccountType.BANK else CashFlow.NONE
     if tx_type == TransactionType.PROFIT:
         return CashFlow.INCOME if to_account and to_account.type == AccountType.BANK else CashFlow.NONE
