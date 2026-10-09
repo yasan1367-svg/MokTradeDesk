@@ -21,7 +21,7 @@ from app.models.imports import (
     ImportStatus,
 )
 from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
-from app.models.strategy import Strategy, StrategyVersion, Trade, TestType
+from app.models.strategy import Strategy, StrategyVersion, Trade, TestType, TradeSource
 from app.models.trading import Broker, PersonalTradingAccount
 from app.services.import_engine import ImportContext, ImportEngine, build_context, normalize_test_type
 
@@ -675,3 +675,51 @@ def test_sync_prop_stage_profit_still_updates_active(client, db_session):
     db_session.expire_all()
     profit_after_sync = db_session.query(PropStage).one().current_profit
     assert profit_after_sync == 9.0  # همان مقدار (تغییری در معاملات نکرده)
+
+
+def test_sync_funded_profit_ignores_open_trades_and_respects_zero_share(db_session):
+    from datetime import datetime, timezone
+    from app.services.import_engine import sync_prop_stage_profit
+
+    version = _version(db_session, name="funded-sync")
+    stage = _stage(db_session, profit_share=80.0)
+    stage.stage_type = StageType.FUNDED_REAL
+    db_session.commit()
+
+    closed = Trade(
+        version_id=version.id, symbol="EURUSD", direction="buy",
+        open_time=datetime(2025, 1, 1, tzinfo=timezone.utc),
+        close_time=datetime(2025, 1, 2, tzinfo=timezone.utc),
+        open_price=1, close_price=1, size=1, pnl=100, commission=0, swap=0,
+        source=TradeSource.MANUAL, test_type=TestType.REAL_PROP, prop_stage_id=stage.id,
+    )
+    opened = Trade(
+        version_id=version.id, symbol="EURUSD", direction="buy",
+        open_time=datetime(2025, 1, 3, tzinfo=timezone.utc), close_time=None,
+        open_price=1, close_price=None, size=1, pnl=50, commission=0, swap=0,
+        source=TradeSource.MANUAL, test_type=TestType.REAL_PROP, prop_stage_id=stage.id,
+    )
+    db_session.add_all([closed, opened])
+    db_session.commit()
+
+    sync_prop_stage_profit(db_session, stage.id)
+    db_session.refresh(stage)
+    assert stage.current_profit == 80
+
+    opened.close_time = datetime(2025, 1, 4, tzinfo=timezone.utc)
+    db_session.commit()
+    sync_prop_stage_profit(db_session, stage.id)
+    db_session.refresh(stage)
+    assert stage.current_profit == 120
+
+    stage.profit_share_percentage = 0
+    db_session.commit()
+    sync_prop_stage_profit(db_session, stage.id)
+    db_session.refresh(stage)
+    assert stage.current_profit == 0
+
+    stage.profit_share_percentage = None
+    db_session.commit()
+    sync_prop_stage_profit(db_session, stage.id)
+    db_session.refresh(stage)
+    assert stage.current_profit == 120  # پیش‌فرض تنها برای None برابر 80٪ است

@@ -20,7 +20,7 @@ from dataclasses import dataclass, field
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional, Tuple
 
-from sqlalchemy import and_
+from sqlalchemy import and_, func
 from sqlalchemy.orm import Session
 
 from ..models.imports import (
@@ -808,22 +808,39 @@ def serialize_batch(
 
 
 def sync_prop_stage_profit(db: Session, prop_stage_id: int) -> None:
-    """به‌روزرسانی `current_profit` مرحله‌ی پراپ پس از ایمپورت (منطق متمرکز)."""
-    from . import metrics as m  # net_pnl
-
-    stage = db.query(PropStage).filter(PropStage.id == prop_stage_id).first()
-    if not stage:
+    """بازمحاسبه سود مرحله پراپ از معاملات بسته؛ مراحل غیرفعال فریز می‌مانند."""
+    stage = db.get(PropStage, prop_stage_id)
+    if stage is None:
         return
 
     # فاز ۵: فقط مراحل فعال به‌روزرسانی می‌شوند (تاریخچهٔ مراحل پاس‌شده فریز می‌ماند)
     if stage.status != StageStatus.ACTIVE:
         return
 
-    trades = db.query(Trade).filter(Trade.prop_stage_id == prop_stage_id).all()
-    total_pnl = sum(m.net_pnl(trade) for trade in trades)  # فاز ۳: net_pnl = pnl + commission + swap
+    total_pnl = float(
+        db.query(
+            func.coalesce(
+                func.sum(
+                    func.coalesce(Trade.pnl, 0)
+                    + func.coalesce(Trade.commission, 0)
+                    + func.coalesce(Trade.swap, 0)
+                ),
+                0.0,
+            )
+        )
+        .filter(
+            Trade.prop_stage_id == prop_stage_id,
+            Trade.close_time.isnot(None),
+        )
+        .scalar()
+        or 0.0
+    )
 
     if stage.stage_type == StageType.FUNDED_REAL:
-        share = (stage.profit_share_percentage or 80.0) / 100.0
+        percentage = stage.profit_share_percentage
+        if percentage is None:
+            percentage = 80.0
+        share = float(percentage) / 100.0
         stage.current_profit = total_pnl * share
     else:
         stage.current_profit = total_pnl

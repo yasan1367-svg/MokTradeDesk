@@ -450,6 +450,7 @@ def _seed_funded_stage(db):
 def test_spendable_assets_empty(client):
     body = client.get("/api/finance/spendable-assets").json()
     assert body["prop_stage_3"]["amount"] == 0
+    assert body["prop_stage_3_by_currency"] == {"USDT": 0.0, "IRR": 0.0}
     assert body["bank"]["currency"] == "IRR"
     assert body["broker"]["currency"] == "USDT"
     assert body["total"] == {"usdt": 0.0, "irr": 0.0}
@@ -535,6 +536,37 @@ def test_net_profit(client, db_session):
     assert body["real_pnl"] == 800.0
     assert body["expenses"] == 115.0
     assert body["net_profit"] == 685.0
+    assert body["personal"] == {"real_pnl": 800.0, "expenses": 115.0, "net_profit": 685.0}
+    assert body["prop"]["net_profit"] == 0.0
+    assert body["total"]["net_profit"] == 685.0
+    assert set(body["by_currency"]) == {"USDT", "IRR"}
+
+
+def test_net_profit_prop_share_and_combined_totals(client, db_session):
+    pta = _pta(db_session, label="net-personal")
+    stage, prop_account = _seed_funded_stage(db_session)
+    prop_account.currency = Currency.USDT
+    stage.profit_share_percentage = 80
+    version = _ver(db_session, name="net-combined")
+
+    personal = _make_trade(1000, version_id=version.id)
+    personal.test_type = TestType.REAL_PERSONAL
+    personal.personal_trading_account_id = pta.id
+    funded = _make_trade(500, version_id=version.id)
+    funded.test_type = TestType.REAL_PROP
+    funded.prop_stage_id = stage.id
+    db_session.add_all([personal, funded])
+    db_session.commit()
+
+    body = client.get("/api/finance/net-profit", params={"currency": "USDT"}).json()
+    assert body["personal"]["net_profit"] == 1000
+    assert body["prop"]["funded_pnl"] == 500
+    assert body["prop"]["profit_share_percentage"] == 80
+    assert body["prop"]["user_share"] == 400
+    assert body["prop"]["net_profit"] == 400
+    assert body["total"]["real_pnl"] == 1500
+    assert body["total"]["user_share"] == 1400
+    assert body["total"]["net_profit"] == 1400
 
 
 def test_money_flow(client):

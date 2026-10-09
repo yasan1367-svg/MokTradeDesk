@@ -11,7 +11,7 @@
 from sqlalchemy import func
 from sqlalchemy.orm import Session
 
-from ..models.prop import PropStage, StageType
+from ..models.prop import PropAccount, PropStage, StageType
 from ..models.finance import Currency
 from ..models.strategy import TestType, Trade
 from ..models.trading import BrokerCashMovement, PersonalTradingAccount
@@ -84,20 +84,28 @@ def _stage_net_pnl(db: Session, stage_id: int) -> float:
         .filter(
             Trade.prop_stage_id == stage_id,
             Trade.test_type == TestType.REAL_PROP,
+            Trade.close_time.isnot(None),
         )
         .scalar()
     )
     return float(val or 0.0)
 
 
-def prop_stage_3(db: Session) -> float:
+def prop_stage_3(db: Session, currency: Currency | None = None) -> float:
     """سود قابل برداشت مراحل رییل = Σ max(0, net × سهم کاربر − برداشت‌شده).
 
     فاز ۴۴.۳: برداشت‌های RECEIVED (`stage.total_withdrawn`) کسر می‌شوند تا پولی که
     قبلاً پرداخت شده دوباره «قابل خرج» نشان داده نشود.
     """
     total = 0.0
-    stages = db.query(PropStage).filter(PropStage.stage_type == StageType.FUNDED_REAL).all()
+    stages_query = (
+        db.query(PropStage)
+        .join(PropAccount, PropStage.prop_account_id == PropAccount.id)
+        .filter(PropStage.stage_type == StageType.FUNDED_REAL)
+    )
+    if currency is not None:
+        stages_query = stages_query.filter(PropAccount.currency == currency)
+    stages = stages_query.all()
     for stage in stages:
         net = _stage_net_pnl(db, stage.id)
         share = (stage.profit_share_percentage if stage.profit_share_percentage is not None else DEFAULT_PROFIT_SHARE) / 100.0

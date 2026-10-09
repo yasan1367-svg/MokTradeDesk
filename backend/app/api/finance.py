@@ -1428,7 +1428,7 @@ def _balance_sum_currency(db: Session, currency: Currency) -> float:
 def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
     """سود/زیان Real به تفکیک یک ارز: مرحلهٔ ۳ پراپ + بروکر."""
     from sqlalchemy import func
-    from ..models.strategy import Trade
+    from ..models.strategy import Trade, TestType
     from ..models.prop import PropAccount, PropStage as PS, StageType
 
     net = _trade_net_expr()
@@ -1442,6 +1442,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
             PS.stage_type == StageType.FUNDED_REAL,
             PropAccount.currency == currency,
             Trade.close_time.isnot(None),
+            Trade.test_type == TestType.REAL_PROP,
         )
         .one()
     )
@@ -1456,6 +1457,7 @@ def _compute_real_pnl(db: Session, currency: Currency = Currency.USDT) -> dict:
         .filter(
             PersonalTradingAccount.currency == currency,
             Trade.close_time.isnot(None),
+            Trade.test_type == TestType.REAL_PERSONAL,
         )
         .one()
     )
@@ -1478,11 +1480,20 @@ def _expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
         db.query(func.coalesce(func.sum(FinancialTransaction.amount), 0.0))
         .filter(
             FinancialTransaction.is_deleted == False,
-            FinancialTransaction.type.in_([TransactionType.FEE, TransactionType.PURCHASE]),
+            FinancialTransaction.type.in_([
+                TransactionType.FEE,
+                TransactionType.PURCHASE,
+                TransactionType.EXTERNAL_EXPENSE,
+            ]),
             FinancialTransaction.currency == target,
         )
         .scalar() or 0.0
     )
+
+
+def _personal_expenses_total(db: Session, currency: Optional[Currency] = None) -> float:
+    """هزینه‌های مالی شخصی؛ فعلاً همه حساب‌های مالی به شخصی تعلق دارند."""
+    return _expenses_total(db, currency)
 
 
 # ═════════════════════════════════════════════
@@ -1520,8 +1531,13 @@ def get_spendable_assets(db: Session = Depends(get_db)):
             by_currency[currency.value]["broker"] = round(float(balance or 0.0), 2)
 
     # Received prop payouts already exist in their destination account balance.
+    prop_stage_3_by_currency = {
+        currency.value: round(finance_metrics.prop_stage_3(db, currency), 2)
+        for currency in (Currency.USDT, Currency.IRR)
+    }
     result = {
-        "prop_stage_3": {"amount": finance_metrics.prop_stage_3(db), "currency": "USDT"},
+        "prop_stage_3": {"amount": prop_stage_3_by_currency["USDT"], "currency": "USDT"},
+        "prop_stage_3_by_currency": prop_stage_3_by_currency,
         "by_currency": by_currency,
         "total": {
             "usdt": round(sum(by_currency["USDT"].values()), 2),
@@ -1666,27 +1682,74 @@ def get_net_profit(
     currency: Optional[Currency] = None,
     db: Session = Depends(get_db),
 ):
-    """سود خالص = سود Real − هزینه‌ها (FEE/PURCHASE) — فاز ۴۴.۵: یک ارز (پیش‌فرض USDT)"""
+    """سود خالص شخصی و پراپ را جدا و به تفکیک ارز برمی‌گرداند."""
+    import logging
+    from sqlalchemy import func
+    from ..models.prop import PropAccount, PropStage, StageType
+    from ..models.strategy import Trade, TestType
+
+    logger = logging.getLogger(__name__)
     target = currency or Currency.USDT
-    real = _compute_real_pnl(db, target)
-    expenses = round(_expenses_total(db, target), 2)
-    real_pnl = real["total"]["pnl"]
+
+    def calculate(cur: Currency) -> dict:
+        real = _compute_real_pnl(db, cur)
+        prop_rows = (
+            db.query(PropStage.id, PropStage.profit_share_percentage)
+            .join(PropAccount, PropStage.prop_account_id == PropAccount.id)
+            .filter(PropStage.stage_type == StageType.FUNDED_REAL, PropAccount.currency == cur)
+            .all()
+        )
+        net = _trade_net_expr()
+        funded_pnl = 0.0
+        user_share = 0.0
+        applied_percentages = set()
+        for stage_id, percentage in prop_rows:
+            stage_pnl = float(
+                db.query(func.coalesce(func.sum(net), 0.0))
+                .filter(
+                    Trade.prop_stage_id == stage_id,
+                    Trade.test_type == TestType.REAL_PROP,
+                    Trade.close_time.isnot(None),
+                ).scalar() or 0.0
+            )
+            funded_pnl += stage_pnl
+            if percentage is None:
+                logger.warning("PropStage %s has no profit_share_percentage; defaulting to 100%%", stage_id)
+                percentage = 100.0
+            applied_percentages.add(float(percentage))
+            user_share += stage_pnl * float(percentage) / 100.0
+
+        personal_pnl = real["broker"]["pnl"]
+        personal_expenses = round(_personal_expenses_total(db, cur), 2)
+        prop_expenses = 0.0  # no distinct prop finance accounts currently
+        personal_net = round(personal_pnl - personal_expenses, 2)
+        prop_net = round(user_share - prop_expenses, 2)
+        all_expenses = round(personal_expenses + prop_expenses, 2)
+        return {
+            "personal": {"real_pnl": personal_pnl, "expenses": personal_expenses, "net_profit": personal_net},
+            "prop": {
+                "funded_pnl": round(funded_pnl, 2),
+                "profit_share_percentage": next(iter(applied_percentages)) if len(applied_percentages) == 1 else None,
+                "user_share": round(user_share, 2), "expenses": prop_expenses, "net_profit": prop_net,
+            },
+            "total": {
+                "real_pnl": round(personal_pnl + funded_pnl, 2),
+                "user_share": round(personal_pnl + user_share, 2),
+                "expenses": all_expenses,
+                "net_profit": round(personal_net + prop_net, 2),
+            },
+            "real_pnl": personal_pnl,
+            "expenses": all_expenses,
+            "net_profit": round(personal_net + prop_net, 2),
+        }
+
     by_currency = {}
     for c in (Currency.USDT, Currency.IRR):
-        currency_real_pnl = real_pnl if c == target else _compute_real_pnl(db, c)["total"]["pnl"]
-        currency_expenses = round(_expenses_total(db, c), 2)
-        by_currency[c.value] = {
-            "real_pnl": currency_real_pnl,
-            "expenses": currency_expenses,
-            "net_profit": round(currency_real_pnl - currency_expenses, 2),
-        }
-    return {
-        "real_pnl": real_pnl,
-        "expenses": expenses,
-        "net_profit": round(real_pnl - expenses, 2),
-        "currency": target.value,
-        "by_currency": by_currency,
-    }
+        by_currency[c.value] = calculate(c)
+    result = by_currency[target.value].copy()
+    result["currency"] = target.value
+    result["by_currency"] = by_currency
+    return result
 
 
 # ═════════════════════════════════════════════
