@@ -458,22 +458,22 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           <KpiCard
             index={0}
             icon="💰"
-            label="Net PnL"
+            label="سود و زیان خالص"
             value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
-            valueColor={data.summary?.net_pnl >= 0 ? 'profit' : 'loss'}
+            valueColor="profit"
           />
           <KpiCard
             index={1}
             icon="🎯"
-            label="Win Rate"
+            label="نرخ برد"
             value={`${data.summary?.win_rate?.toFixed(1) || 0}%`}
-            valueColor={data.summary?.win_rate >= 50 ? 'profit' : 'loss'}
+            valueColor="accent"
             subtitle={`${data.summary?.wins || 0}W / ${data.summary?.losses || 0}L`}
           />
           <KpiCard
             index={2}
             icon="⚖️"
-            label="Profit Factor"
+            label="فاکتور سود"
             value={
               data.summary?.profit_factor_status === 'no_data'
                 ? '—'
@@ -481,31 +481,23 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                   ? 'بدون زیان'
                   : data.summary?.profit_factor?.toFixed(2) || '—'
             }
-            valueColor={
-              data.summary?.profit_factor_status === 'no_losses'
-                ? 'profit'
-                : data.summary?.profit_factor >= 1.5
-                  ? 'profit'
-                  : data.summary?.profit_factor >= 1
-                    ? 'neutral'
-                    : 'loss'
-            }
+            valueColor="purple"
             hint={data.summary?.profit_factor_status}
           />
           <KpiCard
             index={3}
             icon="📉"
-            label="Max Drawdown"
+            label="افت سرمایه"
             value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
             valueColor="loss"
             hint={data.equity_metadata?.dd_definition || 'peak_to_trough'}
           />
           <KpiCard
             index={4}
-            icon="📊"
-            label="Closed Trades"
+            icon="📋"
+            label="معاملات بسته"
             value={data.summary?.closed_trades || 0}
-            valueColor="accent"
+            valueColor="warning"
           />
         </div>
       )}
@@ -592,10 +584,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       <ErrorBoundary label="Today">
       {/* کارت وضعیت امروز (فاز ۱۴.۲ — بالای همه) */}
-      <div
-        className="relative rounded-[28px] p-8 flex justify-between items-center flex-wrap gap-7 overflow-hidden shadow-lg border border-[var(--border-accent)]"
-        style={{ background: 'linear-gradient(135deg, var(--bg-card) 0%, var(--accent-soft) 100%)' }}
-      >
+      <div className="dashboard-card relative p-5 flex justify-between items-center flex-wrap gap-7 overflow-hidden">
         <div
           className="absolute top-0 right-0 left-0 h-1"
           style={{ background: 'linear-gradient(90deg, var(--accent), var(--purple), var(--profit))' }}
@@ -606,7 +595,16 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         />
 
         <div className="relative z-10">
-          <div className="text-xs text-[var(--text-secondary)] font-bold mb-1">📅 وضعیت امروز</div>
+          <div className="dashboard-card-header">
+            <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+              <span style={{ color: 'var(--accent)' }}>📅</span>
+            </div>
+            <div>
+              <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+                وضعیت امروز
+              </h3>
+            </div>
+          </div>
           <div
             className={`text-4xl font-extrabold ${today.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
           >
@@ -654,11 +652,18 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       <ErrorBoundary label="Yesterday">
       {/* کارت روز گذشته (فاز ۱۴.۲) */}
-      <Card>
-        <CardHeader
-          title={`🌙 روز گذشته${yesterday ? ` — ${yesterday.day_of_week} ${yesterday.date}` : ''}`}
-          subtitle={yesterday ? `${yesterday.total_trades} معامله` : undefined}
-        />
+      <div className="dashboard-card p-5">
+        <div className="dashboard-card-header">
+          <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+            <span style={{ color: 'var(--accent)' }}>🌙</span>
+          </div>
+          <div>
+            <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+              {`روز گذشته${yesterday ? ` — ${yesterday.day_of_week} ${yesterday.date}` : ''}`}
+            </h3>
+            {yesterday && <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{yesterday.total_trades} معامله</div>}
+          </div>
+        </div>
         {yesterday ? (
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
             <div className="space-y-3">
@@ -708,13 +713,21 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         ) : (
           <div className="text-[var(--text-muted)] text-center py-6 text-sm">داده‌ای برای روز گذشته نیست</div>
         )}
-      </Card>
+      </div>
 
       </ErrorBoundary>
 
       <ErrorBoundary label="Active Prop Stage">
-        <Card>
-          <CardHeader title="🏢 وضعیت پراپ" subtitle={prop_progress.length > 0 ? `${prop_progress.length} مرحله فعال` : undefined} />
+        <div className="dashboard-card p-5">
+          <div className="dashboard-card-header">
+            <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+              <span style={{ color: 'var(--accent)' }}>🏢</span>
+            </div>
+            <div>
+              <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>وضعیت پراپ</h3>
+              {prop_progress.length > 0 && <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{prop_progress.length} مرحله فعال</div>}
+            </div>
+          </div>
           {prop_progress.length === 0 ? (
             <div className="text-center">
               <EmptyState icon="🏢" title="مرحله فعالی وجود ندارد" />
@@ -796,7 +809,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               })}
             </div>
           )}
-        </Card>
+        </div>
 
 {alerts.length > 0 && (
         <Card>
@@ -1016,10 +1029,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       {/* عملکرد بک‌تست نسخهٔ انتخاب‌شده */}
       <ErrorBoundary label="عملکرد بک‌تست">
-        <Card>
-          <CardHeader
-            title="📊 عملکرد بک‌تست"
-            action={(
+        <div className="dashboard-card p-5">
+          <div className="dashboard-card-header">
+            <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+              <span style={{ color: 'var(--accent)' }}>📊</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 flex-1">
+              <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>عملکرد بک‌تست</h3>
               <select
                 value={selectedVersionId ?? ''}
                 onChange={(event) => setSelectedVersionId(Number(event.target.value) || null)}
@@ -1033,8 +1049,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                   </option>
                 ))}
               </select>
-            )}
-          />
+            </div>
+          </div>
           {versions.length === 0 ? (
             <EmptyState icon="📊" title="نسخه‌ای برای بک‌تست وجود ندارد" />
           ) : backtestLoading ? (
@@ -1085,7 +1101,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           ) : (
             <EmptyState icon="📊" title="دادهٔ بک‌تستی برای نسخهٔ انتخاب‌شده موجود نیست" />
           )}
-        </Card>
+        </div>
       </ErrorBoundary>
 
       {/* نمودارهای پایه (فاز ۱۴.۱) */}

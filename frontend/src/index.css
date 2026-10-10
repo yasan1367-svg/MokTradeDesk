@@ -53,6 +53,19 @@
 
   --shadow-card: 0 6px 16px rgba(25, 50, 85, 0.08);
   --shadow-md: 0 6px 16px rgba(25, 50, 85, 0.08), 0 2px 4px rgba(25, 50, 85, 0.04);
+
+  --kpi-profit-tone: #299b81;
+  --kpi-profit-tint: #edf8f3;
+  --kpi-loss-tone: #d97688;
+  --kpi-loss-tint: #fff1f4;
+  --kpi-accent-tone: #4f82d6;
+  --kpi-accent-tint: #eef4ff;
+  --kpi-purple-tone: #9471cd;
+  --kpi-purple-tint: #f5f0fc;
+  --kpi-warning-tone: #cb9a4f;
+  --kpi-warning-tint: #fff7e9;
+  --kpi-neutral-tone: #5b7dad;
+  --kpi-neutral-tint: #f0f5fe;
 }
 
 /* ── Dark Mode (فاز ۱۰-الف: پالت  فیگما — مشکی با ته‌رنگ سبز) ── */
@@ -104,6 +117,19 @@
 
   --shadow-card: 0 6px 16px rgba(0, 0, 0, 0.5);
   --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
+
+  --kpi-profit-tone: #34D399;
+  --kpi-profit-tint: rgba(52,211,153,0.10);
+  --kpi-loss-tone: #F87171;
+  --kpi-loss-tint: rgba(248,113,113,0.10);
+  --kpi-accent-tone: #60A5FA;
+  --kpi-accent-tint: rgba(96,165,250,0.10);
+  --kpi-purple-tone: #C084FC;
+  --kpi-purple-tint: rgba(192,132,252,0.10);
+  --kpi-warning-tone: #FBBF24;
+  --kpi-warning-tint: rgba(251,191,36,0.10);
+  --kpi-neutral-tone: #94A3B8;
+  --kpi-neutral-tint: rgba(148,163,184,0.10);
 }
 
 * {
@@ -149,20 +175,52 @@ body, #root {
   box-shadow: var(--shadow-card);
 }
 
-/* KPI Card — Premium Design */
+/* Dashboard — Card Styles */
 .kpi-card {
-  animation: kpiSlideUp 0.5s ease-out backwards;
-  border-radius: 14px;
-  will-change: transform, box-shadow;
+  animation: kpiSlideUp 0.4s ease-out backwards;
 }
 
 @keyframes kpiSlideUp {
   from {
     opacity: 0;
-    transform: translateY(16px);
+    transform: translateY(8px);
   }
   to {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* کارت‌های بزرگ (Today, Prop, Backtest) */
+.dashboard-card {
+  background: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  box-shadow: 0 1px 3px rgba(0,0,0,0.04);
+  transition: box-shadow 0.3s;
+}
+
+.dashboard-card:hover {
+  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+}
+
+/* هدر کارت با آیکن دایره‌ای */
+.dashboard-card-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding-bottom: 16px;
+  margin-bottom: 16px;
+  border-bottom: 1px solid var(--border-subtle);
+}
+
+.dashboard-card-icon {
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  flex-shrink: 0;
 }
