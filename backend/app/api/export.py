@@ -490,12 +490,22 @@ def export_dashboard_pdf(
         els.append(Paragraph(_fa("داده‌ای برای نمایش وجود ندارد"), n))
     else:
         s = dashboard_data.get("summary", {})
+        pf_value = s.get("profit_factor")
+        pf_status = s.get("profit_factor_status")
+        if pf_status == "no_data":
+            pf_display = "—"
+        elif pf_status == "no_losses":
+            pf_display = "بدون زیان"
+        elif pf_value is not None:
+            pf_display = f"{pf_value:.2f}"
+        else:
+            pf_display = "—"
         els.append(Paragraph(_fa("خلاصه وضعیت"), styles["Heading2"]))
         _draw_table(els, [
             [_fa("شاخص"), _fa("مقدار")],
             [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} {currency.value} "],
             [_fa("نرخ برد"), f"{s.get('win_rate', 0):.1f}%"],
-            [_fa("فاکتور سود"), f"{s.get('profit_factor', 0):.2f}"],
+            [_fa("فاکتور سود"), _fa(pf_display)],
             [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} {currency.value} "],
         ], [200, 200], "")
         els.append(Spacer(1, 15))
