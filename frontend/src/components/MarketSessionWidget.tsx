@@ -3,6 +3,19 @@ import type { ReactNode } from 'react';
 import { api } from '../api/client';
 
 type SessionId = 'sydney' | 'tokyo' | 'london' | 'newYork';
+const WEEKDAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+type TehranWeekday = typeof WEEKDAYS[number];
+
+function getTehranWeekday(now: Date): TehranWeekday {
+  return new Intl.DateTimeFormat('en-US', {
+    timeZone: 'Asia/Tehran',
+    weekday: 'short',
+  }).format(now) as TehranWeekday;
+}
+
+function isSessionDay(weekday: TehranWeekday): boolean {
+  return weekday !== 'Sat' && weekday !== 'Sun';
+}
 
 type SessionDefinition = {
   id: SessionId;
@@ -81,14 +94,19 @@ function getTehranSeconds(now: Date): number {
 /** Pure session calculation: the input is an instant and is always interpreted in Tehran time. */
 export function getMarketSessionState(now: Date): MarketSessionState {
   const tehranSeconds = getTehranSeconds(now);
+  const weekday = getTehranWeekday(now);
+  const weekdayIndex = WEEKDAYS.indexOf(weekday);
   const sessions = SESSION_DEFINITIONS.map((session): SessionStatus => {
     const startSeconds = session.start * 3600;
     const endSeconds = session.end * 3600;
-    const isOpen = tehranSeconds >= startSeconds && tehranSeconds < endSeconds;
+    const isOpen = isSessionDay(weekday) && tehranSeconds >= startSeconds && tehranSeconds < endSeconds;
     const remainingSeconds = isOpen ? endSeconds - tehranSeconds : 0;
-    const untilOpenSeconds = isOpen
-      ? 0
-      : (startSeconds - tehranSeconds + DAY_SECONDS) % DAY_SECONDS || DAY_SECONDS;
+    let daysUntilOpen = tehranSeconds < startSeconds ? 0 : 1;
+    // Keep the widget's fixed Tehran schedule, skipping non-session days.
+    while (!isSessionDay(WEEKDAYS[(weekdayIndex + daysUntilOpen) % WEEKDAYS.length])) {
+      daysUntilOpen += 1;
+    }
+    const untilOpenSeconds = isOpen ? 0 : daysUntilOpen * DAY_SECONDS + startSeconds - tehranSeconds;
 
     return {
       ...session,
@@ -98,7 +116,8 @@ export function getMarketSessionState(now: Date): MarketSessionState {
     };
   });
 
-  const overlapActive = tehranSeconds >= 16 * 3600 && tehranSeconds < 19 * 3600;
+  const overlapActive = sessions.some(session => session.id === 'london' && session.isOpen)
+    && sessions.some(session => session.id === 'newYork' && session.isOpen);
   const overlapRemainingMs = overlapActive ? (19 * 3600 - tehranSeconds) * 1000 : 0;
   const nextOpening = sessions
     .filter((session) => !session.isOpen)

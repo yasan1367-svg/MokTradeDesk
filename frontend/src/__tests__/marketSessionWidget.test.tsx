@@ -40,6 +40,39 @@ function event(
 }
 
 describe('market session calculations (Tehran time)', () => {
+  it('closes all sessions on Saturday October 10 at 23:24 Tehran', () => {
+    const state = getMarketSessionState(new Date('2026-10-10T23:24:00+03:30'));
+    expect(state.sessions.every(session => !session.isOpen && session.remainingMs === 0)).toBe(true);
+    expect(state.nextOpening.id).toBe('sydney');
+    expect(state.nextOpening.untilOpenMs).toBe((25 * 60 + 36) * 60_000);
+  });
+
+  it.each(['2026-10-10T17:00:00+03:30', '2026-10-11T17:00:00+03:30'])(
+    'disables sessions and overlap on a weekend at %s', instant => {
+      const state = getMarketSessionState(new Date(instant));
+      expect(state.sessions.every(session => !session.isOpen)).toBe(true);
+      expect(state.overlapActive).toBe(false);
+      expect(state.overlapRemainingMs).toBe(0);
+    },
+  );
+
+  it('uses the Tehran weekday at the UTC Friday/Saturday boundary', () => {
+    const friday = getMarketSessionState(new Date('2026-10-09T20:29:59Z'));
+    expect(friday.sessions.find(session => session.id === 'newYork')?.isOpen).toBe(true);
+    const saturday = getMarketSessionState(new Date('2026-10-09T20:30:00Z'));
+    expect(saturday.sessions.every(session => !session.isOpen)).toBe(true);
+    expect(saturday.nextOpening.untilOpenMs).toBe(49 * 60 * 60_000);
+    expect(friday.nextOpening.untilOpenMs).toBe(49 * 60 * 60_000 + 1000);
+  });
+
+  it('counts down across Sunday midnight to the Monday Sydney opening', () => {
+    const sunday = getMarketSessionState(new Date('2026-10-11T23:59:59+03:30'));
+    expect(sunday.sessions.every(session => !session.isOpen)).toBe(true);
+    expect(sunday.nextOpening.untilOpenMs).toBe(60 * 60_000 + 1000);
+    const monday = getMarketSessionState(new Date('2026-10-12T01:00:00+03:30'));
+    expect(monday.sessions.find(session => session.id === 'sydney')?.isOpen).toBe(true);
+  });
+
   it('uses Tehran time for an instant independent of the browser timezone', () => {
     // 09:00 UTC is 12:30 in Tehran; no browser-local timezone assumptions.
     const state = getMarketSessionState(new Date('2026-01-15T09:00:00.000Z'));
@@ -196,6 +229,15 @@ describe('expanded news', () => {
 });
 
 describe('news widget integration', () => {
+  it('renders all markets closed instead of New York open on Saturday night', async () => {
+    render(<MarketSessionWidget nowProvider={() => new Date('2026-10-10T23:24:00+03:30')} />);
+    const toggle = screen.getByRole('button', { name: /وضعیت سشن‌های بازار فارکس/ });
+    expect(toggle).toHaveTextContent('همه بازارها بسته');
+    expect(toggle).toHaveTextContent('۲۵:۳۶');
+    expect(toggle).not.toHaveTextContent('بازار نیویورک باز است');
+    await waitFor(() => expect(apiGet).toHaveBeenCalled());
+  });
+
   it('requests today with limit 20 and keeps the stale label for an empty response', async () => {
     render(<MarketSessionWidget nowProvider={() => NOW} />);
 
