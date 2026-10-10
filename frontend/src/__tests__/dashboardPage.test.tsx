@@ -1,8 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { act, fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { act, fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import DashboardPage from '../pages/DashboardPage';
 import ToastProvider from '../components/ToastProvider';
-import { getDashboardData, getPropAlerts, getAllVersions } from '../api/client';
+import { getDashboardData, getPropAlerts, getAllVersions, getRealSummary, getTrades } from '../api/client';
 import { formatEquityDate } from '../utils/formatEquityDate';
 
 vi.mock('../api/client', () => ({
@@ -198,5 +198,37 @@ describe('DashboardPage', () => {
     expect(formatEquityDate('2025-06-11T10:00:00+00:00')).toBe(
       new Date('2025-06-11T12:00:00').toLocaleDateString('fa-IR'),
     );
+  });
+
+  it('keeps live data and navigation intact in the approved layout', async () => {
+    vi.mocked(getRealSummary).mockResolvedValueOnce({ data: {
+      total_trades: 12, net_pnl: 700, winning_trades: 8, losing_trades: 4,
+      win_rate: 66.7, profit_factor: 1.8, gross_profit: 900, gross_loss: 200,
+      max_dd: 80, sparkline: [0, 200, 700],
+    } } as never);
+    vi.mocked(getTrades)
+      .mockResolvedValueOnce({ data: { trades: [{ id: 10, symbol: 'EURUSD', direction: 'buy', pnl: 100, commission: -2, swap: -3 }] } } as never)
+      .mockResolvedValueOnce({ data: { trades: [{ id: 11, symbol: 'XAUUSD', direction: 'sell', pnl: null }] } } as never);
+    vi.mocked(getPropAlerts).mockResolvedValueOnce({ data: [{ id: 5, message: '⚠️ هشدار واقعی پراپ' }] } as never);
+    const onNavigate = vi.fn();
+    const { container } = render(<ToastProvider><DashboardPage onNavigate={onNavigate} /></ToastProvider>);
+    await screen.findByText('+1234 IRR');
+    const pair = screen.getByTestId('prop-backtest-pair');
+    expect(within(pair).getByText('وضعیت پراپ')).toBeInTheDocument();
+    expect(within(pair).getByText('عملکرد بک‌تست')).toBeInTheDocument();
+    expect(pair.closest('details')).toBeNull();
+    const real = screen.getByTestId('real-performance-section');
+    const trades = screen.getByTestId('dashboard-trades-section');
+    expect(real.closest('details')).toBeNull();
+    expect(real.compareDocumentPosition(trades) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(container.querySelector('.dashboard-root')?.lastElementChild).toBe(trades);
+    expect(screen.getByText('⚠️ هشدار واقعی پراپ').closest('details')).toBeNull();
+    expect(within(real).getByText(/700 IRR/)).toBeInTheDocument();
+    expect(within(trades).getByText('+95.00 IRR')).toBeInTheDocument();
+    const openCard = within(trades).getByText('📂 معاملات باز').closest('.app-card')!;
+    expect(openCard.querySelector('tbody tr td:last-child')).toHaveTextContent('—');
+    expect(screen.getByTestId('dashboard-finance-details')).not.toHaveAttribute('open');
+    fireEvent.click(within(trades).getByRole('button', { name: /مشاهده همه/ }));
+    expect(onNavigate).toHaveBeenCalledWith('trades');
   });
 });

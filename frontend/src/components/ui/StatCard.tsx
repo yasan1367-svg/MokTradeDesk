@@ -1,7 +1,7 @@
-import type { ReactNode } from 'react';
+import type { CSSProperties, ReactNode } from 'react';
 
 interface StatCardProps {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string | number;
   change?: string;
@@ -87,19 +87,11 @@ export default function StatCard({
 
   return (
     <div
-      className="group bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-5 relative overflow-hidden cursor-pointer transition-all duration-300 shadow-md hover:-translate-y-1.5 hover:border-[var(--border-accent)]"
-      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = cfg.hoverShadow; }}
-      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = ''; }}
+      className="app-card stat-card group p-5 relative overflow-hidden cursor-default"
+      style={{ '--stat-tint': `var(--kpi-${color}-tint)` } as CSSProperties}
     >
-      <div className={`absolute top-0 right-0 left-0 h-1 bg-gradient-to-r ${cfg.top} opacity-0 group-hover:opacity-100 transition-opacity`} />
-
-      <div
-        className="absolute -top-[60px] -left-[60px] w-[120px] h-[120px] rounded-full pointer-events-none transition-all duration-500 group-hover:-top-10 group-hover:-left-10 group-hover:w-40 group-hover:h-40"
-        style={{ background: `radial-gradient(circle, ${cfg.glow}, transparent 70%)` }}
-      />
-
       <div className="flex justify-between items-start mb-3.5 relative">
-        <div className={`w-[46px] h-[46px] rounded-[14px] flex items-center justify-center text-[22px] ${cfg.icon}`}>
+        <div className={`w-8 h-8 rounded-[10px] flex items-center justify-center text-base ${cfg.icon}`}>
           {icon}
         </div>
         {change && (
@@ -110,7 +102,7 @@ export default function StatCard({
       </div>
 
       <div className="text-xs text-[var(--text-secondary)] mb-1.5 font-medium relative">{label}</div>
-      <div className={`text-3xl font-extrabold tracking-tight leading-tight ${cfg.value} relative`}>
+      <div className={`stat-value font-extrabold tabular-nums tracking-tight leading-tight ${cfg.value} relative`}>
         {value}
       </div>
 

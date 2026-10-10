@@ -13,7 +13,7 @@ interface CardHeaderProps {
 
 export function Card({ children, className = '' }: CardProps) {
   return (
-    <div className={`bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[20px] p-5 shadow-md hover:shadow-lg transition-shadow ${className}`}>
+    <div className={`app-card p-5 ${className}`}>
       {children}
     </div>
   );
@@ -21,8 +21,8 @@ export function Card({ children, className = '' }: CardProps) {
 
 export function CardHeader({ title, subtitle, action }: CardHeaderProps) {
   return (
-    <div className="flex justify-between items-center mb-5 pb-3.5 border-b border-[var(--border-subtle)]">
-      <div>
+    <div className="card-heading flex justify-between items-center flex-wrap gap-3 mb-5">
+      <div className="min-w-0">
         <div className="text-[15px] font-bold flex items-center gap-2 text-[var(--text-primary)]">{title}</div>
         {subtitle && <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{subtitle}</div>}
       </div>

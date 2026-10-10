@@ -1,151 +1,99 @@
 import { useState } from 'react';
+import { LayoutDashboard, ChartLine, Scale, Target, ClipboardList, BookOpen, Wallet, Building2, ArrowDownToLine, CalendarDays, Shield, Upload, Menu, X, Zap, ChevronDown } from 'lucide-react';
+import type { LucideIcon } from 'lucide-react';
 
 interface SidebarProps {
   currentPage: string;
   onNavigate: (page: string) => void;
 }
 
-const NAV_GROUPS = [
-  {
-    label: 'عملیات',
-    items: [
-      { key: 'dashboard', icon: '📊', label: 'داشبورد' },
-      { key: 'analysis', icon: '📈', label: 'تحلیل' },
-      { key: 'comparison', icon: '⚖️', label: 'مقایسه' },
-    ],
-  },
-  {
-  label: 'تحقیق و توسعه',
-  items: [
-    { key: 'strategy', icon: '🎯', label: 'استراتژی' },
-    { key: 'trades', icon: '📋', label: 'معاملات' },
-    { key: 'journal', icon: '📔', label: 'ژورنال' },
-  ],
-},
-  {
-    label: 'مالی',
-    items: [
-      { key: 'finance', icon: '💰', label: 'مالی' },
-    ],
-  },
-  {
-    label: 'حساب‌ها',
-    items: [
-      { key: 'prop', icon: '🏢', label: 'پراپ' },
-      { key: 'payouts', icon: '💸', label: 'برداشت‌ها' },
-      { key: 'brokers', icon: '🏢', label: 'بروکرها' },
-    ],
-  },
-  {
-    label: 'سیستم',
-    items: [
-      { key: 'calendar', icon: '📅', label: 'تقویم' },
-      { key: 'risk', icon: '🛡️', label: 'مدیریت ریسک' },
-      { key: 'import', icon: '📥', label: 'واردات' },
-    ],
-  },
+const PRIMARY_ITEMS: { key: string; icon: LucideIcon; label: string }[] = [
+  { key: 'dashboard', icon: LayoutDashboard, label: 'داشبورد' },
+  { key: 'trades', icon: ClipboardList, label: 'معاملات' },
+  { key: 'analysis', icon: ChartLine, label: 'تحلیل' },
+  { key: 'finance', icon: Wallet, label: 'مالی' },
+  { key: 'prop', icon: Building2, label: 'پراپ' },
+];
+
+const OTHER_GROUPS = [
+  { label: 'تحقیق و توسعه', items: [
+    { key: 'comparison', icon: Scale, label: 'مقایسه' },
+    { key: 'strategy', icon: Target, label: 'استراتژی' },
+    { key: 'journal', icon: BookOpen, label: 'ژورنال' },
+  ] },
+  { label: 'حساب‌ها', items: [
+    { key: 'payouts', icon: ArrowDownToLine, label: 'برداشت‌ها' },
+    { key: 'brokers', icon: Building2, label: 'بروکرها' },
+  ] },
+  { label: 'سیستم', items: [
+    { key: 'calendar', icon: CalendarDays, label: 'تقویم' },
+    { key: 'risk', icon: Shield, label: 'مدیریت ریسک' },
+    { key: 'import', icon: Upload, label: 'واردات' },
+  ] },
 ];
 
 export default function Sidebar({ currentPage, onNavigate }: SidebarProps) {
   const [mobileOpen, setMobileOpen] = useState(false);
+  const secondaryActive = OTHER_GROUPS.some(group => group.items.some(item => item.key === currentPage));
 
   const handleNavigate = (key: string) => {
     onNavigate(key);
     setMobileOpen(false);
   };
 
-  const navContent = ({ isMobile }: { isMobile?: boolean }) => (
+  const renderItem = ({ key, icon: Icon, label }: typeof PRIMARY_ITEMS[number]) => (
+    <button
+      type="button"
+      key={key}
+      onClick={() => handleNavigate(key)}
+      className={`sidebar-item ${currentPage === key ? 'is-active' : ''}`}
+      aria-current={currentPage === key ? 'page' : undefined}
+    >
+      <Icon size={18} strokeWidth={1.7} aria-hidden="true" />
+      <span>{label}</span>
+    </button>
+  );
+
+  const navContent = (
     <>
-      {!isMobile && (
-        <div className="px-5 pb-7 flex items-center gap-3">
-          <div
-            className="w-12 h-12 rounded-[14px] flex items-center justify-center text-2xl text-white shadow-[0_8px_20px_rgba(63,124,255,0.4)] shrink-0"
-            style={{ background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' }}
-          >
-            ⚡
-          </div>
-          <div>
-            <div className="text-2xl font-extrabold text-white leading-tight">MokTradeDesk</div>
-            <div className="text-[12px] text-[#5A6B80] tracking-wider mt-0.5">Analyze • Improve • Grow</div>
-          </div>
+      <div className="sidebar-brand">
+        <div className="sidebar-brand-mark"><Zap size={21} aria-hidden="true" /></div>
+        <div className="min-w-0">
+          <div className="text-[1.3077rem] font-extrabold text-white tracking-tight">MokTradeDesk</div>
+          <div className="text-[.7692rem] text-[var(--sidebar-text-muted)] mt-1" dir="ltr">Analyze · Improve · Grow</div>
         </div>
-      )}
-
-      {NAV_GROUPS.map((group) => (
-        <div key={group.label} className="mb-2">
-          <div className="px-5 py-3 pb-1 text-[11px] text-[#5A6B80] uppercase tracking-wider font-medium">
-            {group.label}
-          </div>
-          {group.items.map((item) => {
-            const isActive = currentPage === item.key;
-            return (
-              <div
-                key={item.key}
-                onClick={() => handleNavigate(item.key)}
-                className={`group flex items-center gap-3 mx-3 px-5 py-3.5 rounded-[10px] cursor-pointer text-[17px] transition-all relative ${
-                  isActive
-                    ? 'font-semibold'
-                    : 'text-[#A8B8CC] font-normal hover:text-[#E8EDEE] hover:bg-[#1A2733]'
-                }`}
-                style={isActive ? {
-                  color: '#FFFFFF',
-                  background: 'linear-gradient(90deg, rgba(63,124,255,0.20), transparent)',
-                } : undefined}
-              >
-                {isActive && (
-                  <div className="absolute right-[-12px] top-2.5 bottom-2.5 w-[3px] bg-[#3F7CFF] rounded-r-sm" />
-                )}
-                <span className={`text-xl w-6 text-center ${isActive ? 'text-white' : 'text-[#7A8FA8] group-hover:text-[var(--accent)]'}`}>{item.icon}</span>
-                <span>{item.label}</span>
-              </div>
-            );
-          })}
-        </div>
-      ))}
-
-      <div className="mt-auto px-5 py-4 border-t border-white/[0.08] flex items-center gap-3">
-        <div
-          className="w-12 h-12 rounded-full flex items-center justify-center text-sm font-bold text-[var(--accent-strong)] shadow-[0_4px_10px_rgba(0,0,0,0.15)] shrink-0"
-          style={{ background: 'linear-gradient(135deg, var(--accent-light), var(--accent-light))' }}
-        >
-          ی‌م
-        </div>
-        <div>
-          <div className="text-[16px] font-bold text-white">یوسف مکاری</div>
-          <div className="text-[12px] text-[var(--sidebar-text-muted)]">Pro Trader</div>
-        </div>
+      </div>
+      <nav aria-label="ناوبری اصلی" className="flex-1">
+        {PRIMARY_ITEMS.map(renderItem)}
+        <details key={secondaryActive ? 'secondary-active' : 'secondary-idle'} open={secondaryActive || undefined} className="sidebar-more">
+          <summary>سایر بخش‌ها <ChevronDown size={15} aria-hidden="true" /></summary>
+          {OTHER_GROUPS.map(group => (
+            <div key={group.label}>
+              <div className="sidebar-group-label">{group.label}</div>
+              {group.items.map(renderItem)}
+            </div>
+          ))}
+        </details>
+      </nav>
+      <div className="sidebar-profile">
+        <div className="sidebar-avatar">ی‌م</div>
+        <div><div className="font-semibold text-white">یوسف مکاری</div><div className="text-[.8462rem] text-[var(--sidebar-text-muted)]">Pro Trader</div></div>
       </div>
     </>
   );
 
   return (
     <>
-      {/* همبرگر موبایل */}
-      <button
-        onClick={() => setMobileOpen(!mobileOpen)}
-        className="fixed top-4 right-4 z-50 lg:hidden w-10 h-10 rounded-xl bg-[var(--bg-sidebar)] border border-[var(--border-medium)] flex items-center justify-center text-white text-lg shadow-lg"
-        aria-label="منو"
-      >
-        {mobileOpen ? '✕' : '☰'}
+      <button type="button" onClick={() => setMobileOpen(!mobileOpen)} className="fixed top-4 right-4 z-50 md:hidden w-10 h-10 rounded-xl bg-[var(--bg-sidebar)] border border-[var(--sidebar-active-border)] flex items-center justify-center text-white shadow-lg" aria-label={mobileOpen ? 'بستن منو' : 'منو'} aria-expanded={mobileOpen} aria-controls={mobileOpen ? 'mobile-sidebar' : undefined}>
+        {mobileOpen ? <X size={20} /> : <Menu size={20} />}
       </button>
-
-      {/* سایدبرگ دسکتاپ */}
-      <aside className="hidden lg:flex w-[260px] bg-[#0F1720] text-[#A8B8CC] flex-col py-5 overflow-y-auto shadow-[4px_0_24px_rgba(21,34,56,0.15)] z-10 shrink-0">
-        {navContent({})}
+      <aside className="app-sidebar hidden md:flex w-[208px] xl:w-[238px] flex-col overflow-y-auto shrink-0">
+        {navContent}
       </aside>
-
-      {/* اوورلی موبایل */}
       {mobileOpen && (
-        <div className="fixed inset-0 bg-black/50 z-40 lg:hidden" onClick={() => setMobileOpen(false)}>
-          <aside
-            className="w-[280px] h-full bg-[#0F1720] text-[#A8B8CC] flex flex-col py-5 overflow-y-auto shadow-xl"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="flex justify-between items-center px-5 pb-3">
-              <span className="text-[var(--sidebar-text-muted)] text-xs font-bold">📋 منوی ناوبری</span>
-              <button onClick={() => setMobileOpen(false)} className="text-[var(--sidebar-text)] hover:text-white text-xl">✕</button>
-            </div>
-            {navContent({ isMobile: true })}
+        <div className="fixed inset-0 bg-black/50 z-40 md:hidden" onClick={() => setMobileOpen(false)}>
+          <aside id="mobile-sidebar" aria-label="منوی ناوبری" className="app-sidebar flex flex-col w-[280px] max-w-[calc(100vw-32px)] h-full overflow-y-auto" onClick={event => event.stopPropagation()}>
+            {navContent}
           </aside>
         </div>
       )}

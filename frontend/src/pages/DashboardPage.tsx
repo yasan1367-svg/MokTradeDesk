@@ -1,4 +1,5 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
+import { Wallet, Target, Scale, TrendingDown, ClipboardList, TrendingUp, Trophy, TriangleAlert } from 'lucide-react';
 import { PieChart, Pie, Cell, BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, AreaChart, Area } from 'recharts';
 import StatCard from '../components/ui/StatCard';
 import KpiCard from '../components/ui/KpiCard';
@@ -352,8 +353,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const quickBtn =
     'w-10 h-10 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] flex items-center justify-center cursor-pointer text-base text-[var(--text-secondary)] transition-all hover:bg-[var(--accent-soft)] hover:border-[var(--border-accent)] hover:text-[var(--accent)] disabled:opacity-50';
 
+  const renderRangeFilter = (filter: typeof RANGE_FILTERS[number]) => (
+    <button type="button" key={filter.key} onClick={() => setRangeKey(filter.key)} className="dashboard-filter-button" aria-pressed={rangeKey === filter.key}>
+      {filter.label}
+    </button>
+  );
+
   return (
-    <div className="space-y-7">
+    <div className="dashboard-root">
       <ErrorBoundary label="Dashboard header and filters">
       {/* هدر */}
       <div className="flex justify-between items-center flex-wrap gap-3">
@@ -387,7 +394,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           </InfoTooltip>
           <button
             onClick={handleExportPdf}
-            className="bg-[var(--loss)] hover:bg-[var(--loss)]/80 text-white px-5 py-2.5 rounded-xl text-sm flex items-center gap-1 transition-all"
+            className="bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] px-4 py-2.5 rounded-xl text-xs flex items-center gap-1 hover:bg-[var(--accent-soft)] transition-colors"
           >
             📄 گزارش PDF
           </button>
@@ -395,57 +402,44 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       </div>
 
       {/* فیلتر بازه زمانی (فاز ۱۴.۳) */}
-      <div className="bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[22px] p-4">
-        <div className="flex items-center gap-2 flex-wrap">
-          <span className="text-xs font-bold text-[var(--text-secondary)] ml-1">🔎 بازه:</span>
-          {RANGE_FILTERS.map((f) => (
-            <button
-              key={f.key}
-              onClick={() => setRangeKey(f.key)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                rangeKey === f.key
-                  ? 'text-white shadow-[0_4px_12px_rgba(63,124,255,0.3)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
-              }`}
-              style={rangeKey === f.key ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
-            >
-              {f.icon} {f.label}
-            </button>
-          ))}
+      <div className="dashboard-filters">
+        <div className="dashboard-filter-group">
+          <span className="text-xs text-[var(--text-secondary)] ml-1">بازه زمانی</span>
+          {RANGE_FILTERS.filter(filter => ['today', 'week', 'month', 'all'].includes(filter.key)).map(renderRangeFilter)}
+          <details className="dashboard-filter-more" open={['yesterday', 'quarter', 'year', 'custom'].includes(rangeKey) || undefined}>
+            <summary>بازه‌های بیشتر</summary>
+            <div>{RANGE_FILTERS.filter(filter => ['yesterday', 'quarter', 'year', 'custom'].includes(filter.key)).map(renderRangeFilter)}</div>
+          </details>
         </div>
         {/* فاز ۴۴.۱: انتخاب دامنه (واقعی/بک‌تست/فوروارد/همه) */}
-        <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-[var(--border-subtle)]">
-          <span className="text-xs font-bold text-[var(--text-secondary)] ml-1">🎯 دامنه:</span>
+        <div className="dashboard-filter-group">
+          <span className="text-xs text-[var(--text-secondary)] ml-1">دامنه</span>
           {SCOPE_FILTERS.map((f) => (
             <button
               key={f.key}
               onClick={() => setScope(f.key)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${
-                scope === f.key
-                  ? 'text-white shadow-[0_4px_12px_rgba(121,89,255,0.3)]'
-                  : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'
-              }`}
-              style={scope === f.key ? { background: 'linear-gradient(135deg, var(--purple), var(--accent))' } : {}}
+              className="dashboard-filter-button"
+              aria-pressed={scope === f.key}
             >
               {f.label}
             </button>
           ))}
         </div>
-        <div className="flex items-center gap-2 flex-wrap mt-3 pt-3 border-t border-[var(--border-subtle)]">
-          <span className="text-xs font-bold text-[var(--text-secondary)] ml-1">💱 ارز:</span>
+        <div className="dashboard-filter-group">
+          <span className="text-xs text-[var(--text-secondary)] ml-1">ارز</span>
           {(['USDT', 'IRR'] as CurrencyCode[]).map((value) => (
             <button
               key={value}
               onClick={() => setCurrency(value)}
-              className={`px-4 py-2 rounded-xl text-sm font-bold transition-all ${currency === value ? 'text-white' : 'text-[var(--text-secondary)] hover:text-[var(--text-primary)] hover:bg-[var(--bg-base)]'}`}
-              style={currency === value ? { background: 'linear-gradient(135deg, var(--accent), var(--accent-strong))' } : {}}
+              className="dashboard-filter-button"
+              aria-pressed={currency === value}
             >
               {value}
             </button>
           ))}
         </div>
         {rangeKey === 'custom' && (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3 pt-3 border-t border-[var(--border-subtle)]">
+          <div className="w-full grid grid-cols-1 md:grid-cols-2 gap-3 pt-3 border-t border-[var(--border-subtle)]">
             <PersianDateInput label="از تاریخ" value={customFrom} onChange={setCustomFrom} />
             <PersianDateInput label="تا تاریخ" value={customTo} onChange={setCustomTo} />
           </div>
@@ -454,17 +448,17 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       {/* ۵ KPI اصلی */}
       {data && (
-        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+        <div className="dashboard-kpis">
           <KpiCard
             index={0}
-            icon="💰"
+            icon={<Wallet size={17} aria-hidden="true" />}
             label="سود و زیان خالص"
             value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
             valueColor="profit"
           />
           <KpiCard
             index={1}
-            icon="🎯"
+            icon={<Target size={17} aria-hidden="true" />}
             label="نرخ برد"
             value={`${data.summary?.win_rate?.toFixed(1) || 0}%`}
             valueColor="accent"
@@ -472,7 +466,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           />
           <KpiCard
             index={2}
-            icon="⚖️"
+            icon={<Scale size={17} aria-hidden="true" />}
             label="فاکتور سود"
             value={
               data.summary?.profit_factor_status === 'no_data'
@@ -486,7 +480,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           />
           <KpiCard
             index={3}
-            icon="📉"
+            icon={<TrendingDown size={17} aria-hidden="true" />}
             label="افت سرمایه"
             value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
             valueColor="loss"
@@ -494,7 +488,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           />
           <KpiCard
             index={4}
-            icon="📋"
+            icon={<ClipboardList size={17} aria-hidden="true" />}
             label="معاملات بسته"
             value={data.summary?.closed_trades || 0}
             valueColor="warning"
@@ -504,87 +498,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       </ErrorBoundary>
 
-      {/* کارت‌های آماری — پول واقعی (فاز ۱۰-C-۳-A) */}
-      <ErrorBoundary label="کارت‌های آماری">
-      {(!realSummary || (realSummary.total_trades ?? 0) === 0) ? (
-        <Card className="[&>div]:!py-6 [&>div>div:first-child]:!text-[40px] [&>div>div:first-child]:!mb-2">
-          <EmptyState
-            icon="📊"
-            title="هنوز معاملات پول واقعی ندارید"
-            description="معاملات مرحله ۳ پراپ یا بروکر شخصی شما اینجا نمایش داده می‌شوند."
-          />
-          <button
-            type="button"
-            onClick={() => onNavigate?.('prop')}
-            className="mt-2 text-xs text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
-          >
-            برای مشاهده معاملات پول واقعی، به صفحه پراپ یا بروکر شخصی مراجعه کنید.
-          </button>
-        </Card>
-      ) : (
-      <>
-      <div className="text-xs text-[var(--text-secondary)] font-bold mb-2 text-center">
-        پول واقعی — مرحله ۳ پراپ + بروکر شخصی
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-5">
-        <StatCard
-          icon="💰"
-          label="سود خالص"
-          value={`${realSummary.net_pnl >= 0 ? '+' : ''}${realSummary.net_pnl} ${currency} `}
-          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
-          changeType={realSummary.net_pnl >= 0 ? 'up' : 'down'}
-          color="profit"
-          sparkData={realSummary.sparkline && realSummary.sparkline.length > 0 ? realSummary.sparkline : [0]}
-        />
-        <StatCard
-          icon="📈"
-          label="نرخ برد"
-          value={`${realSummary.win_rate.toFixed(1)}٪`}
-          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
-          changeType="neutral"
-          color="accent"
-          chart={<MiniPie wins={realSummary.winning_trades ?? 0} losses={realSummary.losing_trades ?? 0} />}
-        />
-        <StatCard
-          icon="🏆"
-          label="فاکتور سود"
-          value={realSummary.profit_factor >= 999 ? '∞' : realSummary.profit_factor.toFixed(2)}
-          change="—"
-          changeType="neutral"
-          color="purple"
-          chart={<MiniBars
-            data={[
-              { label: 'سود ناخالص', value: realSummary.gross_profit ?? 0 },
-              { label: 'زیان ناخالص', value: realSummary.gross_loss ?? 0 },
-            ]}
-            colors={['var(--profit)', 'var(--loss)']}
-            currency={currency}
-          />}
-        />
-        <StatCard
-          icon="⚠️"
-          label="حداکثر ضرر"
-          value={`-${realSummary.max_dd} ${currency} `}
-          change="—"
-          changeType="neutral"
-          color="loss"
-          chart={<MiniBars
-            data={[
-              { label: 'مجموع زیان', value: realSummary.gross_loss ?? 0 },
-              { label: 'حداکثر افت', value: realSummary.max_dd ?? 0 },
-            ]}
-            colors={['var(--loss)', 'var(--loss-border)']}
-            currency={currency}
-          />}
-        />
-      </div>
-      </>
-      )}
-      </ErrorBoundary>
-
-      <ErrorBoundary label="Today">
+      <div className="dashboard-overview" data-testid="dashboard-overview">
+        <ErrorBoundary label="منحنی سرمایه"><Card>
+          <CardHeader title="📉 منحنی سرمایه" subtitle={`${(equity_curve || []).length} روز`} />
+          <EquityCurveChart data={equity_curve || []} height={240} currency={currency} />
+        </Card></ErrorBoundary>
+        <ErrorBoundary label="Today">
       {/* کارت وضعیت امروز (فاز ۱۴.۲ — بالای همه) */}
-      <div className="dashboard-card relative p-5 flex justify-between items-center flex-wrap gap-7 overflow-hidden">
+      <div className="dashboard-card dashboard-today relative p-5 overflow-hidden">
         <div
           className="absolute top-0 right-0 left-0 h-1"
           style={{ background: 'linear-gradient(90deg, var(--accent), var(--purple), var(--profit))' }}
@@ -626,20 +547,20 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           </div>
         </div>
 
-        <div className="relative z-10 flex gap-4 flex-wrap">
-          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+        <div className="dashboard-periods relative z-10">
+          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">این ماه</div>
             <div className={`text-lg font-extrabold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
             </div>
           </div>
-          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">این فصل</div>
             <div className={`text-lg font-extrabold ${periods.quarter.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
             </div>
           </div>
-          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-[120px]">
+          <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">امسال</div>
             <div className={`text-lg font-extrabold ${periods.year.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
               {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
@@ -649,76 +570,10 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       </div>
 
       </ErrorBoundary>
-
-      <ErrorBoundary label="Yesterday">
-      {/* کارت روز گذشته (فاز ۱۴.۲) */}
-      <div className="dashboard-card p-5">
-        <div className="dashboard-card-header">
-          <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
-            <span style={{ color: 'var(--accent)' }}>🌙</span>
-          </div>
-          <div>
-            <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
-              {`روز گذشته${yesterday ? ` — ${yesterday.day_of_week} ${yesterday.date}` : ''}`}
-            </h3>
-            {yesterday && <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{yesterday.total_trades} معامله</div>}
-          </div>
-        </div>
-        {yesterday ? (
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
-            <div className="space-y-3">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-[var(--text-secondary)]">سود / زیان</span>
-                <span className={`text-xl font-extrabold ${yesterday.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {yesterday.net_pnl >= 0 ? '+' : ''}{yesterday.net_pnl} {currency}
-                </span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[var(--text-secondary)]">Win Rate</span>
-                <span className="font-bold text-[var(--text-primary)]">{yesterday.win_rate.toFixed(1)}٪</span>
-              </div>
-              <div className="flex items-center justify-between text-sm">
-                <span className="text-[var(--text-secondary)]">برد / باخت</span>
-                <span className="font-bold">
-                  <span className="text-[var(--profit)]">{yesterday.winning_trades}</span>
-                  {' / '}
-                  <span className="text-[var(--loss)]">{yesterday.losing_trades}</span>
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-2 pt-1">
-                {(['prop', 'personal', 'simulation'] as const).map((k) => (
-                  <span
-                    key={k}
-                    className="text-xs px-2.5 py-1 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
-                  >
-                    {k === 'prop' ? '🏢 پراپ' : k === 'personal' ? '👤 شخصی' : '🧪 شبیه‌سازی'}: {yesterday.by_source?.[k]?.trades ?? 0}
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div>
-              <MiniBars
-                data={[
-                  { label: 'پراپ', value: Math.abs(yesterday.by_source?.prop?.pnl ?? 0) },
-                  { label: 'شخصی', value: Math.abs(yesterday.by_source?.personal?.pnl ?? 0) },
-                  { label: 'شبیه‌سازی', value: Math.abs(yesterday.by_source?.simulation?.pnl ?? 0) },
-                ]}
-                colors={['var(--accent)', 'var(--purple)', 'var(--profit)']}
-                height={120}
-                currency={currency}
-              />
-              <div className="text-xs text-[var(--text-secondary)] text-center mt-1">تفکیک بر اساس منبع (قدرمطلق سود/زیان)</div>
-            </div>
-          </div>
-        ) : (
-          <div className="text-[var(--text-muted)] text-center py-6 text-sm">داده‌ای برای روز گذشته نیست</div>
-        )}
       </div>
 
-      </ErrorBoundary>
-
-      <ErrorBoundary label="Active Prop Stage">
-        <div className="dashboard-card p-5">
+      <div className="dashboard-pair" data-testid="prop-backtest-pair">
+        <ErrorBoundary label="Active Prop Stage"><div className="dashboard-card dashboard-prop p-5">
           <div className="dashboard-card-header">
             <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
               <span style={{ color: 'var(--accent)' }}>🏢</span>
@@ -809,9 +664,91 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               })}
             </div>
           )}
+        </div></ErrorBoundary>
+        <ErrorBoundary label="عملکرد بک‌تست">
+        <div className="dashboard-card dashboard-backtest p-5">
+          <div className="dashboard-card-header">
+            <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+              <span style={{ color: 'var(--accent)' }}>📊</span>
+            </div>
+            <div className="flex items-center justify-between gap-3 flex-1">
+              <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>عملکرد بک‌تست</h3>
+              <select
+                value={selectedVersionId ?? ''}
+                onChange={(event) => setSelectedVersionId(Number(event.target.value) || null)}
+                className="max-w-[220px] bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
+                aria-label="انتخاب نسخه برای عملکرد بک‌تست"
+              >
+                {versions.length === 0 && <option value="">نسخه‌ای موجود نیست</option>}
+                {versions.map((version) => (
+                  <option key={version.id} value={version.id}>
+                    {version.strategy_name} — {version.version_name}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </div>
+          {versions.length === 0 ? (
+            <EmptyState icon="📊" title="نسخه‌ای برای بک‌تست وجود ندارد" />
+          ) : backtestLoading ? (
+            <div className="text-sm text-[var(--text-muted)] py-5 text-center">در حال بارگذاری عملکرد بک‌تست…</div>
+          ) : backtestSummary ? (
+            <>
+              <div className="grid grid-cols-2 xl:grid-cols-4 gap-3">
+                <StatCard
+                  icon={<Wallet size={17} aria-hidden="true" />}
+                  label="سود خالص بک‌تست"
+                  value={`${Number(backtestSummary.summary?.net_pnl || 0).toLocaleString('en-US')} USDT`}
+                  color={(backtestSummary.summary?.net_pnl || 0) >= 0 ? 'profit' : 'loss'}
+                  sparkData={backtestSummary.sparkline || [0]}
+                />
+                <StatCard
+                  icon={<TrendingUp size={17} aria-hidden="true" />}
+                  label="نرخ برد"
+                  value={`${Number(backtestSummary.summary?.win_rate || 0).toFixed(1)}٪`}
+                  color="accent"
+                  sparkData={[0]}
+                />
+                <StatCard
+                  icon={<Trophy size={17} aria-hidden="true" />}
+                  label="Profit Factor"
+                  value={Number(backtestSummary.summary?.profit_factor || 0) >= 999 ? '∞' : Number(backtestSummary.summary?.profit_factor || 0).toFixed(2)}
+                  color="purple"
+                  sparkData={[0]}
+                />
+                <StatCard
+                  icon={<TrendingDown size={17} aria-hidden="true" />}
+                  label="افت سرمایه بک‌تست"
+                  value={`${Number(backtestSummary.summary?.max_dd || 0).toLocaleString('en-US')} USDT`}
+                  color="loss"
+                  sparkData={[0]}
+                />
+              </div>
+              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
+                <span className="text-xs text-[var(--text-secondary)]">
+                  {Number(backtestSummary.summary?.closed_trades || 0)} معامله · R-Multiple: {backtestSummary.summary?.avg_r_multiple == null ? '—' : Number(backtestSummary.summary.avg_r_multiple).toFixed(2)}
+                </span>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (selectedVersionId !== null) {
+                      localStorage.setItem('analysis_selected_version', String(selectedVersionId));
+                      onNavigate?.('analysis');
+                    }
+                  }}
+                  className="text-xs font-bold text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+                >
+                  برو به تحلیل کامل ←
+                </button>
+              </div>
+            </>
+          ) : (
+            <EmptyState icon="📊" title="دادهٔ بک‌تستی برای نسخهٔ انتخاب‌شده موجود نیست" />
+          )}
         </div>
-
-{alerts.length > 0 && (
+      </ErrorBoundary>
+      </div>
+      <ErrorBoundary label="هشدارهای پراپ">{alerts.length > 0 && (
         <Card>
           <CardHeader title="🔔 هشدارهای پراپ" subtitle={`${alerts.length} هشدار فعال`} />
           <div className="space-y-2 max-h-48 overflow-y-auto">
@@ -835,13 +772,234 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             })}
           </div>
         </Card>
+      )}</ErrorBoundary>
+
+      <section aria-labelledby="real-performance-title" data-testid="real-performance-section">
+        <div className="dashboard-section-heading"><h2 id="real-performance-title">عملکرد پول واقعی</h2><p>مرحله ۳ پراپ + بروکر شخصی</p></div>
+        <ErrorBoundary label="کارت‌های آماری">
+      {(!realSummary || (realSummary.total_trades ?? 0) === 0) ? (
+        <Card className="[&>div]:!py-6 [&>div>div:first-child]:!text-[40px] [&>div>div:first-child]:!mb-2">
+          <EmptyState
+            icon="📊"
+            title="هنوز معاملات پول واقعی ندارید"
+            description="معاملات مرحله ۳ پراپ یا بروکر شخصی شما اینجا نمایش داده می‌شوند."
+          />
+          <button
+            type="button"
+            onClick={() => onNavigate?.('prop')}
+            className="mt-2 text-xs text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
+          >
+            برای مشاهده معاملات پول واقعی، به صفحه پراپ یا بروکر شخصی مراجعه کنید.
+          </button>
+        </Card>
+      ) : (
+      <>
+
+      <div className="dashboard-real-stats grid grid-cols-1 md:grid-cols-2 xl:grid-cols-4 gap-5">
+        <StatCard
+          icon={<Wallet size={17} aria-hidden="true" />}
+          label="سود خالص"
+          value={`${realSummary.net_pnl >= 0 ? '+' : ''}${realSummary.net_pnl} ${currency} `}
+          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
+          changeType={realSummary.net_pnl >= 0 ? 'up' : 'down'}
+          color="profit"
+          sparkData={realSummary.sparkline && realSummary.sparkline.length > 0 ? realSummary.sparkline : [0]}
+        />
+        <StatCard
+          icon={<TrendingUp size={17} aria-hidden="true" />}
+          label="نرخ برد"
+          value={`${realSummary.win_rate.toFixed(1)}٪`}
+          change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
+          changeType="neutral"
+          color="accent"
+          chart={<MiniPie wins={realSummary.winning_trades ?? 0} losses={realSummary.losing_trades ?? 0} />}
+        />
+        <StatCard
+          icon={<Trophy size={17} aria-hidden="true" />}
+          label="فاکتور سود"
+          value={realSummary.profit_factor >= 999 ? '∞' : realSummary.profit_factor.toFixed(2)}
+          change="—"
+          changeType="neutral"
+          color="purple"
+          chart={<MiniBars
+            data={[
+              { label: 'سود ناخالص', value: realSummary.gross_profit ?? 0 },
+              { label: 'زیان ناخالص', value: realSummary.gross_loss ?? 0 },
+            ]}
+            colors={['var(--profit)', 'var(--loss)']}
+            currency={currency}
+          />}
+        />
+        <StatCard
+          icon={<TriangleAlert size={17} aria-hidden="true" />}
+          label="حداکثر ضرر"
+          value={`-${realSummary.max_dd} ${currency} `}
+          change="—"
+          changeType="neutral"
+          color="loss"
+          chart={<MiniBars
+            data={[
+              { label: 'مجموع زیان', value: realSummary.gross_loss ?? 0 },
+              { label: 'حداکثر افت', value: realSummary.max_dd ?? 0 },
+            ]}
+            colors={['var(--loss)', 'var(--loss-border)']}
+            currency={currency}
+          />}
+        />
+      </div>
+      </>
       )}
       </ErrorBoundary>
+      </section>
 
-      <ErrorBoundary label="Finance">
+      <details className="dashboard-detail" data-testid="dashboard-analysis-details">
+        <summary>تحلیل تکمیلی <span className="text-xs font-normal text-[var(--text-secondary)]">برد و باخت، توزیع سود و زیان و اهداف</span></summary>
+        <div className="dashboard-detail-body">
+          <ErrorBoundary label="نمودارها"><div className="grid grid-cols-1 lg:grid-cols-2 gap-5"><Card>
+          <CardHeader
+            title="🥧 برد / باخت"
+            subtitle={win_loss ? `${(win_loss.wins || 0) + (win_loss.losses || 0)} معامله بسته` : undefined}
+          />
+          <WinLossPieChart wins={win_loss?.wins ?? 0} losses={win_loss?.losses ?? 0} height={240} />
+        </Card><Card>
+          <CardHeader title="📊 توزیع سود/زیان" subtitle="تعداد معاملات در هر بازه" />
+          <PnLDistributionChart data={pnl_distribution || []} height={240} />
+        </Card></div></ErrorBoundary>
+          <ErrorBoundary label="Prop goals">
+        {/* پیشرفت اهداف (ماهانه/فصلی/سالانه) */}
         <Card>
-        <CardHeader title="💰 مالی" />
-        <div className="space-y-4">
+          <CardHeader title="🎯 پیشرفت اهداف" subtitle="عملکرد واقعی بر اساس PnL" />
+          <div className="space-y-6">
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
+                <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.month.change_percent), 100)}
+                variant={periods.month.pnl >= 0 ? 'profit' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">نسبت به ماه قبل</span>
+                <span className={`text-xs font-bold ${periods.month.change_percent > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {periods.month.change_percent > 0 ? '+' : ''}{periods.month.change_percent}٪
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
+                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">از ابتدای فصل</span>
+                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
+                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                </span>
+              </div>
+            </div>
+
+            <div>
+              <div className="flex justify-between mb-2">
+                <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
+                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                </span>
+              </div>
+              <ProgressBar
+                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
+                variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
+              />
+              <div className="flex justify-between mt-1.5">
+                <span className="text-xs text-[var(--text-secondary)]">از ابتدای سال</span>
+                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                </span>
+              </div>
+            </div>
+          </div>
+        </Card>
+      </ErrorBoundary>
+          <details className="dashboard-detail"><summary>مقایسه با روز گذشته</summary><div className="dashboard-detail-body"><ErrorBoundary label="Yesterday">
+      {/* کارت روز گذشته (فاز ۱۴.۲) */}
+      <div className="dashboard-card p-5">
+        <div className="dashboard-card-header">
+          <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
+            <span style={{ color: 'var(--accent)' }}>🌙</span>
+          </div>
+          <div>
+            <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>
+              {`روز گذشته${yesterday ? ` — ${yesterday.day_of_week} ${yesterday.date}` : ''}`}
+            </h3>
+            {yesterday && <div className="text-[11px] text-[var(--text-muted)] mt-0.5">{yesterday.total_trades} معامله</div>}
+          </div>
+        </div>
+        {yesterday ? (
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <span className="text-sm text-[var(--text-secondary)]">سود / زیان</span>
+                <span className={`text-xl font-extrabold ${yesterday.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                  {yesterday.net_pnl >= 0 ? '+' : ''}{yesterday.net_pnl} {currency}
+                </span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--text-secondary)]">Win Rate</span>
+                <span className="font-bold text-[var(--text-primary)]">{yesterday.win_rate.toFixed(1)}٪</span>
+              </div>
+              <div className="flex items-center justify-between text-sm">
+                <span className="text-[var(--text-secondary)]">برد / باخت</span>
+                <span className="font-bold">
+                  <span className="text-[var(--profit)]">{yesterday.winning_trades}</span>
+                  {' / '}
+                  <span className="text-[var(--loss)]">{yesterday.losing_trades}</span>
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-2 pt-1">
+                {(['prop', 'personal', 'simulation'] as const).map((k) => (
+                  <span
+                    key={k}
+                    className="text-xs px-2.5 py-1 rounded-full bg-[var(--bg-base)] border border-[var(--border-subtle)] text-[var(--text-secondary)]"
+                  >
+                    {k === 'prop' ? '🏢 پراپ' : k === 'personal' ? '👤 شخصی' : '🧪 شبیه‌سازی'}: {yesterday.by_source?.[k]?.trades ?? 0}
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div>
+              <MiniBars
+                data={[
+                  { label: 'پراپ', value: Math.abs(yesterday.by_source?.prop?.pnl ?? 0) },
+                  { label: 'شخصی', value: Math.abs(yesterday.by_source?.personal?.pnl ?? 0) },
+                  { label: 'شبیه‌سازی', value: Math.abs(yesterday.by_source?.simulation?.pnl ?? 0) },
+                ]}
+                colors={['var(--accent)', 'var(--purple)', 'var(--profit)']}
+                height={120}
+                currency={currency}
+              />
+              <div className="text-xs text-[var(--text-secondary)] text-center mt-1">تفکیک بر اساس منبع (قدرمطلق سود/زیان)</div>
+            </div>
+          </div>
+        ) : (
+          <div className="text-[var(--text-muted)] text-center py-6 text-sm">داده‌ای برای روز گذشته نیست</div>
+        )}
+      </div>
+
+      </ErrorBoundary></div></details>
+        </div>
+      </details>
+      <details className="dashboard-detail" data-testid="dashboard-finance-details">
+        <summary>جزئیات مالی <span className="text-xs font-normal text-[var(--text-secondary)]">موجودی، جریان نقدی و دارایی شخصی</span></summary>
+        <div className="dashboard-detail-body"><ErrorBoundary label="Finance"><div><div className="space-y-4">
           <div className="text-sm font-bold text-[var(--text-secondary)] pb-2 border-b border-[var(--border-subtle)] mt-5">وضعیت حال</div>
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
         <Card>
@@ -958,178 +1116,49 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           )}
         </Card>
           </div>
-        </div>
-        </Card>
-      </ErrorBoundary>
+        </div></div></ErrorBoundary></div>
+      </details>
 
-      <ErrorBoundary label="Prop goals">
-        {/* پیشرفت اهداف (ماهانه/فصلی/سالانه) */}
-        <Card>
-          <CardHeader title="🎯 پیشرفت اهداف" subtitle="عملکرد واقعی بر اساس PnL" />
-          <div className="space-y-6">
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
-                <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.month.change_percent), 100)}
-                variant={periods.month.pnl >= 0 ? 'profit' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-xs text-[var(--text-secondary)]">نسبت به ماه قبل</span>
-                <span className={`text-xs font-bold ${periods.month.change_percent > 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.change_percent > 0 ? '+' : ''}{periods.month.change_percent}٪
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
-                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
-                variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-xs text-[var(--text-secondary)]">از ابتدای فصل</span>
-                <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
-                </span>
-              </div>
-            </div>
-
-            <div>
-              <div className="flex justify-between mb-2">
-                <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
-                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
-                </span>
-              </div>
-              <ProgressBar
-                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
-                variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
-              />
-              <div className="flex justify-between mt-1.5">
-                <span className="text-xs text-[var(--text-secondary)]">از ابتدای سال</span>
-                <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
-                </span>
-              </div>
-            </div>
-          </div>
-        </Card>
-      </ErrorBoundary>
-
-      {/* عملکرد بک‌تست نسخهٔ انتخاب‌شده */}
-      <ErrorBoundary label="عملکرد بک‌تست">
-        <div className="dashboard-card p-5">
-          <div className="dashboard-card-header">
-            <div className="dashboard-card-icon" style={{ background: 'rgba(63,124,255,0.10)' }}>
-              <span style={{ color: 'var(--accent)' }}>📊</span>
-            </div>
-            <div className="flex items-center justify-between gap-3 flex-1">
-              <h3 className="text-[13px] font-bold uppercase tracking-wider" style={{ color: 'var(--text-secondary)' }}>عملکرد بک‌تست</h3>
-              <select
-                value={selectedVersionId ?? ''}
-                onChange={(event) => setSelectedVersionId(Number(event.target.value) || null)}
-                className="max-w-[220px] bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-lg px-3 py-2 text-sm text-[var(--text-primary)]"
-                aria-label="انتخاب نسخه برای عملکرد بک‌تست"
-              >
-                {versions.length === 0 && <option value="">نسخه‌ای موجود نیست</option>}
-                {versions.map((version) => (
-                  <option key={version.id} value={version.id}>
-                    {version.strategy_name} — {version.version_name}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-          {versions.length === 0 ? (
-            <EmptyState icon="📊" title="نسخه‌ای برای بک‌تست وجود ندارد" />
-          ) : backtestLoading ? (
-            <div className="text-sm text-[var(--text-muted)] py-5 text-center">در حال بارگذاری عملکرد بک‌تست…</div>
-          ) : backtestSummary ? (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                <StatCard
-                  icon="💰"
-                  label="سود خالص بک‌تست"
-                  value={`${Number(backtestSummary.summary?.net_pnl || 0).toLocaleString('en-US')} USDT`}
-                  color={(backtestSummary.summary?.net_pnl || 0) >= 0 ? 'profit' : 'loss'}
-                  sparkData={backtestSummary.sparkline || [0]}
-                />
-                <StatCard
-                  icon="📈"
-                  label="نرخ برد"
-                  value={`${Number(backtestSummary.summary?.win_rate || 0).toFixed(1)}٪`}
-                  color="accent"
-                  sparkData={[0]}
-                />
-                <StatCard
-                  icon="🏆"
-                  label="Profit Factor"
-                  value={Number(backtestSummary.summary?.profit_factor || 0) >= 999 ? '∞' : Number(backtestSummary.summary?.profit_factor || 0).toFixed(2)}
-                  color="purple"
-                  sparkData={[0]}
-                />
-              </div>
-              <div className="flex flex-wrap items-center justify-between gap-3 mt-4">
-                <span className="text-xs text-[var(--text-secondary)]">
-                  {Number(backtestSummary.summary?.closed_trades || 0)} معامله · R-Multiple: {backtestSummary.summary?.avg_r_multiple == null ? '—' : Number(backtestSummary.summary.avg_r_multiple).toFixed(2)}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => {
-                    if (selectedVersionId !== null) {
-                      localStorage.setItem('analysis_selected_version', String(selectedVersionId));
-                      onNavigate?.('analysis');
-                    }
-                  }}
-                  className="text-xs font-bold text-[var(--accent)] hover:text-[var(--accent-strong)] transition-colors"
-                >
-                  برو به تحلیل کامل ←
-                </button>
-              </div>
-            </>
-          ) : (
-            <EmptyState icon="📊" title="دادهٔ بک‌تستی برای نسخهٔ انتخاب‌شده موجود نیست" />
-          )}
-        </div>
-      </ErrorBoundary>
-
-      {/* نمودارهای پایه (فاز ۱۴.۱) */}
-      <ErrorBoundary label="نمودارها">
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5">
-        <Card>
-          <CardHeader title="📉 منحنی سرمایه" subtitle={`${(equity_curve || []).length} روز`} />
-          <EquityCurveChart data={equity_curve || []} height={240} currency={currency} />
-        </Card>
-        <Card>
+      <section aria-labelledby="dashboard-trades-title" data-testid="dashboard-trades-section">
+        <div className="dashboard-section-heading"><h2 id="dashboard-trades-title">معاملات</h2><p>معاملات باز و آخرین معاملات بسته‌شده</p></div>
+        <ErrorBoundary label="معاملات"><div className="grid grid-cols-1 xl:grid-cols-2 gap-5"><Card>
           <CardHeader
-            title="🥧 برد / باخت"
-            subtitle={win_loss ? `${(win_loss.wins || 0) + (win_loss.losses || 0)} معامله بسته` : undefined}
+            title="📂 معاملات باز"
+            subtitle={openTrades.length > 0 ? `${openTrades.length} معامله` : undefined}
           />
-          <WinLossPieChart wins={win_loss?.wins ?? 0} losses={win_loss?.losses ?? 0} height={240} />
-        </Card>
-        <Card>
-          <CardHeader title="📊 توزیع سود/زیان" subtitle="تعداد معاملات در هر بازه" />
-          <PnLDistributionChart data={pnl_distribution || []} height={240} />
-        </Card>
-      </div>
-      </ErrorBoundary>
-
-      {/* جدول‌های معاملات (فاز ۱۴.۳) */}
-      <ErrorBoundary label="معاملات">
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
-        {/* آخرین معاملات */}
-        <Card>
+          {openTrades.length === 0 ? (
+            <EmptyState icon="📂" title="معاملهٔ بازی وجود ندارد" description="همهٔ معاملات بسته شده‌اند" />
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
+                    <th className="text-right py-2.5 px-2">نماد</th>
+                    <th className="text-right py-2.5 px-2">نوع</th>
+                    <th className="text-right py-2.5 px-2">استراتژی</th>
+                    <th className="text-right py-2.5 px-2">سود/زیان لحظه‌ای</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {openTrades.map((t) => {
+                    const pnl = (t.pnl || 0) + (t.commission || 0) + (t.swap || 0);
+                    const hasPnl = t.pnl !== null && t.pnl !== undefined;
+                    return (
+                      <tr key={t.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
+                        <td className="py-2.5 px-2 font-bold text-[var(--text-primary)]">{t.symbol}</td>
+                        <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
+                        <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
+                        <td className={`py-2.5 px-2 font-bold ${!hasPnl ? 'text-[var(--text-secondary)]' : pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                          {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${currency} ` : '—'}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card><Card>
           <CardHeader
             title="🧾 آخرین معاملات"
             subtitle={recentTrades.length > 0 ? `${recentTrades.length} معامله` : undefined}
@@ -1177,48 +1206,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               </table>
             </div>
           )}
-        </Card>
-        {/* معاملات باز */}
-        <Card>
-          <CardHeader
-            title="📂 معاملات باز"
-            subtitle={openTrades.length > 0 ? `${openTrades.length} معامله` : undefined}
-          />
-          {openTrades.length === 0 ? (
-            <EmptyState icon="📂" title="معاملهٔ بازی وجود ندارد" description="همهٔ معاملات بسته شده‌اند" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
-                    <th className="text-right py-2.5 px-2">نماد</th>
-                    <th className="text-right py-2.5 px-2">نوع</th>
-                    <th className="text-right py-2.5 px-2">استراتژی</th>
-                    <th className="text-right py-2.5 px-2">سود/زیان لحظه‌ای</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {openTrades.map((t) => {
-                    const pnl = (t.pnl || 0) + (t.commission || 0) + (t.swap || 0);
-                    const hasPnl = t.pnl !== null && t.pnl !== undefined;
-                    return (
-                      <tr key={t.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
-                        <td className="py-2.5 px-2 font-bold text-[var(--text-primary)]">{t.symbol}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
-                        <td className={`py-2.5 px-2 font-bold ${!hasPnl ? 'text-[var(--text-secondary)]' : pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${currency} ` : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card>
-      </div>
-      </ErrorBoundary>
+        </Card></div></ErrorBoundary>
+      </section>
     </div>
   );
 }

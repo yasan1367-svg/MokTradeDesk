@@ -176,13 +176,13 @@ export default function App() {
     <div className="flex h-screen overflow-hidden bg-[var(--bg-base)]">
       <Sidebar currentPage={page} onNavigate={(p) => setPage(p as Page)} />
 
-      <main className="flex-1 flex flex-col overflow-hidden">
-        <div className="h-[68px] bg-[var(--bg-card)]/85 backdrop-blur-xl border-b border-[var(--border-subtle)] flex items-center justify-between px-7 shrink-0">
-          <div>
+      <main className="min-w-0 flex-1 flex flex-col overflow-hidden">
+        <div className="min-h-[68px] bg-[var(--bg-card)] border-b border-[var(--border-subtle)] flex items-center justify-between gap-3 py-3 pl-4 pr-16 md:px-7 shrink-0">
+          <div className="min-w-0">
             <div className="text-base font-bold text-[var(--text-primary)]">{PAGE_TITLES[page].title}</div>
-            <div className="text-xs text-[var(--text-secondary)] mt-0.5">{PAGE_TITLES[page].subtitle}</div>
+            <div className="hidden sm:block text-xs text-[var(--text-secondary)] mt-0.5">{PAGE_TITLES[page].subtitle}</div>
           </div>
-          <div className="flex gap-3 items-center">
+          <div className="flex gap-2 items-center shrink-0">
             <button
               onClick={() => setPaletteOpen(true)}
               className="hidden md:flex items-center gap-2 h-10 px-3 rounded-xl bg-[var(--bg-card)] border border-[var(--border-subtle)] text-[var(--text-secondary)] hover:border-[var(--border-accent)] hover:text-[var(--accent)] transition-all text-sm"
@@ -219,7 +219,7 @@ export default function App() {
           </div>
         </div>
 
-        <div className="flex-1 overflow-y-auto p-7">
+        <div className="min-w-0 flex-1 overflow-y-auto p-4 sm:p-6 xl:p-8">
           <Suspense fallback={<PageLoading />}>
             {page === 'dashboard' && <ErrorBoundary label="داشبورد"><DashboardPage onNavigate={(p) => setPage(p as Page)} /></ErrorBoundary>}
             {page === 'analysis' && <ErrorBoundary label="تحلیل"><AnalysisPage /></ErrorBoundary>}

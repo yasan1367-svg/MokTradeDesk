@@ -1,5 +1,7 @@
+import type { ReactNode } from 'react';
+
 interface KpiCardProps {
-  icon: string;
+  icon: ReactNode;
   label: string;
   value: string | number;
   valueColor?: 'profit' | 'loss' | 'neutral' | 'accent' | 'purple' | 'warning';
@@ -17,54 +19,40 @@ export default function KpiCard({
   hint,
   index = 0,
 }: KpiCardProps) {
+  const tone = `var(--kpi-${valueColor}-tone)`;
+  const tint = `var(--kpi-${valueColor}-tint)`;
+
   return (
     <div
-      className="kpi-card relative rounded-[16px] p-5 transition-all duration-300 cursor-default"
+      className="app-card kpi-card relative p-5 cursor-default"
       style={{
-        background: `linear-gradient(150deg, var(--bg-card) 55%, var(--kpi-${valueColor}-tint))`,
-        borderTop: `3px solid var(--kpi-${valueColor}-tone)`,
-        borderLeft: '1px solid var(--border-subtle)',
-        borderRight: '1px solid var(--border-subtle)',
-        borderBottom: '1px solid var(--border-subtle)',
-        boxShadow: '0 2px 4px rgba(27,58,107,0.04), 0 8px 20px -6px rgba(27,58,107,0.10)',
+        background: `linear-gradient(145deg, var(--bg-card) 55%, ${tint})`,
+        borderTopWidth: 2,
+        borderTopStyle: 'solid',
+        borderTopColor: tone,
         animationDelay: `${index * 0.05}s`,
       }}
-      onMouseEnter={(e) => {
-        e.currentTarget.style.boxShadow = '0 4px 8px rgba(27,58,107,0.06), 0 16px 32px -8px rgba(27,58,107,0.18)';
-      }}
-      onMouseLeave={(e) => {
-        e.currentTarget.style.boxShadow = '0 2px 4px rgba(27,58,107,0.04), 0 8px 20px -6px rgba(27,58,107,0.10)';
-      }}
     >
-      {/* هدر: label سمت چپ، آیکن توی دایره سمت راست */}
       <div className="flex items-center justify-between gap-3 mb-3">
-        <span
-          className="text-[11px] font-semibold"
-          style={{ color: 'var(--text-muted)' }}
-        >
+        <span className="text-[11px] font-semibold" style={{ color: 'var(--text-secondary)' }}>
           {label}
         </span>
         <span
           className="w-8 h-8 rounded-[10px] flex items-center justify-center text-base shrink-0"
-          style={{
-            background: `var(--kpi-${valueColor}-tint)`,
-            color: `var(--kpi-${valueColor}-tone)`,
-          }}
+          style={{ background: tint, color: tone }}
         >
           {icon}
         </span>
       </div>
 
-      {/* عدد بزرگ */}
       <div
-        className="text-[24px] font-black tabular-nums leading-tight mb-1"
-        style={{ color: `var(--kpi-${valueColor}-tone)` }}
+        className="kpi-value font-extrabold tabular-nums leading-tight mb-1"
+        style={{ color: tone, letterSpacing: '-0.5px' }}
         title={hint}
       >
         {value}
       </div>
 
-      {/* زیرنویس */}
       {subtitle && (
         <div className="text-[11px]" style={{ color: 'var(--text-muted)' }}>
           {subtitle}
