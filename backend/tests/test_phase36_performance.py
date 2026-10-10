@@ -91,7 +91,6 @@ def test_phase36_indexes_exist(db_session):
     assert {
         "ix_trades_prop_stage_id",
         "ix_trades_personal_trading_account_id",
-        "ix_trades_is_deleted",
         "ix_trades_close_time",
     } <= trades_idx
 

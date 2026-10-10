@@ -198,7 +198,7 @@ def test_patch_sl_does_not_change_r_when_initial_sl_exists(client, db_session):
     resp = client.post("/api/trades/manual", json={
         "symbol": "XAUUSD", "direction": "buy",
         "open_time": "2025-01-01T10:00:00Z", "open_price": 2000.0,
-        "close_price": 2100.0, "size": 1.0,
+        "close_time": "2025-01-01T11:00:00Z", "close_price": 2100.0, "size": 1.0,
         "sl": 1990.0, "initial_sl": 1950.0,
         "pnl": 10.0, "test_type": "backtest", "version_id": v.id,
     })
@@ -225,7 +225,7 @@ def test_patch_open_price_without_initial_sl_warns(client, db_session):
     resp = client.post("/api/trades/manual", json={
         "symbol": "XAUUSD", "direction": "buy",
         "open_time": "2025-01-01T10:00:00Z", "open_price": 2000.0,
-        "close_price": 2100.0, "size": 1.0,
+        "close_time": "2025-01-01T11:00:00Z", "close_price": 2100.0, "size": 1.0,
         "sl": 1990.0, "initial_sl": 1950.0,
         "pnl": 10.0, "test_type": "backtest", "version_id": v.id,
     })
@@ -244,7 +244,7 @@ def test_patch_open_price_with_initial_sl_no_warn(client, db_session):
     resp = client.post("/api/trades/manual", json={
         "symbol": "XAUUSD", "direction": "buy",
         "open_time": "2025-01-01T10:00:00Z", "open_price": 2000.0,
-        "close_price": 2100.0, "size": 1.0,
+        "close_time": "2025-01-01T11:00:00Z", "close_price": 2100.0, "size": 1.0,
         "sl": 1990.0, "initial_sl": 1950.0,
         "pnl": 10.0, "test_type": "backtest", "version_id": v.id,
     })
