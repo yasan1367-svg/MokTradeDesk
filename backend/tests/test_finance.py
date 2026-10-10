@@ -666,6 +666,88 @@ def test_asset_trend(client):
     assert body["trend"][1]["total_usdt"] == 1200
 
 
+def test_asset_trend_external_income_and_transfer_are_signed_correctly(client):
+    bank = client.post("/api/finance/accounts", json={"name": "Bank", "type": "bank"}).json()["id"]
+    exchange = client.post("/api/finance/accounts", json={"name": "Exchange", "type": "exchange"}).json()["id"]
+    income = client.post("/api/finance/transactions", json={
+        "account_id": bank, "amount": 1000, "currency": "USDT", "type": "external_income",
+        "date": "2025-03-15T10:00:00+00:00",
+    })
+    assert income.status_code == 200, income.text
+    transfer = client.post("/api/finance/transactions", json={
+        "account_id": exchange, "from_account_id": bank, "to_account_id": exchange,
+        "amount": 300, "currency": "USDT", "type": "transfer",
+        "date": "2025-03-16T10:00:00+00:00",
+    })
+    assert transfer.status_code == 200, transfer.text
+
+    trend = client.get("/api/finance/asset-trend").json()["trend"]
+    assert [point["total_usdt"] for point in trend] == [1000, 1000]
+
+
+def test_asset_trend_convert_applies_both_currency_deltas(client):
+    source = client.post("/api/finance/accounts", json={
+        "name": "IRR source", "type": "bank", "currency": "IRR",
+    }).json()["id"]
+    destination = client.post("/api/finance/accounts", json={
+        "name": "USDT destination", "type": "exchange", "currency": "USDT",
+    }).json()["id"]
+    response = client.post("/api/finance/transactions", json={
+        "account_id": destination, "from_account_id": source, "to_account_id": destination,
+        "amount": 10_000_000, "currency": "IRR", "to_amount": 200,
+        "to_currency": "USDT", "type": "convert", "date": "2025-03-15T10:00:00+00:00",
+    })
+    assert response.status_code == 200, response.text
+
+    point = client.get("/api/finance/asset-trend").json()["trend"][0]
+    assert point["total_usdt"] == 200
+    assert point["total_irr"] == -10_000_000
+
+
+def test_asset_trend_broker_cash_movement_is_neutral(client, db_session):
+    from app.models.finance import Currency
+    from app.models.trading import Broker, PersonalTradingAccount
+
+    financial_id = client.post("/api/finance/accounts", json={
+        "name": "Bank", "type": "bank", "currency": "USDT", "balance": 500,
+    }).json()["id"]
+    broker = Broker(name="Test broker")
+    db_session.add(broker)
+    db_session.flush()
+    trading = PersonalTradingAccount(
+        broker_id=broker.id, account_number="test-1", currency=Currency.USDT,
+        initial_balance=0, current_balance=0,
+    )
+    db_session.add(trading)
+    db_session.commit()
+    trading_id = trading.id
+
+    response = client.post("/api/broker/cash-movements", json={
+        "direction": "deposit_to_broker", "personal_trading_account_id": trading_id,
+        "financial_account_id": financial_id, "amount": 200, "currency": "USDT",
+        "date": "2025-03-15T10:00:00+00:00",
+    })
+    assert response.status_code == 200, response.text
+
+    trend = client.get("/api/finance/asset-trend").json()["trend"]
+    point = trend[-1]  # آخرین نقطه (بعد از همه‌ی تراکنش‌ها)
+    assert point["total_usdt"] == 500
+
+
+def test_asset_trend_carries_in_transactions_before_date_from(client):
+    account = client.post("/api/finance/accounts", json={"name": "Bank", "type": "bank"}).json()["id"]
+    for amount, date in [(700, "2025-03-14T10:00:00+00:00"), (50, "2025-03-15T10:00:00+00:00")]:
+        response = client.post("/api/finance/transactions", json={
+            "account_id": account, "amount": amount, "currency": "USDT",
+            "type": "external_income", "date": date,
+        })
+        assert response.status_code == 200, response.text
+
+    trend = client.get("/api/finance/asset-trend", params={"date_from": "2025-03-15"}).json()["trend"]
+    assert len(trend) == 1
+    assert trend[0]["total_usdt"] == 750
+
+
 def test_exchange_account_currency_enforcement(client):
     """یک حساب صرافی ⋯ ارز تراکنش باید با ارز حساب یکسان باشد."""
     acc_id = client.post("/api/finance/accounts", json={"name": "A", "type": "exchange", "currency": "IRR"}).json()["id"]

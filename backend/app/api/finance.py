@@ -1984,59 +1984,89 @@ def get_financial_calendar(db: Session = Depends(get_db)):
     return {"days": result}
 
 
+def _wealth_delta(
+    tx: FinancialTransaction,
+    currency: Currency,
+    broker_tx_ids: set[int],
+) -> float:
+    """تغییر خالص ثروت شخصی از یک تراکنش، در ارز مشخص‌شده."""
+    if tx.id in broker_tx_ids:
+        return 0.0
+
+    delta = 0.0
+    tx_type = tx.type
+
+    if tx_type == TransactionType.CONVERT:
+        if tx.currency == currency:
+            delta -= float(tx.amount or 0.0)
+        if tx.to_currency == currency:
+            delta += float(tx.to_amount or 0.0)
+    elif tx_type in (
+        TransactionType.DEPOSIT,
+        TransactionType.PROFIT,
+        TransactionType.EXTERNAL_INCOME,
+    ):
+        if tx.currency == currency:
+            delta += float(tx.amount or 0.0)
+    elif tx_type in (
+        TransactionType.WITHDRAWAL,
+        TransactionType.LOSS,
+        TransactionType.FEE,
+        TransactionType.PURCHASE,
+        TransactionType.EXTERNAL_EXPENSE,
+    ):
+        if tx.currency == currency:
+            delta -= float(tx.amount or 0.0)
+    elif tx_type == TransactionType.ADJUSTMENT and tx.currency == currency:
+        # اصلاح موجودی signed است؛ مبلغ منفی اثر کاهشی دارد.
+        delta += float(tx.amount or 0.0)
+    # TRANSFER و BrokerCashMovement خنثی هستند: صرفاً جابه‌جایی داخلی.
+    return delta
+
+
 @router.get("/asset-trend")
 def get_asset_trend(
     date_from: Optional[str] = Query(None, description="e.g. 2025-01-01"),
     date_to: Optional[str] = Query(None, description="e.g. 2025-12-31"),
     db: Session = Depends(get_db),
 ):
-    """روند دارایی: مجموع تجمعی USDT و IRR به تفکیک روز شمسی (از جریان تراکنش‌ها)"""
+    """روند تغییر ثروت شخصی از دفتر تراکنش‌ها، به تفکیک روز شمسی."""
     from collections import defaultdict
 
-    sign = {
-        TransactionType.EXTERNAL_INCOME: 1,
-        TransactionType.EXTERNAL_EXPENSE: -1,
-        TransactionType.DEPOSIT: 1,
-        TransactionType.PROFIT: 1,
-        TransactionType.ADJUSTMENT: 1,  # مبلغ اصلاح خودش علامت مثبت/منفی دارد
-        TransactionType.WITHDRAWAL: -1,
-        TransactionType.LOSS: -1,
-        TransactionType.FEE: -1,
-        TransactionType.PURCHASE: -1,
+    # گردش نقدی بروکر جابه‌جایی داخلی است و تراکنش مالی مرتبط با آن خنثی می‌شود.
+    broker_tx_ids = {
+        row[0]
+        for row in db.query(BrokerCashMovement.transaction_id).all()
+        if row[0] is not None
     }
 
+    # موجودی آغازین بازه از تمام رویدادهای قبل از date_from ساخته می‌شود.
+    opening_usdt = 0.0
+    opening_irr = 0.0
+    if date_from:
+        from ..utils.date_range import date_range
+        start_dt, _ = date_range(date_from, None)
+        prior_txs = db.query(FinancialTransaction).filter(
+            FinancialTransaction.is_deleted == False,
+            FinancialTransaction.date < start_dt,
+        )
+        for tx in prior_txs.all():
+            opening_usdt += _wealth_delta(tx, Currency.USDT, broker_tx_ids)
+            opening_irr += _wealth_delta(tx, Currency.IRR, broker_tx_ids)
+
     q = db.query(FinancialTransaction).filter(FinancialTransaction.is_deleted == False)
-    # فاز ۴۶.۵: date_to شامل آخرین روز است (نیمه‌باز تا نیمه‌شب روز بعد)
     q = filter_by_range(q, FinancialTransaction.date, date_from, date_to)
-
     per_day: dict = defaultdict(lambda: {"USDT": 0.0, "IRR": 0.0})
-    for t in q.order_by(FinancialTransaction.date).all():
-        d = _jalali_date_str(t.date)
+    for tx in q.order_by(FinancialTransaction.date.asc()).all():
+        d = _jalali_date_str(tx.date)
         if not d:
             continue
-        factor = sign.get(t.type, 0)
-        if factor == 0:
-            continue  # تبدیل، سنتی است و خالص آن صفر فرض می‌شود
-        cur = t.currency.value if t.currency else "USDT"
-        per_day[d][cur] = per_day[d].get(cur, 0.0) + factor * float(t.amount or 0.0)
-
-    # گردش بین حساب مالی و حساب معاملاتی دارایی را جابه‌جا می‌کند، نه اینکه آن را
-    # زیاد یا کم کند؛ دفتر مالی فقط یک سمت را ثبت می‌کند، پس سمت بروکر را اینجا جبران کن.
-    movements = filter_by_range(
-        db.query(BrokerCashMovement), BrokerCashMovement.date, date_from, date_to
-    ).all()
-    for movement in movements:
-        d = _jalali_date_str(movement.date)
-        if not d:
-            continue
-        amount = float(movement.amount or 0.0)
-        broker_delta = amount if movement.direction == "deposit_to_broker" else -amount
-        cur = movement.currency.value if movement.currency else "USDT"
-        per_day[d][cur] = per_day[d].get(cur, 0.0) + broker_delta
+        per_day[d]["USDT"] += _wealth_delta(tx, Currency.USDT, broker_tx_ids)
+        per_day[d]["IRR"] += _wealth_delta(tx, Currency.IRR, broker_tx_ids)
 
     trend = []
-    run_usdt = 0.0
-    run_irr = 0.0
+    run_usdt = opening_usdt
+    run_irr = opening_irr
     for d in sorted(per_day):
         run_usdt += per_day[d].get("USDT", 0.0)
         run_irr += per_day[d].get("IRR", 0.0)
