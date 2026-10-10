@@ -456,12 +456,14 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       {data && (
         <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
           <KpiCard
+            index={0}
             icon="💰"
             label="Net PnL"
             value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
             valueColor={data.summary?.net_pnl >= 0 ? 'profit' : 'loss'}
           />
           <KpiCard
+            index={1}
             icon="🎯"
             label="Win Rate"
             value={`${data.summary?.win_rate?.toFixed(1) || 0}%`}
@@ -469,6 +471,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             subtitle={`${data.summary?.wins || 0}W / ${data.summary?.losses || 0}L`}
           />
           <KpiCard
+            index={2}
             icon="⚖️"
             label="Profit Factor"
             value={
@@ -490,6 +493,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             hint={data.summary?.profit_factor_status}
           />
           <KpiCard
+            index={3}
             icon="📉"
             label="Max Drawdown"
             value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
@@ -497,6 +501,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             hint={data.equity_metadata?.dd_definition || 'peak_to_trough'}
           />
           <KpiCard
+            index={4}
             icon="📊"
             label="Closed Trades"
             value={data.summary?.closed_trades || 0}

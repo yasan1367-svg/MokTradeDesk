@@ -148,3 +148,21 @@ body, #root {
   border-radius: 20px;
   box-shadow: var(--shadow-card);
 }
+
+/* KPI Card — Premium Design */
+.kpi-card {
+  animation: kpiSlideUp 0.5s ease-out backwards;
+  border-radius: 14px;
+  will-change: transform, box-shadow;
+}
+
+@keyframes kpiSlideUp {
+  from {
+    opacity: 0;
+    transform: translateY(16px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
