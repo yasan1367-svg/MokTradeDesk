@@ -8,6 +8,12 @@ const getStatusStyle = (status: string) => {
   return { bg: 'bg-[var(--profit-soft)]', text: 'text-[var(--profit)]', border: 'border-[var(--profit-border)]', icon: '🟢' };
 };
 
+function formatProfitFactor(value: number | null | undefined, status?: string): string {
+  if (status === 'no_data' || value === null || value === undefined) return '—';
+  if (status === 'no_losses') return 'بدون زیان';
+  return value.toFixed(2);
+}
+
 export default function RiskManagementPage() {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
@@ -125,7 +131,7 @@ export default function RiskManagementPage() {
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <PerfItem label="Win Rate" value={`${(performance_ratios.win_rate * 100).toFixed(1)}٪`} color={performance_ratios.win_rate >= 0.5 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'} />
-          <PerfItem label="Profit Factor" value={performance_ratios.profit_factor >= 999 ? '∞' : performance_ratios.profit_factor.toFixed(2)} color={performance_ratios.profit_factor >= 1.5 ? 'text-[var(--profit)]' : performance_ratios.profit_factor >= 1 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
+          <PerfItem label="Profit Factor" value={formatProfitFactor(performance_ratios.profit_factor, performance_ratios.profit_factor_status)} color={performance_ratios.profit_factor_status === 'no_losses' || performance_ratios.profit_factor >= 1.5 ? 'text-[var(--profit)]' : performance_ratios.profit_factor >= 1 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="Avg R-Multiple" value={performance_ratios.avg_r_multiple} color={performance_ratios.avg_r_multiple >= 1 ? 'text-[var(--profit)]' : performance_ratios.avg_r_multiple > 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'} />
           <PerfItem label="R:R Ratio" value={performance_ratios.rr_ratio} color={performance_ratios.rr_ratio >= 2 ? 'text-[var(--profit)]' : 'text-[var(--warning)]'} />
           <PerfItem label="Avg Win" value={`USDT ${performance_ratios.avg_win}`} color="text-[var(--profit)]" />

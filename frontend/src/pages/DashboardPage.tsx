@@ -1,6 +1,7 @@
 import { useCallback, useState, useEffect, useRef } from 'react';
 import { PieChart, Pie, Cell, BarChart, Bar, Tooltip, ResponsiveContainer, XAxis, YAxis, CartesianGrid, AreaChart, Area } from 'recharts';
 import StatCard from '../components/ui/StatCard';
+import KpiCard from '../components/ui/KpiCard';
 import { Card, CardHeader } from '../components/ui/Card';
 import Badge from '../components/ui/Badge';
 import ProgressBar from '../components/ui/ProgressBar';
@@ -450,6 +451,59 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           </div>
         )}
       </div>
+
+      {/* ۵ KPI اصلی */}
+      {data && (
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+          <KpiCard
+            icon="💰"
+            label="Net PnL"
+            value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
+            valueColor={data.summary?.net_pnl >= 0 ? 'profit' : 'loss'}
+          />
+          <KpiCard
+            icon="🎯"
+            label="Win Rate"
+            value={`${data.summary?.win_rate?.toFixed(1) || 0}%`}
+            valueColor={data.summary?.win_rate >= 50 ? 'profit' : 'loss'}
+            subtitle={`${data.summary?.wins || 0}W / ${data.summary?.losses || 0}L`}
+          />
+          <KpiCard
+            icon="⚖️"
+            label="Profit Factor"
+            value={
+              data.summary?.profit_factor_status === 'no_data'
+                ? '—'
+                : data.summary?.profit_factor_status === 'no_losses'
+                  ? 'بدون زیان'
+                  : data.summary?.profit_factor?.toFixed(2) || '—'
+            }
+            valueColor={
+              data.summary?.profit_factor_status === 'no_losses'
+                ? 'profit'
+                : data.summary?.profit_factor >= 1.5
+                  ? 'profit'
+                  : data.summary?.profit_factor >= 1
+                    ? 'neutral'
+                    : 'loss'
+            }
+            hint={data.summary?.profit_factor_status}
+          />
+          <KpiCard
+            icon="📉"
+            label="Max Drawdown"
+            value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
+            valueColor="loss"
+            hint={data.equity_metadata?.dd_definition || 'peak_to_trough'}
+          />
+          <KpiCard
+            icon="📊"
+            label="Closed Trades"
+            value={data.summary?.closed_trades || 0}
+            valueColor="accent"
+          />
+        </div>
+      )}
 
       </ErrorBoundary>
 
