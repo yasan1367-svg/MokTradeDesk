@@ -116,10 +116,10 @@ def profit_factor_status(gross_profit: float, gross_loss: float) -> Dict[str, An
     Both zero is undefined; profit without losses has no finite value.
     """
     if gross_profit == 0 and gross_loss == 0:
-        return {"value": None, "status": "undefined"}
+        return {"value": None, "status": "no_data"}
     if gross_loss == 0:
         return {"value": None, "status": "no_losses"}
-    return {"value": gross_profit / abs(gross_loss), "status": "finite"}
+    return {"value": round(gross_profit / abs(gross_loss), 2), "status": "finite"}
 
 
 def profit_factor_from_sums(gross_profit: float, gross_loss: float) -> float:

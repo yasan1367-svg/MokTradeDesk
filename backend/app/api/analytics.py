@@ -330,7 +330,8 @@ def get_dashboard_data(
     from ..models.prop import PropStage, StageStatus
     from sqlalchemy.orm import joinedload
 
-    now = datetime.now(timezone.utc)
+    now_tehran = datetime.now(TEHRAN)
+    now = now_tehran.astimezone(timezone.utc)
     sc = normalize_scope(scope)
     df_bound = _parse_bound(date_from)
     dt_bound = _parse_bound(date_to, end=True)
@@ -367,7 +368,7 @@ def get_dashboard_data(
 
     # API contract: win_rate is expressed as a percentage (0-100).
     wr = (wins_n / closed_count * 100) if closed_count else 0
-    pf = metrics.profit_factor_from_sums(gp, gl)
+    pf_data = metrics.profit_factor_status(gp, gl)
     avg_win = (gp / wins_n) if wins_n else 0.0
     avg_loss = (gl / losses_n) if losses_n else 0.0
     win_ratio = (wins_n / closed_count) if closed_count else 0.0
@@ -409,7 +410,7 @@ def get_dashboard_data(
     equity_points = calculate_equity_curve(initial_balance, equity_trades)
     peak_to_trough = calculate_peak_to_trough_dd(equity_points)
     static_dd = calculate_static_dd(initial_balance, equity_points)
-    max_drawdown = max(peak_to_trough["dd"], static_dd["dd"])
+    max_drawdown = peak_to_trough["dd"]
     sp = [round(point["equity"] - initial_balance, 2) for point in equity_points[1:]]
     spd = sp[-20:] if len(sp) >= 20 else sp
     max_wins_dash, max_losses_dash = metrics.win_loss_streaks([n for _, n in seq])
@@ -418,7 +419,24 @@ def get_dashboard_data(
 
     ts, _ = tehran_day_bounds(now)
     # فاز ۴۴.۱: شمارش معاملات باز نیز تابع scope است
-    opn = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None)).count()
+    open_trades_q = _apply_scope(db.query(Trade), sc).filter(Trade.close_time.is_(None))
+    if currency:
+        open_trades_q = open_trades_q.outerjoin(
+            PersonalTradingAccount,
+            Trade.personal_trading_account_id == PersonalTradingAccount.id,
+        )
+        if sc != "real":
+            open_trades_q = open_trades_q.outerjoin(PropStage, Trade.prop_stage_id == PropStage.id)
+        open_trades_q = open_trades_q.outerjoin(
+            PropAccount, PropStage.prop_account_id == PropAccount.id
+        ).filter(or_(
+            and_(Trade.test_type == TestType.REAL_PERSONAL, PersonalTradingAccount.currency == currency),
+            and_(Trade.test_type == TestType.REAL_PROP, PropAccount.currency == currency),
+            and_(Trade.test_type.in_([TestType.BACKTEST, TestType.FORWARD]), currency == Currency.USDT),
+        ))
+    if version_id is not None:
+        open_trades_q = open_trades_q.filter(Trade.version_id == version_id)
+    opn = open_trades_q.count()
     # The dashboard curve and max_dd now project the same domain equity points.
     equity_curve = [
         {
@@ -450,10 +468,13 @@ def get_dashboard_data(
     pnl_distribution = [{"range": label, "count": _bmap.get(label, 0)} for label, _ in _bucket_defs]
 
     # ── ۵) دوره‌ها و امروز (یک کوئری) ──
-    cm = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    qm = ((now.month - 1) // 3) * 3 + 1
-    cq = now.replace(month=qm, day=1, hour=0, minute=0, second=0, microsecond=0)
-    ys = now.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    cm_tehran = now_tehran.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
+    qm = ((now_tehran.month - 1) // 3) * 3 + 1
+    cq_tehran = now_tehran.replace(month=qm, day=1, hour=0, minute=0, second=0, microsecond=0)
+    ys_tehran = now_tehran.replace(month=1, day=1, hour=0, minute=0, second=0, microsecond=0)
+    cm = cm_tehran.astimezone(timezone.utc)
+    cq = cq_tehran.astimezone(timezone.utc)
+    ys = ys_tehran.astimezone(timezone.utc)
     pms = cm.replace(year=cm.year - 1, month=12) if cm.month == 1 else cm.replace(month=cm.month - 1)
     per = closed_scope.filter(Trade.close_time <= now).with_entities(
         func.sum(case((Trade.close_time >= ts, net), else_=0.0)),
@@ -479,7 +500,11 @@ def get_dashboard_data(
     today_wr = (today_wins_n / td_count * 100) if td_count else 0
 
     # ── برد/باخت ──
-    win_loss = {"wins": wins_n, "losses": losses_n}
+    win_loss = {
+        "wins": wins_n,
+        "losses": losses_n,
+        "breakeven": closed_count - wins_n - losses_n,
+    }
 
     # ── فاز ۲۸/۴۴.۴: پول قابل خرج — یک منبع حقیقت مشترک (finance_metrics) ──
     from ..services import finance_metrics
@@ -523,7 +548,8 @@ def get_dashboard_data(
             "net_pnl": round(tnp, 2),
             "win_rate": round(wr, 2),
             "max_dd": round(md, 2),
-            "profit_factor": round(pf, 2),
+            "profit_factor": pf_data["value"],
+            "profit_factor_status": pf_data["status"],
             "total_trades": total_trades,
             "open_trades": opn,
             "closed_trades": closed_count,
@@ -556,6 +582,8 @@ def get_dashboard_data(
             "currency": currency.value,
             "baseline": float(initial_balance),
             "baseline_source": baseline_source,
+            "baseline_is_synthetic": baseline_source == "fallback_10000",
+            "dd_definition": "peak_to_trough",
             "closed_only": True,
             "scope": sc,
         },
@@ -769,9 +797,11 @@ def get_risk_metrics(
     mw, ml = metrics.win_loss_streaks(returns)
     dd_d = max(peak_to_trough["dd"], static_dd["dd"])
     md = drawdown_trade_count
+    risk_pf_data = metrics.profit_factor_status(sum(wins), abs(sum(losses)))
     status = "danger" if (sharpe < 0.5 or (ror is not None and ror > 0.1) or orp > 20) else ("warning" if (sharpe < 1.0 or (ror is not None and ror > 0.05) or orp > 10) else "safe")
     return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
-            "profit_factor": round(metrics.profit_factor_from_sums(sum(wins), abs(sum(losses))), 2),
+            "profit_factor": risk_pf_data["value"],
+            "profit_factor_status": risk_pf_data["status"],
             "win_rate": round(wr, 2), "avg_r_multiple": round(arm, 2),
             "expectancy": round((ar) if returns else 0, 2), "expectancy_r": round(expectancy_r, 2),
             "avg_win": round(aw, 2), "avg_loss": round(al, 2), "rr_ratio": round(rr, 2)},

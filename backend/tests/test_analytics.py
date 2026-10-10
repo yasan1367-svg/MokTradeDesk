@@ -48,6 +48,8 @@ def test_equity_metadata_includes_baseline_and_currency(client, db_session, bala
     baseline = balance if balance and balance > 0 else 10000.0
     assert body["equity_metadata"] == {
         "currency": "IRR", "baseline": baseline, "baseline_source": source,
+        "baseline_is_synthetic": source == "fallback_10000",
+        "dd_definition": "peak_to_trough",
         "closed_only": True, "scope": "real",
     }
     assert body["summary"]["currency"] == "IRR"

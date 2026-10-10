@@ -122,13 +122,14 @@ def test_profit_factor():
 
 
 @pytest.mark.parametrize("profit, loss, value, status", [
-    (0, 0, None, "undefined"),
+    (0, 0, None, "no_data"),
     (100, 0, None, "no_losses"),
     (0, 50, 0.0, "finite"),
     (150, 50, 3.0, "finite"),
     (150, -50, 3.0, "finite"),
     (1000, 1, 1000.0, "finite"),
     (999, 1, 999.0, "finite"),
+    (100, 33, 3.03, "finite"),
 ])
 def test_profit_factor_status(profit, loss, value, status):
     assert metrics.profit_factor_status(profit, loss) == {"value": value, "status": status}
