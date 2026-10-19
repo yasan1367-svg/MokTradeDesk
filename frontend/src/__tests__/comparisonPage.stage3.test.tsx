@@ -115,4 +115,69 @@ describe('ComparisonPage Stage 3 display contract', () => {
     await act(async () => resolve({ data: { test_type: 'BACKTEST', filters: {}, best: null, comparison: [] } }));
     expect(screen.queryByTestId('applied-filters')).not.toBeInTheDocument();
   });
+
+  it('renders poursamadi comparative table when custom_time_analysis is present', async () => {
+    compare.mockResolvedValue({
+      data: {
+        test_type: 'BACKTEST',
+        filters: {},
+        best: { version_id: 1, score: 85 },
+        best_ties: [{ version_id: 1 }],
+        comparison: [
+          {
+            version_id: 1,
+            rank: 1,
+            score: 85,
+            metrics: {
+              total_trades: 10,
+              profit_factor: 2.5,
+              profit_factor_status: 'finite',
+              net_pnl: 500,
+              win_rate: 70,
+              max_dd: 50,
+              custom_time_analysis: {
+                'طلا — A1 [A]': { total_trades: 6, wins: 5, losses: 1, win_rate: 83.33, net_pnl: 450, profit_factor: 3.2 },
+                'طلا — خارج از بازه [خارج]': { total_trades: 4, wins: 2, losses: 2, win_rate: 50, net_pnl: 50, profit_factor: 1.1 },
+              },
+            },
+            components: { pf_status: 'finite', pf_score: 80 },
+            reasons: [],
+          },
+          {
+            version_id: 2,
+            rank: 2,
+            score: 65,
+            metrics: {
+              total_trades: 8,
+              profit_factor: 1.4,
+              profit_factor_status: 'finite',
+              net_pnl: 150,
+              win_rate: 50,
+              max_dd: 80,
+              custom_time_analysis: {
+                'طلا — A1 [A]': { total_trades: 5, wins: 3, losses: 2, win_rate: 60, net_pnl: 200, profit_factor: 1.8 },
+                'طلا — خارج از بازه [خارج]': { total_trades: 3, wins: 1, losses: 2, win_rate: 33.33, net_pnl: -50, profit_factor: 0.7 },
+              },
+            },
+            components: { pf_status: 'finite', pf_score: 60 },
+            reasons: [],
+          },
+        ],
+      },
+    });
+
+    render(<ComparisonPage />);
+    await screen.findByRole('button', { name: /مقایسه/ });
+    fireEvent.click(screen.getAllByRole('checkbox')[0]);
+    fireEvent.click(screen.getAllByRole('checkbox')[1]);
+    fireEvent.click(screen.getByRole('button', { name: /مقایسه/ }));
+
+    expect(await screen.findByText('بررسی تطبیقی بازه‌های زمانی (پورصمدی)')).toBeInTheDocument();
+    expect(screen.getByText('طلا — A1')).toBeInTheDocument();
+    expect(screen.getAllByText('A')).toHaveLength(1);
+    expect(screen.getByText('طلا — خارج از بازه')).toBeInTheDocument();
+    expect(screen.getByText('خارج از بازه')).toBeInTheDocument();
+    expect(screen.getByText('+450 USDT')).toBeInTheDocument();
+    expect(screen.getAllByText('-50 USDT').length).toBeGreaterThanOrEqual(1);
+  });
 });

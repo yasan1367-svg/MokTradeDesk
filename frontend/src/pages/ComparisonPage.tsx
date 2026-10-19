@@ -269,6 +269,14 @@ export default function ComparisonPage() {
       };
     });
 
+  const customTimeKeys = Array.from(
+    new Set(
+      (result?.comparison ?? [])
+        .filter((i) => !i.error && i.metrics?.custom_time_analysis)
+        .flatMap((i) => Object.keys(i.metrics.custom_time_analysis || {}))
+    )
+  );
+
   const scoreBadgeClass = (rank?: number) => {
     if (rank === 1)
       return 'bg-[var(--warning-soft)] text-[var(--warning-strong)] border-[var(--warning-border)]';
@@ -635,6 +643,100 @@ export default function ComparisonPage() {
                               </td>
                             </>
                           )}
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+
+          {/* بررسی تطبیقی بازه‌های پورصمدی */}
+          {customTimeKeys.length > 0 && (
+            <div className="app-card p-6 shadow-md mb-6">
+              <div className="flex items-center gap-3 mb-5 pb-4 border-b border-[var(--border-subtle)]">
+                <div className="w-11 h-11 rounded-[14px] bg-[var(--accent-soft)] flex items-center justify-center text-xl">⏰</div>
+                <div>
+                  <h3 className="text-base font-extrabold text-[var(--text-primary)]">بررسی تطبیقی بازه‌های زمانی (پورصمدی)</h3>
+                  <p className="text-[12px] text-[var(--text-secondary)] mt-0.5">
+                    مقایسه عملکرد استراتژی‌ها در پنجره‌های معاملاتی A / B / C و معاملات خارج از بازه
+                  </p>
+                </div>
+              </div>
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-[var(--text-secondary)] border-b border-[var(--border-subtle)] text-right">
+                      <th className="py-3 px-4 font-bold">پنجره زمانی</th>
+                      {result.comparison.filter((i) => !i.error).map((item) => (
+                        <th key={item.version_id} className="py-3 px-4 font-bold text-center">
+                          <div className="text-[13px] text-[var(--text-primary)] font-extrabold">{labelOf(item.version_id)}</div>
+                          <div className="text-[11px] text-[var(--text-secondary)] font-normal">{strategyOf(item.version_id)}</div>
+                        </th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {customTimeKeys.map((key) => {
+                      const isOutside = key.includes('[خارج]');
+                      const match = key.match(/^(.*?)(\s*\[(.*?)\])?$/);
+                      const name = match ? match[1] : key;
+                      const label = match ? match[3] : '';
+                      const badgeClass =
+                        label === 'A'
+                          ? 'bg-[var(--profit-soft)] text-[var(--profit)]'
+                          : label === 'B'
+                          ? 'bg-[var(--accent-soft)] text-[var(--accent)]'
+                          : label === 'C'
+                          ? 'bg-[var(--bg-input)] text-[var(--text-muted)]'
+                          : isOutside
+                          ? 'bg-[var(--warning-soft)] text-[var(--warning-strong)] border border-[var(--warning-border)]'
+                          : 'bg-[var(--bg-input)] text-[var(--text-secondary)]';
+
+                      return (
+                        <tr
+                          key={key}
+                          className={`border-b transition-colors ${
+                            isOutside
+                              ? 'border-[var(--warning-border)]/40 bg-[var(--warning-soft)]/20'
+                              : 'border-card-border/50 hover:bg-card/50'
+                          }`}
+                        >
+                          <td className="py-3 px-4 font-bold text-[var(--text-primary)]">
+                            <div className="flex items-center gap-2">
+                              <span>{name}</span>
+                              {label && (
+                                <span className={`inline-flex items-center px-2 py-0.5 rounded-[6px] text-[11px] font-extrabold ${badgeClass}`}>
+                                  {isOutside ? 'خارج از بازه' : label}
+                                </span>
+                              )}
+                            </div>
+                          </td>
+                          {result.comparison.filter((i) => !i.error).map((item) => {
+                            const stats = item.metrics?.custom_time_analysis?.[key];
+                            if (!stats || stats.total_trades === 0) {
+                              return (
+                                <td key={item.version_id} className="py-3 px-4 text-center text-[var(--text-muted)] text-[12px]">
+                                  —
+                                </td>
+                              );
+                            }
+                            return (
+                              <td key={item.version_id} className="py-3 px-4 text-center">
+                                <div className="text-[12px] font-bold text-[var(--text-primary)]">
+                                  {stats.total_trades} معامله ({stats.win_rate}٪ برد)
+                                </div>
+                                <div className={`text-[12px] font-extrabold mt-0.5 ${stats.net_pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
+                                  {stats.net_pnl >= 0 ? '+' : ''}{stats.net_pnl} USDT
+                                </div>
+                                <div className="text-[10px] text-[var(--text-secondary)] mt-0.5">
+                                  PF: {stats.profit_factor}
+                                </div>
+                              </td>
+                            );
+                          })}
                         </tr>
                       );
                     })}

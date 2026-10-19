@@ -9,6 +9,7 @@ import {
   parseEventTime,
   truncateTitle,
   urgencyColor,
+  getActivePoursamadiWindow,
 } from '../components/MarketSessionWidget';
 import MarketSessionWidget from '../components/MarketSessionWidget';
 import type { NewsEvent } from '../components/MarketSessionWidget';
@@ -248,5 +249,53 @@ describe('news widget integration', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /وضعیت سشن‌های بازار فارکس/ }));
     expect(screen.getByText('ممکن است قدیمی باشد')).toBeInTheDocument();
+  });
+});
+
+describe('poursamadi window calculations (boundary & midnight)', () => {
+  const intervals = [
+    { id: 1, symbol: 'XAUUSD', name: 'طلا — A1', start_hour: 10, start_minute: 30, end_hour: 13, end_minute: 30, label: 'A', priority: 1 },
+    { id: 2, symbol: 'XAUUSD', name: 'طلا — A2', start_hour: 16, start_minute: 0, end_hour: 17, end_minute: 0, label: 'A', priority: 1 },
+    { id: 3, symbol: 'XAUUSD', name: 'طلا — A3', start_hour: 17, start_minute: 0, end_hour: 18, end_minute: 30, label: 'A', priority: 1 },
+    { id: 4, symbol: 'DJIUSD', name: 'داو — C1', start_hour: 23, start_minute: 0, end_hour: 1, end_minute: 30, label: 'C', priority: 3 },
+  ];
+
+  it('selects A2 at 16:59:59 Tehran time with 1 second remaining', () => {
+    // 16:59:59 Tehran = 13:29:59 UTC
+    const now = new Date('2026-10-15T13:29:59.000Z');
+    const result = getActivePoursamadiWindow(intervals, 'XAUUSD', now);
+    expect(result).not.toBeNull();
+    expect(result?.interval.name).toBe('طلا — A2');
+    expect(result?.remainingMs).toBe(1000);
+  });
+
+  it('switches cleanly to A3 at 17:00:00 Tehran without double counting A2', () => {
+    // 17:00:00 Tehran = 13:30:00 UTC
+    const now = new Date('2026-10-15T13:30:00.000Z');
+    const result = getActivePoursamadiWindow(intervals, 'XAUUSD', now);
+    expect(result).not.toBeNull();
+    expect(result?.interval.name).toBe('طلا — A3');
+    expect(result?.remainingMs).toBe(90 * 60 * 1000); // 1.5 hours
+  });
+
+  it('returns null when outside all windows (e.g. 14:00 Tehran)', () => {
+    // 14:00 Tehran = 10:30 UTC
+    const now = new Date('2026-10-15T10:30:00.000Z');
+    const result = getActivePoursamadiWindow(intervals, 'XAUUSD', now);
+    expect(result).toBeNull();
+  });
+
+  it('correctly handles midnight-crossing interval (23:00 to 01:30)', () => {
+    // 23:45 Tehran = 20:15 UTC
+    const beforeMidnight = new Date('2026-10-15T20:15:00.000Z');
+    const r1 = getActivePoursamadiWindow(intervals, 'DJIUSD', beforeMidnight);
+    expect(r1?.interval.name).toBe('داو — C1');
+    expect(r1?.remainingMs).toBe((60 + 45) * 60 * 1000); // 1h 45m
+
+    // 00:30 Tehran = 21:00 UTC
+    const afterMidnight = new Date('2026-10-15T21:00:00.000Z');
+    const r2 = getActivePoursamadiWindow(intervals, 'DJIUSD', afterMidnight);
+    expect(r2?.interval.name).toBe('داو — C1');
+    expect(r2?.remainingMs).toBe(60 * 60 * 1000); // 1h
   });
 });

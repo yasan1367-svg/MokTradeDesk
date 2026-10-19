@@ -195,7 +195,7 @@ export function formatNewsCountdown(eventTime: string, now: Date = new Date()): 
 }
 
 /** Compute the currently active Poursamadi window for a symbol, given a Tehran-time instant. */
-function getActivePoursamadiWindow(
+export function getActivePoursamadiWindow(
   intervals: PoursamadiInterval[],
   symbol: string,
   now: Date,
@@ -205,8 +205,14 @@ function getActivePoursamadiWindow(
   for (const interval of sym) {
     const start = interval.start_hour * 3600 + interval.start_minute * 60;
     const end = interval.end_hour * 3600 + interval.end_minute * 60;
-    if (tehranSeconds >= start && tehranSeconds <= end) {
-      return { interval, remainingMs: (end - tehranSeconds) * 1000 };
+    const isActive = start < end
+      ? tehranSeconds >= start && tehranSeconds < end
+      : tehranSeconds >= start || tehranSeconds < end;
+    if (isActive) {
+      const remainingSeconds = start < end
+        ? end - tehranSeconds
+        : (tehranSeconds >= start ? 24 * 3600 - tehranSeconds + end : end - tehranSeconds);
+      return { interval, remainingMs: remainingSeconds * 1000 };
     }
   }
   return null;

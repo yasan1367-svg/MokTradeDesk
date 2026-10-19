@@ -1,5 +1,6 @@
 import hashlib
 import json
+from collections import defaultdict
 from typing import Dict, List, Any, Optional
 
 from sqlalchemy.orm import Session
@@ -181,6 +182,7 @@ def _extract_metrics(analysis: AnalysisResult) -> Dict[str, Any]:
         "largest_win": analysis.largest_win,
         "largest_loss": analysis.largest_loss,
         "max_consecutive_losses": analysis.max_consecutive_losses,
+        "custom_time_analysis": analysis.custom_time_analysis or {},
     }
 
 
@@ -216,8 +218,10 @@ def _calculate_filtered_metrics(
     q = filter_by_range(q, Trade.close_time, date_from, date_to)
 
     trades = q.all()
-    basic = AnalysisService(db)._calculate_basic_metrics(trades)
-    return {"version_id": version_id, **basic}
+    analysis_svc = AnalysisService(db)
+    basic = analysis_svc._calculate_basic_metrics(trades)
+    custom_time = analysis_svc._analyze_by_custom_intervals(trades)
+    return {"version_id": version_id, "custom_time_analysis": custom_time, **basic}
 
 
 def generate_reasons(
@@ -919,30 +923,91 @@ class AnalysisService:
 
         return {h: self._summarize(trades) for h, trades in by_hour.items() if trades}
 
+    @staticmethod
+    def _is_in_interval(hour: int, minute: int, start_h: int, start_m: int, end_h: int, end_m: int) -> bool:
+        current = hour * 60 + minute
+        start = start_h * 60 + start_m
+        end = end_h * 60 + end_m
+        if start == end:
+            return current == start
+        elif start < end:
+            return start <= current < end
+        else:  # crosses midnight, e.g. 22:00 to 02:00
+            return current >= start or current < end
+
+    @staticmethod
+    def _symbols_match(t_symbol: Optional[str], interval_symbol: Optional[str]) -> bool:
+        if not t_symbol or not interval_symbol:
+            return False
+        s1 = t_symbol.strip().upper()
+        s2 = interval_symbol.strip().upper()
+        if s1 == s2:
+            return True
+        s1_clean = s1.split('.')[0].rstrip('_+')
+        s2_clean = s2.split('.')[0].rstrip('_+')
+        if s1_clean == s2_clean:
+            return True
+        aliases = {
+            "GOLD": "XAUUSD",
+            "US30": "DJIUSD",
+            "DJ30": "DJIUSD",
+            "WS30": "DJIUSD",
+            "DJI": "DJIUSD",
+            "US30CASH": "DJIUSD",
+        }
+        return aliases.get(s1_clean, s1_clean) == aliases.get(s2_clean, s2_clean)
+
     def _analyze_by_custom_intervals(self, trades: List[Trade]) -> Dict[str, Any]:
         intervals = self.db.query(CustomTimeInterval).filter(
             CustomTimeInterval.is_active == 1
+        ).order_by(
+            CustomTimeInterval.symbol,
+            CustomTimeInterval.priority,
+            CustomTimeInterval.start_hour,
+            CustomTimeInterval.start_minute,
         ).all()
 
+        if not intervals:
+            return {}
+
         result = {}
+        matched_trade_keys_by_symbol: Dict[str, set] = defaultdict(set)
+        symbol_trades: Dict[str, List[Trade]] = defaultdict(list)
+
         for interval in intervals:
             matched = []
             for t in trades:
                 if not t.open_time:
                     continue
-                if t.symbol != interval.symbol:
+                if not self._symbols_match(t.symbol, interval.symbol):
                     continue
+                symbol_trades[interval.symbol].append(t)
                 tehran = to_tehran(t.open_time)
                 hour = tehran.hour
                 minute = tehran.minute
-                start = interval.start_hour * 60 + interval.start_minute
-                end = interval.end_hour * 60 + interval.end_minute
-                current = hour * 60 + minute
-                if start <= current <= end:
+                if self._is_in_interval(hour, minute, interval.start_hour, interval.start_minute, interval.end_hour, interval.end_minute):
                     matched.append(t)
+                    t_key = t.id if t.id is not None else id(t)
+                    matched_trade_keys_by_symbol[interval.symbol].add(t_key)
 
             if matched:
                 result[f"{interval.name} [{interval.label or '-'}]"] = self._summarize(matched)
+
+        # Calculate Outside-Window trades for each traded symbol that has intervals
+        for sym, t_list in symbol_trades.items():
+            seen = set()
+            unique_t_list = []
+            for t in t_list:
+                key = t.id if t.id is not None else id(t)
+                if key not in seen:
+                    seen.add(key)
+                    unique_t_list.append(t)
+
+            matched_keys = matched_trade_keys_by_symbol[sym]
+            outside = [t for t in unique_t_list if (t.id if t.id is not None else id(t)) not in matched_keys]
+            if outside:
+                sym_label = "طلا" if "XAU" in sym else ("داو" if "DJI" in sym or "US30" in sym else ("یورو" if "EUR" in sym else sym))
+                result[f"{sym_label} — خارج از بازه [خارج]"] = self._summarize(outside)
 
         return result
 
