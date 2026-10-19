@@ -482,6 +482,26 @@ const handleForkVersion = (version: Version) => {
     }
   };
 
+  const handleNavigateToAnalysis = (version: Version) => {
+    const targetScope = (version.test_type || '').toLowerCase() === 'forward' ? 'forward' : 'backtest';
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', 'analysis');
+    url.searchParams.set('scope', targetScope);
+    url.searchParams.set('version_id', String(version.id));
+    window.history.pushState({}, '', url.toString());
+    window.dispatchEvent(new CustomEvent('mok-navigate', { detail: { page: 'analysis' } }));
+  };
+
+  const handleNavigateToComparison = (version: Version) => {
+    const targetTestType = (version.test_type || '').toLowerCase() === 'forward' ? 'FORWARD' : 'BACKTEST';
+    const url = new URL(window.location.href);
+    url.searchParams.set('page', 'comparison');
+    url.searchParams.set('test_type', targetTestType);
+    url.searchParams.set('versions', String(version.id));
+    window.history.pushState({}, '', url.toString());
+    window.dispatchEvent(new CustomEvent('mok-navigate', { detail: { page: 'comparison' } }));
+  };
+
   // ═════════════════════════════════════════════
   // Strategy Stats
   // ═════════════════════════════════════════════
@@ -982,10 +1002,24 @@ const handleForkVersion = (version: Version) => {
                             </span>
                           </div>
                         </div>
-                        <div className="flex gap-1 shrink-0">
+                        <div className="flex gap-1 shrink-0 items-center">
+                          <button
+                            onClick={() => handleNavigateToAnalysis(version)}
+                            className="text-[var(--accent)] hover:bg-[var(--accent-soft)] px-2 py-1.5 rounded-[8px] text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            title="مشاهده تحلیل این نسخه"
+                          >
+                            📊 آنالیز
+                          </button>
+                          <button
+                            onClick={() => handleNavigateToComparison(version)}
+                            className="text-[var(--purple)] hover:bg-[var(--purple-soft)] px-2 py-1.5 rounded-[8px] text-[11px] font-bold transition-all flex items-center gap-1 cursor-pointer"
+                            title="مقایسه این نسخه"
+                          >
+                            ⚖️ مقایسه
+                          </button>
                           <button
                             onClick={() => handleOpenVersionForm(version)}
-                            className="text-[var(--accent)] hover:bg-[var(--accent-soft)] p-2 rounded-[8px] text-sm transition-all"
+                            className="text-[var(--accent)] hover:bg-[var(--accent-soft)] p-2 rounded-[8px] text-sm transition-all cursor-pointer"
                             title="ویرایش"
                           >
                             ✏️
@@ -993,14 +1027,14 @@ const handleForkVersion = (version: Version) => {
                           <button
                             onClick={() => handleDeleteVersion(version)}
                             disabled={version.trades_count > 0}
-                            className="text-[var(--loss)] hover:bg-[var(--loss-soft)] p-2 rounded-[8px] text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed"
+                            className="text-[var(--loss)] hover:bg-[var(--loss-soft)] p-2 rounded-[8px] text-sm transition-all disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
                             title={version.trades_count > 0 ? 'این نسخه معامله دارد' : 'حذف'}
                           >
                             🗑️
                           </button>
                           <button
                             onClick={() => handleForkVersion(version)}
-                            className="text-[var(--purple-light)] hover:bg-[var(--purple-soft)] p-2 rounded-[8px] text-sm transition-all"
+                            className="text-[var(--purple-light)] hover:bg-[var(--purple-soft)] p-2 rounded-[8px] text-sm transition-all cursor-pointer"
                             title="ایجاد نسخه مشتق (Fork)"
                           >
                             🔱

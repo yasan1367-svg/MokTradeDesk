@@ -111,7 +111,11 @@ class PropRuleEngine:
         initial = stage.initial_balance or 10000.0
         day_offset = stage.day_boundary_utc_offset
         if day_offset is None:
-            day_offset = 210  # Asia/Tehran = UTC+3:30
+            account = getattr(stage, "account", None)
+            if account and getattr(account, "server_utc_offset_minutes", None) is not None:
+                day_offset = account.server_utc_offset_minutes
+            else:
+                day_offset = 0  # 00:00 UTC
         day_offset = int(day_offset)
         closed_trades = [t for t in trades if t.close_time is not None]
         open_trades = [t for t in trades if t.close_time is None]
@@ -183,7 +187,7 @@ class PropRuleEngine:
         if max_total_dd_limit <= 0:
             violations.append("قانون Max DD تنظیم نشده")
             unconfigured = True
-        if profit_target <= 0:
+        if stage.stage_type != StageType.FUNDED_REAL and profit_target <= 0:
             violations.append("هدف سود تنظیم نشده")
             unconfigured = True
         if not modes_configured:
@@ -522,11 +526,16 @@ class PropRuleEngine:
             PropRuleEngine._grade_loss(max_total_dd, max_total_dd_limit),
             f"Total DD: {max_total_dd:.2f}USDT  از حد {max_total_dd_limit:.2f}USDT ",
         )
-        # ۳) Profit Target — برای مراحل تکمیل‌شده بی‌ربط
+        # ۳) Profit Target — برای مراحل تکمیل‌شده یا فاندد بی‌ربط
         if is_historical:
             add(
                 RuleType.PROFIT_TARGET, total_pnl, profit_target, Severity.PASS,
                 "برای مراحل تکمیل‌شده بی‌ربط",
+            )
+        elif stage.stage_type == StageType.FUNDED_REAL:
+            add(
+                RuleType.PROFIT_TARGET, total_pnl, profit_target, Severity.PASS,
+                "برای مرحلهٔ فاندد بی‌ربط است",
             )
         elif profit_target > 0 and total_pnl >= profit_target:
             add(
@@ -611,18 +620,18 @@ class PropRuleEngine:
     # ═════════════════════════════════════════════
     @staticmethod
     def _group_daily_pnl(
-        trades: List[Trade], day_boundary_offset_minutes: int = 210
+        trades: List[Trade], day_boundary_offset_minutes: int = 0
     ) -> Dict[str, float]:
         """گروه‌بندی PnL روزانه با مرز روز مشخص (فاز ۴۷.۲).
 
         `day_boundary_offset_minutes` مرز روز را نسبت به UTC جابه‌جا می‌کند
-        (پیش‌فرض 210 = Asia/Tehran، UTC+3:30). زمان naive به‌عنوان UTC
+        (پیش‌فرض 0 = 00:00 UTC). زمان naive به‌عنوان UTC
         تفسیر می‌شود.
         """
         from datetime import timedelta, timezone
 
         if day_boundary_offset_minutes is None:
-            day_boundary_offset_minutes = 210  # Asia/Tehran = UTC+3:30
+            day_boundary_offset_minutes = 0  # 00:00 UTC
         daily: Dict[str, float] = {}
         for t in trades:
             if not t.close_time:
@@ -646,7 +655,7 @@ class PropRuleEngine:
         from datetime import timedelta, timezone
 
         if day_boundary_offset_minutes is None:
-            day_boundary_offset_minutes = 210  # Asia/Tehran = UTC+3:30
+            day_boundary_offset_minutes = 0  # 00:00 UTC
         daily_trades: Dict[str, List[Trade]] = {}
         for trade in ordered_trades:
             if trade.close_time is None:

@@ -59,11 +59,30 @@ const VALID_SCOPES: ScopeType[] = SCOPE_TABS.map((t) => t.key);
 function readStoredScope(): ScopeType {
   if (typeof window === 'undefined') return 'backtest';
   try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const scopeParam = urlParams.get('scope') as ScopeType;
+    if (scopeParam && VALID_SCOPES.includes(scopeParam)) return scopeParam;
+
     const stored = JSON.parse(localStorage.getItem(SCOPE_KEY) || '"backtest"') as ScopeType;
     return VALID_SCOPES.includes(stored) ? stored : 'backtest';
   } catch {
     return 'backtest';
   }
+}
+
+function readInitialSelectedId(): number | null {
+  if (typeof window === 'undefined') return null;
+  try {
+    const urlParams = new URLSearchParams(window.location.search);
+    const idParam = urlParams.get('version_id') || urlParams.get('id');
+    if (idParam) {
+      const parsed = Number(idParam);
+      if (!isNaN(parsed) && parsed > 0) return parsed;
+    }
+  } catch {
+    // fallback
+  }
+  return null;
 }
 
 // فاز ۲۳ — هر تب مرحله فقط مراحل همان نوع را نشان می‌دهد
@@ -75,7 +94,8 @@ const STAGE_TYPE_BY_SCOPE: Record<string, string> = {
 
 export default function AnalysisPage() {
   const [scope, setScope] = useState<ScopeType>(readStoredScope);
-  const [selectedId, setSelectedId] = useState<number | null>(null);
+  const [selectedId, setSelectedId] = useState<number | null>(readInitialSelectedId);
+  const [staleWarning, setStaleWarning] = useState<string | null>(null);
   const [versions, setVersions] = useState<Version[]>([]);
   const [propStages, setPropStages] = useState<PropStageOption[]>([]);
   // فاز ۴۸c — حساب‌های معاملاتی شخصی (دامنهٔ REAL_PERSONAL)
@@ -143,7 +163,14 @@ export default function AnalysisPage() {
               ? await getAnalysisPersonalAccount(selectedId)
               : await getAnalysisProp(selectedId);
           analysisData = res.data;
-        } catch (e) {
+          setStaleWarning(null);
+        } catch (e: any) {
+          const detail = e?.response?.data?.detail;
+          if (detail && typeof detail === 'string' && (detail.includes('کهنه است') || detail.includes('قواعد نسخه پس از تحلیل'))) {
+            setStaleWarning(detail);
+          } else {
+            setStaleWarning(null);
+          }
           console.log('تحلیلی یافت نشد');
         }
         try {
@@ -173,7 +200,7 @@ export default function AnalysisPage() {
   // ═════════════════════════════════════════════
   const handleReanalyze = async () => {
     if (!selectedId) return;
-    setLoading(true); setError(null);
+    setLoading(true); setError(null); setStaleWarning(null);
     try {
       const isVersion = scope === 'backtest' || scope === 'forward';
       const testType = testTypeOfScope(scope);
@@ -192,6 +219,7 @@ export default function AnalysisPage() {
         const res = await getAnalysisProp(selectedId);
         setAnalysis(res.data);
       }
+      setStaleWarning(null);
     } catch (err: any) {
       setError(err.response?.data?.detail || 'خطا در تحلیل');
     } finally { setLoading(false); }
@@ -233,6 +261,7 @@ export default function AnalysisPage() {
     setAnalysis(null);
     setTrades([]);
     setError(null);
+    setStaleWarning(null);
     localStorage.setItem(SCOPE_KEY, JSON.stringify(newScope));
   };
 
@@ -322,6 +351,23 @@ export default function AnalysisPage() {
         {error && (
           <div className="mt-4 bg-loss/10 border border-loss/30 text-[var(--loss)] p-3 rounded-xl text-sm">
             ❌ {error}
+          </div>
+        )}
+
+        {staleWarning && (
+          <div className="mt-4 flex items-center justify-between flex-wrap gap-3 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3.5 text-xs text-[var(--warning-strong)]">
+            <div className="flex items-center gap-2 font-bold">
+              <span>⚠️</span>
+              <span>{staleWarning}</span>
+            </div>
+            <button
+              type="button"
+              onClick={handleReanalyze}
+              disabled={loading || !selectedId}
+              className="px-3.5 py-2 rounded-[10px] bg-[var(--accent)] text-white text-xs font-extrabold hover:bg-[var(--accent-strong)] transition-all shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+            >
+              🔄 تحلیل مجدد
+            </button>
           </div>
         )}
       </GlassCard>
@@ -615,8 +661,23 @@ export default function AnalysisPage() {
         !loading && (
           <GlassCard>
             <div className="text-center py-12 text-[var(--text-secondary)]">
-              <div className="text-4xl mb-4">📊</div>
-              <div>برای مشاهده‌ی تحلیل، یک دامنه (نسخه / حساب شخصی / مرحله پراپ) انتخاب کنید و روی «تحلیل مجدد» کلیک کنید</div>
+              <div className="text-4xl mb-4">{staleWarning ? '⚠️' : '📊'}</div>
+              {staleWarning ? (
+                <div className="space-y-3 max-w-lg mx-auto">
+                  <div className="text-base font-bold text-[var(--warning-strong)]">{staleWarning}</div>
+                  <div className="text-xs text-[var(--text-secondary)]">برای به‌روزرسانی آمار این دامنه و ثبت نتایج جدید، دکمه زیر را کلیک کنید:</div>
+                  <button
+                    type="button"
+                    onClick={handleReanalyze}
+                    disabled={loading || !selectedId}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 rounded-xl bg-[var(--accent)] text-white text-sm font-extrabold hover:bg-[var(--accent-strong)] shadow-md transition-all cursor-pointer disabled:opacity-50"
+                  >
+                    🔄 تحلیل مجدد
+                  </button>
+                </div>
+              ) : (
+                <div>برای مشاهده‌ی تحلیل، یک دامنه (نسخه / حساب شخصی / مرحله پراپ) انتخاب کنید و روی «تحلیل مجدد» کلیک کنید</div>
+              )}
             </div>
           </GlassCard>
         )

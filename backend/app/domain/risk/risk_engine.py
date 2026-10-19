@@ -179,7 +179,7 @@ class RiskEngine:
         mean = sum(returns) / len(returns)
         negative_returns = [value for value in returns if value < 0]
         if not negative_returns:
-            return 0.0
+            return 999.0 if mean > 0 else 0.0
         downside_deviation = (
             sum(value**2 for value in negative_returns) / len(returns)
         ) ** 0.5

@@ -58,21 +58,33 @@ export default function RiskManagementPage() {
         <div className="app-card p-5 shadow-md">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-input)] flex items-center justify-center text-lg">📈</div>
-            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sharpe Ratio (روزانه)</span>
+            <div>
+              <span className="text-[12px] text-[var(--text-secondary)] font-bold block">Sharpe Ratio</span>
+              <span className="text-[10px] text-[var(--text-secondary)]">روزانه: {performance_ratios.sharpe_ratio}</span>
+            </div>
           </div>
-          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">{performance_ratios.sharpe_ratio}</div>
-          <div className={`text-[11px] font-bold mt-1 ${performance_ratios.sharpe_ratio >= 1 ? 'text-[var(--profit)]' : performance_ratios.sharpe_ratio >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-            {performance_ratios.sharpe_ratio >= 1 ? '🟢 خوب' : performance_ratios.sharpe_ratio >= 0.5 ? '🟡 متوسط' : '🔴 ضعیف'}
+          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">
+            {performance_ratios.sharpe_ratio_annualized ?? performance_ratios.sharpe_ratio}
+          </div>
+          <div className={`text-[11px] font-bold mt-1 ${(performance_ratios.sharpe_ratio_annualized ?? performance_ratios.sharpe_ratio) >= 1 ? 'text-[var(--profit)]' : (performance_ratios.sharpe_ratio_annualized ?? performance_ratios.sharpe_ratio) >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+            {(performance_ratios.sharpe_ratio_annualized ?? performance_ratios.sharpe_ratio) >= 1 ? '🟢 خوب (سالانه)' : (performance_ratios.sharpe_ratio_annualized ?? performance_ratios.sharpe_ratio) >= 0.5 ? '🟡 متوسط' : '🔴 ضعیف'}
           </div>
         </div>
         <div className="app-card p-5 shadow-md">
           <div className="flex items-center gap-3 mb-3">
             <div className="w-10 h-10 rounded-[12px] bg-[var(--bg-input)] flex items-center justify-center text-lg">📉</div>
-            <span className="text-[12px] text-[var(--text-secondary)] font-bold">Sortino Ratio (روزانه)</span>
+            <div>
+              <span className="text-[12px] text-[var(--text-secondary)] font-bold block">Sortino Ratio</span>
+              <span className="text-[10px] text-[var(--text-secondary)]">
+                {performance_ratios.sortino_ratio >= 999 ? 'بدون روز منفی' : `روزانه: ${performance_ratios.sortino_ratio}`}
+              </span>
+            </div>
           </div>
-          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">{performance_ratios.sortino_ratio}</div>
-          <div className={`text-[11px] font-bold mt-1 ${performance_ratios.sortino_ratio >= 1 ? 'text-[var(--profit)]' : performance_ratios.sortino_ratio >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-            {performance_ratios.sortino_ratio >= 1 ? '🟢 خوب' : performance_ratios.sortino_ratio >= 0.5 ? '🟡 متوسط' : '🔴 ضعیف'}
+          <div className="text-[22px] font-extrabold text-[var(--text-primary)]">
+            {performance_ratios.sortino_ratio >= 999 ? 'بدون زیان' : (performance_ratios.sortino_ratio_annualized ?? performance_ratios.sortino_ratio)}
+          </div>
+          <div className={`text-[11px] font-bold mt-1 ${performance_ratios.sortino_ratio >= 999 || (performance_ratios.sortino_ratio_annualized ?? performance_ratios.sortino_ratio) >= 1 ? 'text-[var(--profit)]' : (performance_ratios.sortino_ratio_annualized ?? performance_ratios.sortino_ratio) >= 0.5 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
+            {performance_ratios.sortino_ratio >= 999 ? '🟢 عالی (بدون زیان)' : (performance_ratios.sortino_ratio_annualized ?? performance_ratios.sortino_ratio) >= 1 ? '🟢 خوب' : (performance_ratios.sortino_ratio_annualized ?? performance_ratios.sortino_ratio) >= 0.5 ? '🟡 متوسط' : '🔴 ضعیف'}
           </div>
         </div>
         <div className="app-card p-5 shadow-md">

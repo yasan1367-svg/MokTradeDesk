@@ -114,6 +114,22 @@ export default function App() {
     writeSearch({ page: page === 'dashboard' ? null : page });
   }, [page]);
 
+  useEffect(() => {
+    const onPopState = () => setPage(readPageFromUrl());
+    const onMokNavigate = (e: Event) => {
+      const custom = e as CustomEvent<{ page?: Page }>;
+      if (custom.detail?.page && PAGE_KEYS.includes(custom.detail.page)) {
+        setPage(custom.detail.page);
+      }
+    };
+    window.addEventListener('popstate', onPopState);
+    window.addEventListener('mok-navigate', onMokNavigate);
+    return () => {
+      window.removeEventListener('popstate', onPopState);
+      window.removeEventListener('mok-navigate', onMokNavigate);
+    };
+  }, []);
+
 // ── میانبرهای کیبورد ──
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {

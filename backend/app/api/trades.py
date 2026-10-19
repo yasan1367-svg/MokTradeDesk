@@ -550,10 +550,15 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
 
     for field in (
         "note", "symbol", "open_price", "close_price", "size", "sl", "tp",
-        "pnl", "commission", "swap", "initial_sl",
+        "pnl", "swap", "initial_sl",
     ):
         if field in payload:
             setattr(trade, field, payload[field])
+    if "commission" in payload:
+        comm = payload["commission"]
+        if comm is not None and comm > 0:
+            comm = -comm
+        trade.commission = comm
     if "direction" in payload:
         trade.direction = payload["direction"].lower()
     if "open_time" in payload:
@@ -776,6 +781,17 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
     if r_multiple is None:
         r_multiple = calculate_r_multiple(direction, data.open_price, data.close_price, data.sl, initial_sl)
 
+    pnl = data.pnl
+    if pnl is None and data.open_price is not None and data.close_price is not None and data.size:
+        if direction == "buy":
+            pnl = round((data.close_price - data.open_price) * data.size, 2)
+        elif direction == "sell":
+            pnl = round((data.open_price - data.close_price) * data.size, 2)
+
+    commission = data.commission or 0.0
+    if commission > 0:
+        commission = -commission
+
     trade = Trade(
         symbol=data.symbol,
         direction=direction,
@@ -787,9 +803,9 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         sl=data.sl,
         initial_sl=initial_sl,
         tp=data.tp,
-        pnl=data.pnl,
+        pnl=pnl,
         r_multiple=r_multiple,
-        commission=data.commission or 0,
+        commission=commission,
         swap=data.swap or 0,
         version_id=data.version_id,
         personal_trading_account_id=data.personal_trading_account_id,

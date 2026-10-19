@@ -903,13 +903,18 @@ class AnalysisService:
         return {name: self._summarize(trades) for name, trades in by_day.items() if trades}
 
     def _analyze_by_hour(self, trades: List[Trade]) -> Dict[str, Any]:
-        """تحلیل ساعت بر پایهٔ **زمان ورود** (`open_time`) — فاز 48a.3."""
+        """تحلیل ساعت بر پایهٔ **زمان ورود** (`open_time`) در بازه UTC — فاز 48a.3."""
+        from datetime import timezone
+
         by_hour = {str(h): [] for h in range(24)}
 
         for t in trades:
             if not t.open_time:
                 continue
-            hour = str(to_tehran(t.open_time).hour)
+            open_dt = t.open_time
+            if open_dt.tzinfo is not None:
+                open_dt = open_dt.astimezone(timezone.utc)
+            hour = str(open_dt.hour)
             by_hour[hour].append(t)
 
         return {h: self._summarize(trades) for h, trades in by_hour.items() if trades}

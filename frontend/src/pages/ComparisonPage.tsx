@@ -9,6 +9,7 @@ import {
   getAllVersions,
   getStrategies,
   compareVersions,
+  analyzeVersionScoped,
 } from '../api/client';
 import type { CompareResponse, VersionComparisonItem, Strategy, StrategyVersion } from '../api/client';
 // فاز ۴۸c — ماندگاری فیلترها در URL (پروژه react-router ندارد ⇒ History API خام)
@@ -81,6 +82,8 @@ export default function ComparisonPage() {
   const [appliedSnapshot, setAppliedSnapshot] = useState<{ ids: number[]; testType: string; symbol: string; dateFrom: string; dateTo: string } | null>(null);
   const [resultCurrent, setResultCurrent] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [reanalyzingId, setReanalyzingId] = useState<number | null>(null);
+  const [reanalyzingAll, setReanalyzingAll] = useState(false);
 
   useEffect(() => { toastRef.current = toast; }, [toast]);
 
@@ -204,6 +207,36 @@ export default function ComparisonPage() {
   const clearComparison = () => {
     invalidateComparison();
     setSelectedIds([]);
+  };
+
+  const handleReanalyzeVersion = async (versionId: number) => {
+    try {
+      setReanalyzingId(versionId);
+      await analyzeVersionScoped(versionId, testType);
+      toastRef.current.success(`تحلیل ${labelOf(versionId)} به‌روز شد`);
+      await handleCompare();
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || 'خطا در تحلیل نسخه';
+      toastRef.current.error(msg);
+    } finally {
+      setReanalyzingId(null);
+    }
+  };
+
+  const handleReanalyzeAllErrors = async (errorVersionIds: number[]) => {
+    try {
+      setReanalyzingAll(true);
+      for (const vid of errorVersionIds) {
+        await analyzeVersionScoped(vid, testType);
+      }
+      toastRef.current.success('تمامی نسخه‌های نیازمند تحلیل با موفقیت تحلیل شدند');
+      await handleCompare();
+    } catch (err: any) {
+      const msg = err?.response?.data?.detail || 'خطا در تحلیل برخی نسخه‌ها';
+      toastRef.current.error(msg);
+    } finally {
+      setReanalyzingAll(false);
+    }
   };
 
   const filteredVersions = versions.filter((v) => {
@@ -481,6 +514,23 @@ export default function ComparisonPage() {
                 </div>
               </div>
 
+              {result.comparison.some((i) => i.error) && testType !== 'REAL_PERSONAL' && testType !== 'REAL_PROP' && (
+                <div className="mb-4 flex items-center justify-between flex-wrap gap-3 rounded-xl border border-[var(--warning-border)] bg-[var(--warning-soft)] p-3.5 text-xs text-[var(--warning-strong)]">
+                  <div className="flex items-center gap-2 font-bold">
+                    <span>⚠️</span>
+                    <span>برخی از نسخه‌ها کهنه هستند یا تحلیل نشده‌اند و نیاز به تحلیل مجدد دارند.</span>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleReanalyzeAllErrors(result.comparison.filter((i) => i.error).map((i) => i.version_id))}
+                    disabled={loading || reanalyzingAll || reanalyzingId !== null}
+                    className="px-3.5 py-2 rounded-[10px] bg-[var(--accent)] text-white text-xs font-extrabold hover:bg-[var(--accent-strong)] transition-all shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1.5"
+                  >
+                    {reanalyzingAll ? '⏳ در حال تحلیل همه...' : '🔄 تحلیل همه و به‌روزرسانی مقایسه'}
+                  </button>
+                </div>
+              )}
+
               <div className="overflow-x-auto rounded-[14px] border border-[var(--border-subtle)]">
                 <table className="w-full text-sm">
                   <thead>
@@ -509,7 +559,19 @@ export default function ComparisonPage() {
                           </td>
                           {item.error ? (
                             <td colSpan={8} className="py-4 px-4 text-[12px] font-bold text-[var(--warning-strong)]">
-                              ⚠️ {item.error}
+                              <div className="flex items-center justify-between flex-wrap gap-2">
+                                <span>⚠️ {item.error}</span>
+                                {testType !== 'REAL_PERSONAL' && testType !== 'REAL_PROP' && (
+                                  <button
+                                    type="button"
+                                    onClick={() => handleReanalyzeVersion(item.version_id)}
+                                    disabled={loading || reanalyzingId === item.version_id || reanalyzingAll}
+                                    className="px-3 py-1.5 rounded-[8px] bg-[var(--accent)] text-white text-[11px] font-bold hover:bg-[var(--accent-strong)] transition-all shadow-sm disabled:opacity-50 cursor-pointer flex items-center gap-1"
+                                  >
+                                    {reanalyzingId === item.version_id ? '⏳ در حال تحلیل...' : '🔄 تحلیل مجدد این نسخه'}
+                                  </button>
+                                )}
+                              </div>
                             </td>
                           ) : (
                             <>

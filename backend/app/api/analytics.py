@@ -813,8 +813,11 @@ def get_risk_metrics(
     dd_d = max(peak_to_trough["dd"], static_dd["dd"])
     md = drawdown_trade_count
     risk_pf_data = metrics.profit_factor_status(sum(wins), abs(sum(losses)))
-    status = "danger" if (sharpe < 0.5 or (ror is not None and ror > 0.1) or orp > 20) else ("warning" if (sharpe < 1.0 or (ror is not None and ror > 0.05) or orp > 10) else "safe")
-    return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sortino_ratio": round(sortino, 2),
+    sharpe_annualized = sharpe * (365.0 ** 0.5)
+    sortino_annualized = (sortino * (365.0 ** 0.5)) if sortino < 999 else sortino
+    status = "danger" if (sharpe_annualized < 0.5 or (ror is not None and ror > 0.1) or orp > 20) else ("warning" if (sharpe_annualized < 1.0 or (ror is not None and ror > 0.05) or orp > 10) else "safe")
+    return {"performance_ratios": {"sharpe_ratio": round(sharpe, 2), "sharpe_ratio_annualized": round(sharpe_annualized, 2),
+            "sortino_ratio": round(sortino, 2), "sortino_ratio_annualized": round(sortino_annualized, 2),
             "profit_factor": risk_pf_data["value"],
             "profit_factor_status": risk_pf_data["status"],
             "win_rate": round(wr, 2), "avg_r_multiple": round(arm, 2),
