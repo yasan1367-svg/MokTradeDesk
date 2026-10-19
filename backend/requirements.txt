@@ -1,0 +1,24 @@
+fastapi
+uvicorn[standard]
+sqlalchemy
+alembic
+python-multipart
+openpyxl
+beautifulsoup4
+pydantic-settings
+slowapi
+
+# Export / PDF (فاز ۱۵.۳ — وابستگی‌های گم‌شده که export.py استفاده می‌کند)
+reportlab
+jdatetime
+arabic-reshaper
+python-bidi
+# فاز ۴۶.۴ — دادهٔ منطقهٔ زمانی IANA (Asia/Tehran) برای ویندوز
+tzdata
+
+# Testing (فاز ۱۲)
+pytest
+pytest-cov
+httpx
+# فاز ۴۵.۱۰ — تست مبتنی بر Property برای یکپارچگی دفتر کل
+hypothesis

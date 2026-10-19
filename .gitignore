@@ -1,0 +1,147 @@
+# ═════════════════════════════════════════════════════════
+# .gitignore — MokTradeDesk
+# ═════════════════════════════════════════════════════════
+
+# ═════════════════════════════════════════════
+# Python bytecode & runtime
+# ═════════════════════════════════════════════
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+*.pid
+*.pid.lock
+*.seed
+*.tmp
+
+# ═════════════════════════════════════════════
+# Python virtual environments
+# ═════════════════════════════════════════════
+venv/
+.venv/
+env/
+ENV/
+env.bak/
+venv.bak/
+
+# ═════════════════════════════════════════════
+# Build artifacts (Python setuptools / pip)
+# ═════════════════════════════════════════════
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# ═════════════════════════════════════════════
+# Test caches & coverage
+# ═════════════════════════════════════════════
+.pytest_cache/
+.hypothesis/
+.mypy_cache/
+.ruff_cache/
+.tox/
+.coverage
+htmlcov/
+coverage/
+
+# ═════════════════════════════════════════════
+# SQLite databases & sidecar files
+# ═════════════════════════════════════════════
+*.db
+*.db-shm
+*.db-wal
+*.db-journal
+*.sqlite
+*.sqlite3
+*.db.backup*
+*.db.bak*
+
+# ═════════════════════════════════════════════
+# Backup files & folders
+# ═════════════════════════════════════════════
+backups/
+backend/backups/
+*.bak
+*.backup
+*.pre*
+# Exception for pre-commit config (tracked)
+!backend/.pre-commit-config.yaml
+
+# ═════════════════════════════════════════════
+# Node.js / Frontend
+# ═════════════════════════════════════════════
+node_modules/
+frontend/node_modules/
+dist-ssr/
+.vite/
+.parcel-cache/
+frontend/dist/
+frontend/build/
+*.local
+
+# ═════════════════════════════════════════════
+# Logs
+# ═════════════════════════════════════════════
+*.log
+*.log.*
+logs/
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+temp_build.log
+temp_build_err.log
+
+# ═════════════════════════════════════════════
+# Environment files (never commit secrets)
+# ═════════════════════════════════════════════
+.env
+.env.local
+.env.*.local
+*.env
+backend/.env
+
+# ═════════════════════════════════════════════
+# IDE / Editor
+# ═════════════════════════════════════════════
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+.project
+.classpath
+.settings/
+.cache/
+
+# ═════════════════════════════════════════════
+# OS junk files
+# ═════════════════════════════════════════════
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+desktop.ini
+
+# ═════════════════════════════════════════════
+# Storage / Uploads
+# ═════════════════════════════════════════════
+backend/storage/screenshots/
+frontend/storage/
+storage/

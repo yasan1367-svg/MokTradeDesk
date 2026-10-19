@@ -1,0 +1,1214 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="referrer" content="no-referrer">
+<meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline' 'unsafe-eval' 'wasm-unsafe-eval' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src 'unsafe-inline' blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'">
+<title>MokTradeDesk - Final Light Preview</title>
+<style>:root{color-scheme:light dark;background:light-dark(rgb(255 255 255), rgb(24 24 24))}html,body{margin:0}body{box-sizing:border-box;padding:0;background:inherit}iframe{display:block;width:100%;max-width:1920px;height:100vh;margin:0 auto;border:0}</style>
+</head>
+<body>
+<iframe sandbox="allow-scripts" referrerpolicy="no-referrer" title="MokTradeDesk - Final Light Preview" srcdoc="&lt;!doctype html&gt;
+&lt;html lang=&quot;en&quot;&gt;
+&lt;head&gt;
+&lt;meta charset=&quot;utf-8&quot;&gt;
+&lt;meta name=&quot;viewport&quot; content=&quot;width=device-width, initial-scale=1&quot;&gt;
+&lt;meta name=&quot;referrer&quot; content=&quot;no-referrer&quot;&gt;
+&lt;meta http-equiv=&quot;Content-Security-Policy&quot; content=&quot;default-src &#x27;none&#x27;; script-src &#x27;unsafe-inline&#x27; &#x27;unsafe-eval&#x27; &#x27;wasm-unsafe-eval&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; style-src &#x27;unsafe-inline&#x27; blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; img-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; font-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; media-src blob: data: https://cdnjs.cloudflare.com https://cdn.jsdelivr.net https://esm.sh https://fonts.bunny.net https://fonts.googleapis.com https://fonts.gstatic.com https://unpkg.com; worker-src blob:; connect-src blob: data:; frame-src &#x27;none&#x27;; object-src &#x27;none&#x27;; base-uri &#x27;none&#x27;; form-action &#x27;none&#x27;&quot;&gt;
+&lt;title&gt;MokTradeDesk - Final Light Preview&lt;/title&gt;
+&lt;style&gt;:root {
+  color-scheme: light dark;
+  background-color: var(--background) !important;
+
+  /* Agent-facing contract; keep in sync with SKILL.md. */
+  --background: light-dark(rgb(255 255 255), rgb(24 24 24));
+  --foreground: light-dark(rgb(26 28 31), rgb(255 255 255));
+  --card: color-mix(in oklab, var(--foreground) 5%, transparent);
+  --card-foreground: var(--foreground);
+  --popover: light-dark(rgb(255 255 255), rgb(45 45 45));
+  --popover-foreground: var(--foreground);
+  --primary: light-dark(rgb(51 156 255), rgb(131 195 255));
+  --primary-foreground: light-dark(rgb(255 255 255), rgb(13 13 13));
+  --secondary: light-dark(rgb(255 255 255 / 96%), rgb(54 54 54 / 96%));
+  --secondary-foreground: var(--foreground);
+  --muted: color-mix(in srgb, var(--foreground) 10%, transparent);
+  --muted-foreground: light-dark(
+    rgb(26 28 31 / 49.4%),
+    rgb(255 255 255 / 49.8%)
+  );
+  --accent: light-dark(rgb(229 242 255), rgb(13 39 63));
+  --accent-foreground: var(--primary);
+  --destructive: light-dark(rgb(226 85 7), rgb(255 133 73));
+  --border: light-dark(rgb(26 28 31 / 8%), rgb(255 255 255 / 8.2%));
+  --input: light-dark(
+    rgb(26 28 31 / 11.8%),
+    color-mix(in oklab, rgb(0 0 0) 10%, transparent)
+  );
+  --ring: light-dark(rgb(51 156 255), rgb(131 195 255 / 76%));
+  --font-size-base: 14px;
+  --viz-series-1: var(--primary);
+  --viz-series-2: light-dark(rgb(243 136 59), rgb(245 154 86));
+  --viz-series-3: light-dark(rgb(93 201 119), rgb(116 213 139));
+  --viz-series-4: light-dark(rgb(235 119 177), rgb(240 143 192));
+  --viz-series-5: light-dark(rgb(155 121 236), rgb(170 145 239));
+  --viz-series-6: light-dark(rgb(58 185 177), rgb(90 203 194));
+
+  /* Internal implementation variables; not part of the agent contract. */
+  --font-sans: -apple-system, system-ui, &quot;Segoe UI&quot;, sans-serif;
+  --font-mono:
+    ui-monospace, SFMono-Regular, &quot;SF Mono&quot;, Menlo, Consolas, &quot;Liberation Mono&quot;,
+    monospace;
+  --font-size-normal: max(11px, var(--font-size-base));
+  --font-size-tooltip: calc(var(--font-size-base) - 1px);
+  --font-size-small: max(11px, calc(var(--font-size-base) - 2px));
+  --font-size-h1: calc(var(--font-size-normal) * 1.7142857143);
+  --font-size-h2: calc(var(--font-size-normal) * 1.4285714286);
+  --font-size-h3: calc(var(--font-size-normal) * 1.2857142857);
+  --font-weight-normal: 430;
+  --font-weight-medium: 500;
+  --line-height-normal: calc(var(--font-size-normal) * 1.5);
+  --line-height-tooltip: calc(var(--font-size-tooltip) * 1.4285714286);
+  --line-height-small: calc(var(--font-size-small) + 4px);
+  --radius: 12.5px;
+  --radius-sm: calc(var(--radius) * 0.6);
+  --radius-md: calc(var(--radius) * 0.8);
+  --radius-lg: var(--radius);
+  --radius-2xl: calc(var(--radius) * 1.6);
+  --radius-full: 9999px;
+  --shadow-sm: 0 1px 2px -1px rgb(0 0 0 / 8%);
+  --checkmark-image: url(&quot;data:image/svg+xml,%3Csvg xmlns=&#x27;http://www.w3.org/2000/svg&#x27; viewBox=&#x27;0 0 17 17&#x27;%3E%3Cpath d=&#x27;M12.8961 3.64101C13.1297 3.41418 13.4984 3.37523 13.7779 3.56581C14.0571 3.75635 14.1554 4.11331 14.0299 4.41347L13.9615 4.53847L7.71151 13.7045C7.59411 13.8767 7.4063 13.9877 7.19881 14.0072C6.99136 14.0267 6.78564 13.9533 6.63826 13.806L2.88826 10.056L2.79842 9.9457C2.6192 9.67407 2.64927 9.30496 2.88826 9.06581C3.12738 8.82669 3.49647 8.79676 3.76815 8.97597L3.8785 9.06581L7.03084 12.2182L12.8053 3.74941L12.8961 3.64101Z&#x27;/%3E%3C/svg%3E&quot;);
+
+  /* Legacy aliases; not part of the current agent contract. */
+  --viz-bg: transparent;
+  --viz-panel: var(--card);
+  --viz-border: var(--border);
+  --viz-text: var(--foreground);
+  --viz-muted: var(--muted-foreground);
+  --viz-accent: var(--primary);
+  --viz-accent-text: var(--primary-foreground);
+  --viz-accent-bg: var(--accent);
+  --viz-font-size: var(--font-size-base);
+  --viz-warning: var(--destructive);
+  --color-background-primary: var(--background);
+  --color-text-primary: var(--foreground);
+  --color-border-secondary: var(--border);
+}
+
+:root[data-theme=&quot;light&quot;] {
+  color-scheme: light;
+}
+
+:root[data-theme=&quot;dark&quot;] {
+  color-scheme: dark;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html &gt; body {
+  margin: 0;
+  padding: 5px;
+  color: var(--foreground);
+  background: transparent !important;
+  font-family: var(--font-sans);
+  font-size: var(--font-size-normal);
+  font-weight: var(--font-weight-normal);
+  line-height: var(--line-height-normal);
+}
+
+a {
+  color: color-mix(in srgb, var(--viz-accent) 80%, var(--viz-text) 20%);
+  cursor: pointer;
+  font-weight: var(--font-weight-medium);
+  text-decoration: none;
+  text-underline-offset: 2px;
+}
+
+a:is(:hover, :focus-visible) {
+  text-decoration-line: underline;
+  text-decoration-style: dashed;
+  text-decoration-thickness: 0.5px;
+}
+
+h1,
+h2,
+h3,
+h4,
+h5,
+h6,
+p {
+  margin-block: 0;
+}
+
+h1 {
+  font-size: var(--font-size-h1);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h2 {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+h3,
+h4,
+h5,
+h6 {
+  font-size: var(--font-size-h3);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.3;
+}
+
+b,
+strong,
+th {
+  font-weight: var(--font-weight-medium);
+}
+
+code:not(pre code) {
+  display: inline;
+  padding: 1px 6px;
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background: var(--muted);
+  font-family: var(--font-mono);
+  font-size: 0.92em;
+  overflow-wrap: anywhere;
+  -webkit-box-decoration-break: clone;
+  box-decoration-break: clone;
+  word-break: break-word;
+}
+
+#widget {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 100%;
+  padding: 0;
+  background: transparent !important;
+}
+
+.card {
+  min-width: 0;
+  padding: 12px;
+  overflow: hidden;
+  overflow-wrap: break-word;
+  border-radius: var(--radius-2xl);
+  corner-shape: superellipse(1.5);
+  color: var(--card-foreground);
+  background: var(--card);
+}
+
+#widget &gt; :not(.card) {
+  width: 100% !important;
+  max-width: none !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  border-radius: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+}
+
+.tooltip {
+  position: fixed;
+  z-index: 50;
+  top: 0;
+  left: 0;
+  width: max-content;
+  max-width: min(
+    20rem,
+    var(--tooltip-available-width, calc(100vw - 10px)),
+    calc(100vw - 10px)
+  );
+  max-height: min(
+    var(--tooltip-available-height, calc(100vh - 10px)),
+    calc(100vh - 10px)
+  );
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--popover-foreground);
+  background: var(--popover);
+  box-shadow: none;
+  font-size: var(--font-size-tooltip);
+  line-height: var(--line-height-tooltip);
+  overflow-wrap: break-word;
+  white-space: normal;
+  pointer-events: none;
+  user-select: none;
+}
+
+.viz-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(max(180px, 24%), 1fr));
+  gap: 10px;
+}
+
+.viz-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.viz-stat-value {
+  font-size: var(--font-size-h2);
+  font-weight: var(--font-weight-medium);
+  line-height: 1.25;
+}
+
+.viz-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.viz-badge {
+  padding: 3px 8px;
+  border-radius: var(--radius-full);
+  color: var(--accent-foreground);
+  background: var(--accent);
+  font-weight: var(--font-weight-medium);
+}
+
+small,
+.text-small,
+.viz-badge {
+  font-size: var(--font-size-small);
+  line-height: var(--line-height-small);
+}
+
+.text-muted {
+  color: var(--muted-foreground);
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
+.viz-controls {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.viz-controls &gt; .form-label {
+  display: grid;
+  min-width: min(100%, 260px);
+  flex: 1 1 280px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: baseline;
+  gap: 2px 12px;
+  margin-bottom: 0;
+}
+
+.viz-controls &gt; .form-label &gt; :is(.form-control, .form-range, .form-select) {
+  grid-column: 1 / -1;
+}
+
+.btn,
+.form-check-input,
+.form-control,
+.form-range,
+.form-select {
+  font: inherit;
+}
+
+.btn {
+  appearance: button;
+  display: inline-flex;
+  inline-size: fit-content;
+  max-inline-size: 100%;
+  min-height: 28px;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  margin: 0;
+  padding: 0 8px;
+  -webkit-app-region: no-drag;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: var(--cursor-interaction, pointer);
+  text-align: center;
+  text-decoration: none;
+  white-space: nowrap;
+  user-select: none;
+  -webkit-font-smoothing: antialiased;
+}
+
+.btn:is(.btn-block, .viz-tile) {
+  inline-size: 100%;
+}
+
+.btn.viz-tile {
+  min-width: 0;
+  overflow-wrap: anywhere;
+  white-space: normal;
+}
+
+a.btn {
+  cursor: pointer;
+  text-decoration: none;
+}
+
+.btn:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn-primary {
+  border-color: transparent;
+  color: var(--primary-foreground);
+  background: var(--foreground);
+  background-clip: padding-box;
+}
+
+.btn-primary .text-muted {
+  color: color-mix(in srgb, var(--primary-foreground) 50%, transparent);
+}
+
+.btn-primary:not(:disabled):hover {
+  background: color-mix(in srgb, var(--foreground) 80%, transparent);
+  background-clip: padding-box;
+}
+
+.btn-ghost {
+  border-color: transparent;
+  color: var(--muted-foreground);
+  background: transparent;
+}
+
+.btn-ghost:not(:disabled):hover {
+  color: var(--foreground);
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.btn:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+[data-lucide] {
+  stroke-width: 1.6;
+}
+
+.form-label {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--foreground);
+}
+
+.form-control {
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  padding: 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background: var(--secondary);
+}
+
+.form-control::placeholder {
+  color: var(--muted-foreground);
+}
+
+.form-control[type=&quot;file&quot;] {
+  padding: 0;
+  overflow: hidden;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control[type=&quot;file&quot;]::file-selector-button {
+  min-height: 26px;
+  margin-right: 8px;
+  padding: 0 8px;
+  border: 0;
+  border-right: 1px solid var(--input);
+  color: var(--secondary-foreground);
+  background: var(--secondary);
+  cursor: inherit;
+  font: inherit;
+}
+
+.form-control[type=&quot;file&quot;]:not(:disabled):hover::file-selector-button {
+  background: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-control-color[type=&quot;color&quot;] {
+  width: 40px;
+  height: 28px;
+  padding: 3px;
+  cursor: var(--cursor-interaction, pointer);
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch-wrapper {
+  padding: 0;
+}
+
+.form-control-color[type=&quot;color&quot;]::-webkit-color-swatch {
+  border: 0;
+  border-radius: calc(var(--radius-lg) - 4px);
+  corner-shape: superellipse(1.5);
+}
+
+textarea.form-control {
+  height: auto;
+  min-height: 72px;
+  padding: 8px 10px;
+  resize: vertical;
+}
+
+.form-control:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-control:disabled,
+.form-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.form-select {
+  appearance: none;
+  display: block;
+  width: 100%;
+  min-height: 28px;
+  margin: 0;
+  padding: 0 32px 0 8px;
+  outline: none;
+  border: 1px solid var(--input);
+  border-radius: var(--radius-lg);
+  corner-shape: superellipse(1.5);
+  color: var(--foreground);
+  background-color: var(--secondary);
+  background-image:
+    linear-gradient(45deg, transparent 50%, var(--muted-foreground) 50%),
+    linear-gradient(135deg, var(--muted-foreground) 50%, transparent 50%);
+  background-position:
+    calc(100% - 14px) 50%,
+    calc(100% - 10px) 50%;
+  background-repeat: no-repeat;
+  background-size: 4px 4px;
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-select:not(:disabled):hover {
+  background-color: color-mix(in srgb, var(--foreground) 6%, var(--secondary));
+}
+
+.form-select:focus-visible {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-check {
+  display: flex;
+  min-height: 20px;
+  align-items: center;
+  gap: 6px;
+}
+
+.form-check-input {
+  appearance: none;
+  width: 14px;
+  height: 14px;
+  flex: 0 0 auto;
+  margin: 0;
+  border: 1px solid var(--input);
+  color: var(--primary-foreground);
+  background-color: transparent;
+  cursor: var(--cursor-interaction, default);
+  transition:
+    background-color 150ms,
+    border-color 150ms,
+    box-shadow 150ms;
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;] {
+  border-color: var(--input);
+  border-radius: var(--radius-sm);
+  corner-shape: superellipse(1.5);
+  background-color: var(--secondary);
+  box-shadow: var(--shadow-sm);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input:not(:disabled):not(:checked):hover {
+  background-color: var(--card);
+}
+
+.form-check:not(.form-switch) .form-check-input[type=&quot;checkbox&quot;]:checked {
+  border-color: var(--primary);
+  background-color: var(--primary);
+}
+
+.form-check:not(.form-switch)
+  .form-check-input[type=&quot;checkbox&quot;]:checked::before {
+  display: block;
+  width: 100%;
+  height: 100%;
+  background: var(--primary-foreground);
+  content: &quot;&quot;;
+  mask: var(--checkmark-image) center / 12px 12px no-repeat;
+}
+
+.form-check-input[type=&quot;radio&quot;] {
+  width: 14px;
+  height: 14px;
+  border-radius: var(--radius-full);
+}
+
+.form-check-input[type=&quot;radio&quot;]:checked {
+  border: 2px solid var(--primary);
+  background:
+    radial-gradient(circle, var(--primary-foreground) 0 2.5px, transparent 3px),
+    var(--primary);
+}
+
+.form-check:not(.form-switch) .form-check-input:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled {
+  cursor: not-allowed;
+  pointer-events: none;
+}
+
+.form-check:not(.form-switch) .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+}
+
+.form-switch .form-check-input:disabled,
+.form-switch .form-check-input:disabled + .form-check-label {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.form-check-label {
+  color: var(--foreground);
+  cursor: var(--cursor-interaction, default);
+}
+
+.form-switch .form-check-input {
+  position: relative;
+  width: 32px;
+  height: 20px;
+  border: 0;
+  border-radius: var(--radius-full);
+  background: var(--muted);
+  box-shadow: none;
+  transition: background-color 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input::before {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  width: 16px;
+  height: 16px;
+  box-sizing: border-box;
+  border: 1px solid light-dark(var(--primary-foreground), var(--foreground));
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+  box-shadow: var(--shadow-sm);
+  content: &quot;&quot;;
+  transform: translate(2px, -50%);
+  transition: transform 200ms cubic-bezier(0, 0, 0.2, 1);
+}
+
+.form-switch .form-check-input:checked {
+  background: var(--primary);
+}
+
+.form-switch .form-check-input:checked::before {
+  transform: translate(14px, -50%);
+}
+
+.form-switch .form-check-input:focus-visible {
+  box-shadow: 0 0 0 2px var(--ring);
+}
+
+.form-range {
+  appearance: none;
+  display: block;
+  width: 100%;
+  height: 28px;
+  flex: 1;
+  margin: 0;
+  padding: 0;
+  outline: none;
+  border: 0;
+  accent-color: var(--primary);
+  background: linear-gradient(
+      color-mix(in srgb, var(--foreground) 7%, transparent),
+      color-mix(in srgb, var(--foreground) 7%, transparent)
+    )
+    center / 100% 2px no-repeat;
+}
+
+.form-range::-webkit-slider-runnable-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-webkit-slider-thumb {
+  appearance: none;
+  width: 20px;
+  height: 20px;
+  margin-top: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-webkit-slider-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range::-moz-range-track {
+  height: 28px;
+  background: transparent;
+}
+
+.form-range::-moz-range-thumb {
+  width: 20px;
+  height: 20px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-full);
+  background: light-dark(var(--primary-foreground), var(--foreground));
+}
+
+.form-range:focus-visible::-moz-range-thumb {
+  border-color: var(--ring);
+  box-shadow: inset 0 0 0 1px var(--ring);
+}
+
+.form-range:disabled {
+  cursor: not-allowed;
+  opacity: 0.4;
+}
+
+.btn:not(.btn-primary, .viz-tile):is(
+    [aria-pressed=&quot;true&quot;],
+    [aria-selected=&quot;true&quot;],
+    .is-selected
+  ) {
+  border-color: var(--primary);
+  color: var(--primary-foreground);
+  background: var(--primary);
+}
+
+.btn.viz-tile:is([aria-pressed=&quot;true&quot;], [aria-selected=&quot;true&quot;], .is-selected) {
+  border-color: var(--primary);
+  box-shadow: inset 0 0 0 1px var(--primary);
+}
+
+.btn:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 2px;
+}
+
+svg {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+#widget &gt; svg {
+  width: 100%;
+}
+
+.text-warning,
+.text-destructive {
+  color: var(--destructive);
+}
+
+html&gt;body{padding:0}&lt;/style&gt;
+&lt;/head&gt;
+&lt;body&gt;
+&lt;link rel=&quot;stylesheet&quot; href=&quot;https://fonts.googleapis.com/css2?family=Vazirmatn:wght@400;500;600;700;800&amp;amp;display=swap&quot;&gt;
+&lt;style&gt;
+#mok-preview{--canvas:#f1f5fb;--panel:#fff;--ink:#172b48;--muted:#718198;--line:#e8eef7;--blue:#2767d9;--blue-soft:#ecf3ff;--green:#11876b;--red:#d85364;--shadow:0 3px 6px rgba(27,58,107,.035),0 12px 26px -9px rgba(27,58,107,.17);font-family:Vazirmatn,Tahoma,sans-serif;color:var(--ink);background:var(--canvas);font-size:14px;line-height:1.7;min-height:100vh;color-scheme:light}
+#mok-preview *{box-sizing:border-box}#mok-preview h1,#mok-preview h2,#mok-preview h3,#mok-preview p{margin:0}#mok-preview button,#mok-preview select{font:inherit}#mok-preview button{cursor:pointer}#mok-preview button:focus-visible,#mok-preview a:focus-visible,#mok-preview select:focus-visible{outline:3px solid #88b6ff;outline-offset:3px}#mok-preview button{transition:background .16s,box-shadow .16s,transform .16s}#mok-preview button:disabled{cursor:default}
+#mok-preview .preview-strip{background:#fff;border-bottom:1px solid var(--line);display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;padding:10px 28px;color:var(--muted);font-size:12px}#mok-preview .preview-strip strong{font-weight:600;color:var(--ink)}#mok-preview .preview-tools{display:flex;align-items:center;gap:10px;flex-wrap:wrap}#mok-preview .elevation{display:flex;background:#f1f5fa;padding:3px;border-radius:8px;gap:2px}#mok-preview .elevation button{border:0;background:transparent;color:var(--muted);border-radius:6px;padding:3px 10px;font-size:12px}#mok-preview .elevation button[aria-pressed=true]{background:white;color:var(--blue);box-shadow:0 2px 5px #203f7020}
+#mok-preview .layout{display:grid;grid-template-columns:238px minmax(0,1fr);max-width:1920px;margin:auto;align-items:start}#mok-preview .sidebar{background:linear-gradient(165deg,#16418d 0%,#10336f 50%,#0d2957 100%);color:#cad9f2;padding:30px 17px 24px;min-height:100%;align-self:stretch;box-shadow:-5px 0 18px #203f7010}#mok-preview .brand{display:flex;align-items:center;gap:10px;padding:0 9px 22px;color:white;direction:ltr;justify-content:flex-end}#mok-preview .brand strong{font-size:18px;letter-spacing:-.5px;font-weight:800}#mok-preview .brand small{display:block;font-size:10px;color:#a3bce8;letter-spacing:1px}#mok-preview .brand-mark{width:38px;height:38px;border:1px solid #ffffff35;border-radius:12px;background:#ffffff18;display:grid;place-items:center;color:#fff}#mok-preview .nav-group{color:#8da9d5;font-size:11px;padding:22px 15px 8px}#mok-preview .nav-item{display:flex;align-items:center;gap:12px;padding:11px 15px;margin:4px 0;border-radius:10px;color:#cad9f2;text-decoration:none;font-weight:500;font-size:13px}#mok-preview .nav-item:hover{background:#ffffff0d;color:#fff}#mok-preview .nav-item.active{background:#ffffff;color:#17478e;box-shadow:0 5px 15px #071c3a25}#mok-preview .nav-item svg{width:18px;height:18px;opacity:.9}#mok-preview .nav-item .nav-dot{margin-right:auto;width:6px;height:6px;border-radius:50%;background:#2767d9}#mok-preview .sidebar-foot{margin-top:42px;border-top:1px solid #ffffff1c;padding:20px 12px 0;display:flex;align-items:center;gap:10px;font-size:12px}#mok-preview .avatar{width:36px;height:36px;display:grid;place-items:center;background:#ffffff18;border:1px solid #ffffff24;border-radius:12px;color:white;font-weight:600}#mok-preview .sidebar-foot small{display:block;color:#8da9d5;font-size:10px}
+#mok-preview main{padding:30px 34px 46px;min-width:0}#mok-preview .header{display:flex;align-items:center;justify-content:space-between;gap:20px;flex-wrap:wrap;margin-bottom:27px}#mok-preview .eyebrow{color:var(--muted);font-size:11px;display:flex;align-items:center;gap:7px;margin-bottom:4px}#mok-preview h1{font-size:24px;font-weight:800;letter-spacing:-.7px;line-height:1.5}#mok-preview .subtitle{display:flex;gap:16px;flex-wrap:wrap;align-items:center;color:var(--muted);font-size:12px;margin-top:7px}#mok-preview .status{display:inline-flex;align-items:center;gap:6px;background:#e9f6f0;border:1px solid #d8ede4;border-radius:6px;color:#267d63;padding:3px 8px;font-size:10px}#mok-preview .status:before{content:&#x27;&#x27;;width:5px;height:5px;border-radius:50%;background:#11976b}#mok-preview .actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}#mok-preview .action{display:inline-flex;align-items:center;justify-content:center;gap:8px;border:1px solid #dde6f2;background:white;border-radius:10px;padding:9px 14px;color:#526780;text-decoration:none;font-size:12px;box-shadow:0 3px 7px #203f7006}#mok-preview .action:hover{background:#f7faff}#mok-preview .action.primary{background:var(--blue);border-color:var(--blue);color:white;box-shadow:0 5px 12px #2767d935}#mok-preview .action.icon-only{width:38px;padding:10px}#mok-preview svg.icon{width:17px;height:17px;fill:none;stroke:currentColor;stroke-width:1.7;stroke-linecap:round;stroke-linejoin:round;flex-shrink:0}
+#mok-preview .filterbar{display:flex;align-items:center;justify-content:space-between;gap:16px;flex-wrap:wrap;margin-bottom:23px;padding:13px 16px;background:#fff;border:1px solid #e2eaf5;border-radius:13px;box-shadow:0 3px 6px #233e6a04}#mok-preview .filtergroup{display:flex;align-items:center;gap:4px;flex-wrap:wrap}#mok-preview .filter-label{font-size:11px;color:var(--muted);margin-left:6px}#mok-preview .chip{background:transparent;color:var(--muted);border:1px solid transparent;border-radius:7px;padding:5px 10px;font-size:11px;white-space:nowrap}#mok-preview .chip:hover{background:#f4f7fc}#mok-preview .chip[aria-pressed=true]{background:var(--blue-soft);border-color:#d9e6ff;color:var(--blue);font-weight:600}#mok-preview .scope{padding:3px;background:#f4f7fb;border-radius:8px}#mok-preview .scope .chip[aria-pressed=true]{background:#fff;border-color:#e5ebf5;box-shadow:0 2px 5px #203f7010}#mok-preview .currency{padding:6px 9px;background:#fff;border:1px solid #dfe7f2;border-radius:8px;color:#344b6a;font-size:11px;max-width:100%}
+#mok-preview .grid{display:grid;gap:18px;min-width:0}#mok-preview .kpis{grid-template-columns:repeat(5,minmax(0,1fr));margin-bottom:27px}#mok-preview .surface{background:var(--panel);border:1px solid #e4ebf5;border-radius:16px;box-shadow:var(--shadow);min-width:0;transition:box-shadow .22s}#mok-preview .metric{padding:18px 20px 16px;position:relative;overflow:hidden}#mok-preview .metric-head{display:flex;align-items:center;justify-content:space-between;gap:10px;font-size:11px;color:var(--muted)}#mok-preview .metric-icon{width:32px;height:32px;display:grid;place-items:center;border-radius:10px;background:#f0f5fe;color:#5b7dad}#mok-preview .metric-icon.positive{background:#edf8f4;color:var(--green)}#mok-preview .metric-icon.negative{background:#fff0f2;color:var(--red)}#mok-preview .value{display:block;direction:ltr;text-align:right;font-size:26px;line-height:1.4;font-weight:800;letter-spacing:-.8px;font-variant-numeric:tabular-nums;margin:13px 0 6px;white-space:nowrap}#mok-preview .value small{font-size:11px;font-weight:500;letter-spacing:0;color:var(--muted);margin-left:4px}#mok-preview .positive{color:var(--green)}#mok-preview .negative{color:var(--red)}#mok-preview .metric-note{color:var(--muted);font-size:10px;min-height:17px}#mok-preview .metric:after{content:&#x27;&#x27;;position:absolute;bottom:0;right:20px;left:20px;height:2px;background:#e8effb}#mok-preview .metric:first-child:after{background:#b5dacc}#mok-preview .section-title{display:flex;align-items:center;justify-content:space-between;gap:15px;margin:26px 0 13px}#mok-preview .section-title h2{font-size:13px;font-weight:700;display:flex;gap:8px;align-items:center}#mok-preview .section-title span{font-size:10px;color:var(--muted)}#mok-preview .realgrid{grid-template-columns:repeat(4,minmax(0,1fr))}#mok-preview .real-card{padding:17px 19px;display:flex;justify-content:space-between;gap:12px;align-items:center}#mok-preview .real-card .value{font-size:23px;margin:6px 0 3px}#mok-preview .real-card .mini{width:75px;height:55px;flex-shrink:0}#mok-preview .label{font-size:11px;color:var(--muted)}#mok-preview .panel{padding:21px 23px}#mok-preview .panel-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:20px}#mok-preview h3{font-size:13px;font-weight:700;display:flex;align-items:center;gap:8px}#mok-preview .panel-head .icon{color:#7f93ad}#mok-preview .sub{font-size:10px;color:var(--muted)}#mok-preview .today{margin-top:23px;display:grid;grid-template-columns:1.1fr 1fr;gap:25px;position:relative;padding:26px;background:linear-gradient(115deg,#fff 55%,#f7faff);overflow:hidden}#mok-preview .today:before{content:&#x27;&#x27;;position:absolute;top:24px;bottom:24px;right:0;width:3px;background:#2767d9;border-radius:3px}#mok-preview .today .value{font-size:34px;margin:9px 0}#mok-preview .today-detail{display:flex;gap:20px;flex-wrap:wrap;color:var(--muted);font-size:11px}#mok-preview .today-detail b{color:var(--ink);font-weight:600}#mok-preview .periods{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));align-items:center;border-right:1px solid var(--line);padding-right:24px;gap:12px}#mok-preview .period{text-align:center}#mok-preview .period .amount{font-size:18px;font-weight:700;direction:ltr;margin:7px 0 0;white-space:nowrap}#mok-preview .period .amount small{font-size:9px;font-weight:400}#mok-preview .two{grid-template-columns:repeat(2,minmax(0,1fr));margin-top:22px}#mok-preview .three{grid-template-columns:repeat(3,minmax(0,1fr))}#mok-preview .mini-stats{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:12px}#mok-preview .mini-stats&gt;div+div{border-right:1px solid var(--line);padding-right:16px}#mok-preview .stat-number{font-size:21px;font-weight:700;direction:ltr;text-align:right;line-height:1.5;margin-top:8px;font-variant-numeric:tabular-nums}#mok-preview .stat-number small{font-size:9px;font-weight:400;color:var(--muted)}#mok-preview .footnote{display:flex;align-items:center;gap:7px;margin-top:20px;padding-top:13px;border-top:1px solid var(--line);font-size:10px;color:var(--muted)}#mok-preview .tag{font-size:10px;background:#edf4ff;color:#366fb4;border-radius:5px;padding:3px 7px;display:inline-flex;align-items:center;gap:5px}#mok-preview .tag.green{background:#eaf6f0;color:var(--green)}#mok-preview .tag.red{background:#fff0f2;color:var(--red)}#mok-preview .progress-info{display:flex;align-items:center;justify-content:space-between;gap:8px;font-size:10px;color:var(--muted);margin:14px 0 6px}#mok-preview .progress-info b{color:var(--ink);font-weight:500}#mok-preview .track{height:6px;border-radius:9px;background:#edf1f7;overflow:hidden}#mok-preview .track&gt;span{height:100%;display:block;border-radius:9px;background:#4a80d8}#mok-preview .track.green&gt;span{background:#2b9e83}#mok-preview .track.red&gt;span{background:#e78a96}#mok-preview .prop-grid{display:grid;grid-template-columns:1.6fr 1fr;gap:25px}#mok-preview .prop-summary{border-right:1px solid var(--line);padding-right:22px}
+#mok-preview .finance{grid-template-columns:.9fr 1.4fr 1fr}#mok-preview .balance-total{font-size:32px;font-weight:800;direction:ltr;text-align:right;margin:6px 0 7px;letter-spacing:-1px}#mok-preview .balance-total small{font-size:12px;color:var(--muted);font-weight:500;letter-spacing:0}#mok-preview .balance-line{display:flex;justify-content:space-between;font-size:11px;color:var(--muted);padding:12px 0;border-top:1px solid var(--line)}#mok-preview .balance-line b{font-weight:500;color:var(--ink);direction:ltr}#mok-preview .account{display:flex;align-items:center;gap:10px;margin:16px 0}#mok-preview .account-icon{width:31px;height:31px;border-radius:9px;display:grid;place-items:center;background:#f2f6fc;color:#6a85ad;flex-shrink:0}#mok-preview .account-content{flex:1;min-width:0}#mok-preview .account-top{display:flex;justify-content:space-between;font-size:10px;gap:10px;margin-bottom:6px}#mok-preview .account-top b{font-weight:500;direction:ltr}#mok-preview .trend-row{grid-template-columns:.8fr .8fr 1.8fr;margin-top:20px}#mok-preview .profit-split{margin-top:24px}#mok-preview .personal-line{display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:16px;font-size:11px}#mok-preview .personal-line small{display:block;font-size:9px;color:var(--muted)}#mok-preview .personal-line b{font-weight:600;direction:ltr}#mok-preview .coin{display:flex;align-items:center;gap:9px}#mok-preview .coin&gt;span{width:29px;height:29px;display:grid;place-items:center;border-radius:50%;background:#eff4fb;color:#4c739e;font-size:11px}#mok-preview .chart-svg{width:100%;height:auto;display:block;overflow:visible}#mok-preview .chart-svg text{font-family:Vazirmatn,sans-serif;fill:var(--muted);font-size:10px}#mok-preview .chart-grid{stroke:#eaf0f7;stroke-width:1}#mok-preview .chart-line{stroke:#268e77;stroke-width:2.5;fill:none;stroke-linecap:round;stroke-linejoin:round}#mok-preview .chart-area{fill:url(#equityFill)}#mok-preview .backtest-stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px;margin-top:28px}#mok-preview .backtest-stats .stat-number{font-size:20px}#mok-preview .goal-row{display:grid;grid-template-columns:80px 1fr 44px;gap:14px;align-items:center;margin-top:22px;font-size:11px}#mok-preview .goal-row b{font-weight:500;direction:ltr;text-align:left}#mok-preview .charts{grid-template-columns:1.5fr 1fr 1fr;margin-top:23px}#mok-preview .donut-wrap{position:relative;max-width:165px;margin:0 auto 18px}#mok-preview .donut-text{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;flex-direction:column}#mok-preview .donut-text b{font-size:25px;font-weight:800;direction:ltr}#mok-preview .donut-text span{font-size:10px;color:var(--muted)}#mok-preview .legend-row{display:flex;justify-content:space-between;align-items:center;gap:8px;font-size:10px;color:var(--muted);margin:8px 0}#mok-preview .legend-row b{color:var(--ink);font-weight:600}#mok-preview .legend-label{display:flex;align-items:center;gap:6px}#mok-preview .swatch{width:7px;height:7px;border-radius:2px;background:#2c9b80}#mok-preview .swatch.loss{background:#e37b88}#mok-preview .tables{grid-template-columns:1.35fr 1fr;margin-top:23px}#mok-preview table{width:100%;border-collapse:collapse;font-size:11px;white-space:nowrap}#mok-preview th{text-align:right;background:#f7f9fd;color:var(--muted);font-weight:500;padding:11px 9px;font-size:10px}#mok-preview td{padding:14px 9px;border-bottom:1px solid var(--line)}#mok-preview tbody tr:last-child td{border-bottom:0}#mok-preview tbody tr:hover{background:#f9fbff}#mok-preview td.numeric{direction:ltr;text-align:right;font-variant-numeric:tabular-nums}#mok-preview .symbol{font-family:Vazirmatn,sans-serif;font-size:11px;font-weight:600}#mok-preview .table-wrap{overflow-x:auto;max-width:100%}#mok-preview .table-sort{background:none;border:0;color:inherit;padding:0;font:inherit}#mok-preview .link{color:var(--blue);font-size:10px;text-decoration:none}#mok-preview .footer{display:flex;justify-content:space-between;gap:10px;flex-wrap:wrap;color:var(--muted);font-size:10px;margin-top:26px}#mok-preview .footer span:first-child{display:flex;align-items:center;gap:7px}
+@media(min-width:1500px){#mok-preview main{padding:35px 44px 50px}#mok-preview .grid{gap:22px}#mok-preview .metric{padding:22px 24px}#mok-preview .metric .value{font-size:30px}}
+@media(max-width:1200px){#mok-preview .layout{grid-template-columns:208px minmax(0,1fr)}#mok-preview main{padding:24px}#mok-preview .brand strong{font-size:15px}#mok-preview .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}#mok-preview .realgrid{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .finance,#mok-preview .trend-row{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .finance&gt; :last-child,#mok-preview .trend-row&gt; :last-child{grid-column:1/-1}#mok-preview .charts{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .charts&gt; :first-child{grid-column:1/-1}#mok-preview .tables{grid-template-columns:1fr}#mok-preview .today{grid-template-columns:1fr}#mok-preview .periods{border-right:0;border-top:1px solid var(--line);padding:18px 0 0}#mok-preview .two{grid-template-columns:1fr}}
+@media(max-width:800px){#mok-preview .layout{grid-template-columns:1fr}#mok-preview .sidebar{min-height:0;padding:15px 20px;display:flex;align-items:center;gap:20px;flex-wrap:wrap}#mok-preview .brand{padding:0;flex-shrink:0}#mok-preview .brand small,#mok-preview .nav-group,#mok-preview .sidebar-foot{display:none}#mok-preview .sidebar nav{display:flex;gap:4px;flex-wrap:wrap}#mok-preview .nav-item{padding:8px 12px;font-size:11px;margin:0}#mok-preview .nav-item:nth-of-type(n+5){display:none}#mok-preview .nav-dot{display:none}#mok-preview .kpis{grid-template-columns:repeat(3,minmax(0,1fr))}#mok-preview .preview-strip{padding:9px 20px}#mok-preview .metric .value{font-size:23px}#mok-preview .panel{padding:19px}}
+@media(max-width:540px){#mok-preview main{padding:21px 14px 30px}#mok-preview .sidebar{padding:13px 14px;gap:12px}#mok-preview .sidebar nav{width:100%}#mok-preview .sidebar .nav-item{flex:1;justify-content:center;padding:7px;gap:5px}#mok-preview .sidebar .nav-item svg{width:14px}#mok-preview .brand strong{font-size:16px}#mok-preview .brand-mark{width:30px;height:30px}#mok-preview .preview-strip{padding:9px 14px}#mok-preview h1{font-size:22px}#mok-preview .kpis{grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}#mok-preview .metric{padding:14px}#mok-preview .metric-head{font-size:10px;gap:4px}#mok-preview .metric-icon{width:27px;height:27px}#mok-preview .metric .value{font-size:22px}#mok-preview .grid{gap:13px}#mok-preview .realgrid,#mok-preview .finance,#mok-preview .trend-row,#mok-preview .charts{grid-template-columns:1fr}#mok-preview .real-card .value{font-size:25px}#mok-preview .today{padding:22px 19px;gap:19px}#mok-preview .period .amount{font-size:15px}#mok-preview .period .amount small{display:block}#mok-preview .today-detail{gap:10px}#mok-preview .backtest-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .prop-grid{grid-template-columns:1fr;gap:15px}#mok-preview .prop-summary{border:0;border-top:1px solid var(--line);padding:12px 0 0}#mok-preview .filterbar{padding:12px;gap:9px}#mok-preview .chip{padding:5px 8px}#mok-preview .mini-stats{gap:8px}#mok-preview .stat-number{font-size:19px}#mok-preview .mini-stats&gt;div+div{padding-right:9px}#mok-preview .goal-row{grid-template-columns:68px 1fr 35px;gap:8px}#mok-preview .panel-head{flex-wrap:wrap}#mok-preview .subtitle{gap:9px}}
+/* Visual-only revision: raised cards, gentle color and a vertical blue sidebar. */
+#mok-preview{--canvas:#edf2fa;--shadow:inset 0 1px 0 #ffffff,0 2px 3px #243e6410,0 9px 14px -5px #243e6427,0 24px 36px -16px #243e6457}
+#mok-preview .preview-tools{display:none}
+#mok-preview .surface{border-color:#ffffff #e1e8f2 #cad6e8;border-radius:18px;box-shadow:var(--shadow)}
+#mok-preview .grid{gap:23px}
+#mok-preview .kpis{row-gap:24px}
+#mok-preview .metric{--tone:#3576da;--tint:#edf4ff;background:linear-gradient(145deg,#fff 36%,var(--tint));border-top:3px solid var(--tone)}
+#mok-preview .metric:nth-child(1){--tone:#299b81;--tint:#edf8f3}
+#mok-preview .metric:nth-child(2){--tone:#4f82d6;--tint:#eef4ff}
+#mok-preview .metric:nth-child(3){--tone:#9471cd;--tint:#f5f0fc}
+#mok-preview .metric:nth-child(4){--tone:#d97688;--tint:#fff1f4}
+#mok-preview .metric:nth-child(5){--tone:#cb9a4f;--tint:#fff7e9}
+#mok-preview .metric:after{height:0}
+#mok-preview .metric-icon{color:var(--tone);background:var(--tint);box-shadow:inset 0 1px 0 #ffffff,0 3px 5px #203f700b}
+#mok-preview .real-card:nth-child(1){background:linear-gradient(135deg,#fff 50%,#edf8f3)}
+#mok-preview .real-card:nth-child(2){background:linear-gradient(135deg,#fff 50%,#edf3fd)}
+#mok-preview .real-card:nth-child(3){background:linear-gradient(135deg,#fff 50%,#f4effc)}
+#mok-preview .real-card:nth-child(4){background:linear-gradient(135deg,#fff 50%,#fff0f3)}
+#mok-preview .today{background:linear-gradient(120deg,#fff 25%,#e8f1ff);border-top-color:#fff}
+#mok-preview .today:before{width:4px;background:#477fd3}
+#mok-preview .periods .period{padding:13px 5px;background:#ffffff99;border:1px solid #ffffff;border-radius:12px;box-shadow:0 5px 10px #1b437511}
+#mok-preview .finance&gt;.surface:first-child{background:linear-gradient(140deg,#e8f0ff,#ffffff 80%);border-top:3px solid #5f8cda}
+#mok-preview .trend-row&gt;.surface:first-child{background:linear-gradient(145deg,#ecf8f2,#fff 80%);border-top:3px solid #5daa94}
+#mok-preview #backtest{background:linear-gradient(140deg,#f5f0fc,#fff 70%);border-top:3px solid #a086ce}
+#mok-preview #prop{border-top:3px solid #5e8dda}
+#mok-preview .section-title h2&gt;.icon{color:#5b7ca9}
+#mok-preview .sidebar{position:sticky;top:0;height:100vh;min-height:0;align-self:start;overflow-y:auto;display:block;padding:29px 17px 24px;background:linear-gradient(155deg,#2255a9,#163d82 48%,#102e63);border-left:1px solid #ffffff27;box-shadow:-7px 0 22px #173e7417;scrollbar-width:thin;scrollbar-color:#6d91c4 #173c7c}
+#mok-preview .sidebar nav{display:block}
+#mok-preview .sidebar .nav-item{display:flex;flex:none;justify-content:flex-start;padding:11px 15px;margin:4px 0;font-size:13px;gap:12px}
+#mok-preview .sidebar .nav-group{display:block}
+#mok-preview .sidebar .sidebar-foot{display:flex}
+#mok-preview .sidebar .brand{padding:0 9px 22px}
+#mok-preview .sidebar .brand small{display:block}
+#mok-preview .layout{grid-template-columns:238px minmax(0,1fr)}
+@media(max-width:1200px){#mok-preview .layout{grid-template-columns:208px minmax(0,1fr)}}
+@media(max-width:800px){#mok-preview .layout{grid-template-columns:166px minmax(0,1fr)}#mok-preview .sidebar{padding:23px 10px}#mok-preview .sidebar .brand{gap:7px;padding:0 3px 17px}#mok-preview .brand strong{font-size:12px}#mok-preview .brand small{font-size:7px;letter-spacing:.4px}#mok-preview .brand-mark{width:28px;height:32px;border-radius:9px}#mok-preview .sidebar .nav-item{font-size:11px;padding:10px;gap:8px}#mok-preview .sidebar .nav-group{padding:18px 10px 6px}#mok-preview main{padding:24px 18px}#mok-preview .grid{gap:19px}#mok-preview .kpis{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .realgrid,#mok-preview .finance,#mok-preview .trend-row,#mok-preview .charts{grid-template-columns:1fr}#mok-preview .panel{padding:18px}#mok-preview .sidebar-foot{padding:18px 3px 0;font-size:10px}#mok-preview .avatar{width:28px;height:28px}#mok-preview .backtest-stats{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media(max-width:620px){#mok-preview .kpis{grid-template-columns:1fr}#mok-preview .real-card .mini{width:60px}#mok-preview .real-card .value{font-size:23px}}
+@media(max-width:540px){#mok-preview .layout{grid-template-columns:60px minmax(0,1fr)}#mok-preview .sidebar{padding:16px 7px}#mok-preview .sidebar .brand{padding:0 0 14px;justify-content:center}#mok-preview .sidebar .brand&gt;div:first-child{display:none}#mok-preview .sidebar nav{width:auto}#mok-preview .sidebar .nav-group,#mok-preview .sidebar .sidebar-foot,#mok-preview .nav-dot{display:none}#mok-preview .sidebar .nav-item{font-size:0;padding:12px 0;justify-content:center;gap:0;margin:5px 0}#mok-preview .sidebar .nav-item svg{width:20px;height:20px}#mok-preview main{padding:21px 12px 30px}#mok-preview .grid{gap:20px}#mok-preview .today{padding:20px 15px}#mok-preview .periods{gap:6px}#mok-preview .period .amount{font-size:12px}#mok-preview .periods .period{padding:10px 3px}#mok-preview .period .label{font-size:10px}#mok-preview .panel{padding:16px}#mok-preview .balance-total{font-size:27px}#mok-preview .real-card{padding:17px 15px}#mok-preview .real-card .value{font-size:21px}#mok-preview .real-card .mini{width:53px}#mok-preview .backtest-stats .stat-number{font-size:18px}}
+&lt;/style&gt;
+&lt;style class=&quot;&quot;&gt;
+#mok-preview .header{margin-bottom:23px}
+#mok-preview .overview{grid-template-columns:minmax(0,1.65fr) minmax(0,1fr);align-items:stretch;margin-top:0}
+#mok-preview .equity-focus{grid-row:span 2;display:flex;flex-direction:column;justify-content:space-between}
+#mok-preview .equity-focus #equity-chart{margin:auto 0}
+#mok-preview .equity-focus .chart-svg{min-height:230px}
+#mok-preview .today-compact{margin:0;display:block;padding:22px 24px}
+#mok-preview .today-compact .value{font-size:30px;margin:8px 0}
+#mok-preview .today-compact .today-detail{gap:9px 18px;font-size:10px}
+#mok-preview .today-compact .periods{border:0;border-top:1px solid #dfe8f6;margin-top:17px;padding:12px 0 0;gap:8px}
+#mok-preview .today-compact .periods .period{background:transparent;border:0;box-shadow:none;padding:0}
+#mok-preview .today-compact .period .amount{font-size:14px}
+#mok-preview .prop-compact{padding:20px 24px}
+#mok-preview .prop-compact .panel-head{margin-bottom:12px}
+#mok-preview .prop-compact .prop-grid{gap:16px}
+#mok-preview .prop-compact .progress-info{margin-top:10px}
+#mok-preview .prop-compact .prop-summary{padding-right:15px}
+#mok-preview .metric{border-top-width:2px;background:linear-gradient(150deg,#fff 65%,var(--tint))}
+#mok-preview .tables{margin-top:25px}
+#mok-preview .disclosure{margin:12px 0;border:1px solid #dce5f2;border-radius:12px;background:#ffffff85}
+#mok-preview .disclosure-summary{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:17px 20px;cursor:pointer;list-style:none}
+#mok-preview .disclosure-summary::-webkit-details-marker{display:none}
+#mok-preview .disclosure-label{display:flex;align-items:center;gap:17px;flex-wrap:wrap}
+#mok-preview .disclosure-label strong{font-size:12px;font-weight:600}
+#mok-preview .disclosure-label&gt;span{font-size:10px;color:var(--muted)}
+#mok-preview .disclosure-chevron{font-size:18px;color:#6b83a5;transition:transform .15s}
+#mok-preview .disclosure[open] .disclosure-chevron{transform:rotate(180deg)}
+#mok-preview .disclosure[open]{background:#f7f9fd}
+#mok-preview .disclosure-body{padding:8px 20px 22px}
+#mok-preview .disclosure-body&gt;.surface{margin-top:20px}
+#mok-preview .analytical-charts{grid-template-columns:repeat(2,minmax(0,1fr))}
+#mok-preview .analytical-charts .donut-wrap{max-width:130px}
+#mok-preview .filter-more{font-size:11px;color:var(--muted)}
+#mok-preview .filter-more&gt;summary{cursor:pointer;padding:5px 10px;border-radius:7px}
+#mok-preview .filter-more[open]{flex-basis:100%}
+#mok-preview .filter-more-body{display:flex;gap:4px;flex-wrap:wrap;padding-top:7px}
+#mok-preview .nav-more{margin-top:19px;border-top:1px solid #ffffff20;padding-top:13px}
+#mok-preview .nav-more&gt;summary{font-size:11px;padding:10px 15px;cursor:pointer;color:#c1d3f0}
+#mok-preview .sidebar .nav-more .nav-item{font-size:12px}
+#mok-preview summary:focus-visible{outline:3px solid #88b6ff;outline-offset:3px;border-radius:8px}
+@media(max-width:1100px){#mok-preview .overview{grid-template-columns:1fr}#mok-preview .equity-focus{grid-row:auto}#mok-preview .equity-focus .chart-svg{min-height:0}#mok-preview .today-compact .periods{border-top:1px solid #dfe8f6}}
+@media(max-width:650px){#mok-preview .analytical-charts{grid-template-columns:1fr}#mok-preview .disclosure-summary{padding:15px}#mok-preview .disclosure-label{gap:4px;display:grid}#mok-preview .disclosure-body{padding:6px 12px 17px}#mok-preview .today-compact,#mok-preview .prop-compact{padding:19px 16px}#mok-preview .today-compact .period .amount{font-size:12px}}
+@media(max-width:540px){#mok-preview .nav-more&gt;summary{font-size:0;padding:10px 0;text-align:center;list-style:none}#mok-preview .nav-more&gt;summary:after{content:&#x27;···&#x27;;font-size:21px}#mok-preview .sidebar .nav-more .nav-item{font-size:0}#mok-preview .overview{gap:20px}}
+@media(prefers-reduced-motion:reduce){#mok-preview *{transition:none!important}}
+&lt;/style&gt;
+&lt;style&gt;
+#mok-preview{--muted:#586981}
+#mok-preview .sidebar{background:linear-gradient(160deg,#0c1933 0%,#081329 55%,#050d1e 100%);border-left-color:#203454;box-shadow:-7px 0 22px #06112720;scrollbar-color:#304664 #081329}
+#mok-preview .sidebar .nav-item{color:#b5c7e2}
+#mok-preview .sidebar .nav-item:hover{background:#142440;color:#fff}
+#mok-preview .sidebar .nav-item.active{background:#182e51;color:#f3f7ff;border:1px solid #2b4771;box-shadow:inset 3px 0 0 #6095e6,0 4px 10px #00000020}
+#mok-preview .sidebar .nav-dot{background:#78a8ef}
+#mok-preview .sidebar .brand small,#mok-preview .sidebar-foot small{color:#93a9c9}
+#mok-preview .sidebar .brand-mark{background:#152c50;border-color:#2c4770;color:#97bcf8}
+#mok-preview .nav-more&gt;summary{color:#9eb4d3}
+#mok-preview .overview{grid-template-columns:minmax(0,1.5fr) minmax(0,1fr)}
+#mok-preview .equity-focus{grid-row:auto;justify-content:center}
+#mok-preview .equity-focus .chart-svg{min-height:0}
+#mok-preview .paired-cards{grid-template-columns:repeat(2,minmax(0,1fr));align-items:stretch;margin-top:24px}
+#mok-preview .paired-cards&gt;.surface{height:100%;padding:22px 24px}
+#mok-preview .paired-cards .panel-head{margin-bottom:17px;min-height:30px}
+#mok-preview #backtest .backtest-stats{margin-top:20px;grid-template-columns:repeat(4,minmax(0,1fr));gap:12px}
+#mok-preview #backtest .stat-number{font-size:22px}
+#mok-preview #backtest .footnote{margin-top:20px}
+#mok-preview .goal-detail{margin-top:23px}
+#mok-preview .goal-detail&gt;.surface{padding:21px 23px}
+#mok-preview .label,#mok-preview .sub,#mok-preview .metric-note,#mok-preview .footnote{font-size:11px}
+#mok-preview td{font-size:12px}
+#mok-preview .metric-head{font-size:12px}
+#mok-preview .value{letter-spacing:-.5px}
+#mok-preview .surface,#mok-preview .disclosure{scroll-margin-top:20px}
+#mok-preview .table-sort{padding:3px 0}
+#mok-preview .metric .value small{display:inline-block}
+@media(max-width:1250px){#mok-preview #backtest .backtest-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .paired-cards .prop-grid{grid-template-columns:1fr}#mok-preview .paired-cards .prop-summary{display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;border:0;border-top:1px solid var(--line);padding:12px 0 0}#mok-preview .paired-cards .prop-summary .stat-number{margin:0;font-size:19px}}
+@media(max-width:950px){#mok-preview .overview{grid-template-columns:1fr}#mok-preview .paired-cards&gt;.surface{padding:19px 18px}#mok-preview .paired-cards .panel-head{align-items:flex-start}#mok-preview .paired-cards .panel-head h3{font-size:12px}#mok-preview .paired-cards .prop-grid&gt;div&gt;div:first-child{flex-wrap:wrap}}
+@media(max-width:700px){#mok-preview .paired-cards{grid-template-columns:1fr}#mok-preview #backtest .backtest-stats{grid-template-columns:repeat(2,minmax(0,1fr))}#mok-preview .metric-head{font-size:11px}}
+@media(max-width:540px){#mok-preview .sidebar .nav-item.active{border-color:#2b4771}#mok-preview .paired-cards&gt;.surface{padding:19px 16px}#mok-preview .goal-detail&gt;.surface{padding:18px 15px}#mok-preview .today-compact .today-detail{font-size:11px}#mok-preview .period .amount small{font-size:9px}}
+&lt;/style&gt;
+&lt;style&gt;
+#mok-preview .filterbar{margin-bottom:8px}
+#mok-preview .filter-note{font-size:11px;color:var(--muted);margin:0 3px 19px}
+#mok-preview .section-title{margin:27px 0 15px;gap:12px;flex-wrap:wrap}
+#mok-preview .section-title h2{font-size:14px}
+#mok-preview .section-title&gt;span{font-size:11px}
+#mok-preview .real-performance{margin-top:27px;scroll-margin-top:20px}
+#mok-preview .real-performance .real-card{padding:19px 20px}
+#mok-preview .real-performance .real-card .mini{width:58px;height:51px}
+#mok-preview .real-performance .real-card .value{font-size:23px;font-variant-numeric:tabular-nums}
+#mok-preview .trade-section{margin-top:31px;scroll-margin-top:20px}
+#mok-preview .trade-section .tables{margin-top:0;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr)}
+#mok-preview .tables .panel-head{margin-bottom:15px}
+#mok-preview .table-unit{display:block;color:var(--muted);font-size:9px;font-weight:400;direction:ltr;text-align:right}
+#mok-preview .tables td.positive,#mok-preview .tables td.negative{font-weight:600}
+#mok-preview .tables .numeric{font-variant-numeric:tabular-nums}
+#mok-preview .yesterday-detail{margin-top:20px;border-top:1px solid #dde6f3;padding-top:14px}
+#mok-preview .yesterday-detail&gt;summary{font-size:12px;color:var(--muted);padding:6px 0;cursor:pointer}
+#mok-preview .yesterday-detail&gt;article{margin-top:14px}
+#mok-preview .disclosure-summary:hover{background:#f0f5fd;border-radius:12px}
+#mok-preview .disclosure-summary:focus-visible,#mok-preview .yesterday-detail&gt;summary:focus-visible{outline:3px solid #88b6ff;outline-offset:3px}
+#mok-preview .footer{border-top:1px solid #dbe4f1;padding-top:18px;margin-top:30px}
+@media(max-width:1200px){#mok-preview .trade-section .tables{grid-template-columns:1fr}}
+@media(max-width:540px){#mok-preview .real-performance .real-card{padding:18px 15px}#mok-preview .real-performance .real-card .value{font-size:21px}#mok-preview .real-performance .real-card .mini{width:51px}#mok-preview .section-title h2{font-size:13px}#mok-preview .section-title&gt;span{font-size:10px}#mok-preview .filter-note{font-size:10px}}
+&lt;/style&gt;
+&lt;div id=&quot;mok-preview&quot; dir=&quot;rtl&quot;&gt;
+ &lt;div class=&quot;preview-strip&quot;&gt;&lt;span&gt;&lt;strong&gt;پیش‌نمایش تم لایت&lt;/strong&gt; &lt;span aria-hidden=&quot;true&quot;&gt; / &lt;/span&gt; داده‌های نمایشی&lt;/span&gt;&lt;div class=&quot;preview-tools&quot;&gt;&lt;span&gt;برجستگی کارت‌ها&lt;/span&gt;&lt;div class=&quot;elevation&quot; role=&quot;group&quot; aria-label=&quot;برجستگی کارت‌ها&quot;&gt;&lt;button type=&quot;button&quot; data-depth=&quot;soft&quot; aria-pressed=&quot;false&quot;&gt;ملایم&lt;/button&gt;&lt;button type=&quot;button&quot; data-depth=&quot;medium&quot; aria-pressed=&quot;true&quot;&gt;متعادل&lt;/button&gt;&lt;button type=&quot;button&quot; data-depth=&quot;strong&quot; aria-pressed=&quot;false&quot;&gt;برجسته&lt;/button&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;
+ &lt;div class=&quot;layout&quot;&gt;
+  &lt;aside class=&quot;sidebar&quot; aria-label=&quot;ناوبری داشبورد&quot;&gt;
+   &lt;div class=&quot;brand&quot;&gt;&lt;div&gt;&lt;strong&gt;MokTradeDesk&lt;/strong&gt;&lt;small&gt;ANALYZE · IMPROVE · GROW&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;brand-mark&quot;&gt;&lt;svg class=&quot;icon&quot; viewBox=&quot;0 0 24 24&quot;&gt;&lt;path d=&quot;m13 2-9 12h7l-1 8 10-12h-7z&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/div&gt;&lt;/div&gt;
+   &lt;nav&gt;&lt;a class=&quot;nav-item active&quot; href=&quot;#dashboard&quot; aria-current=&quot;page&quot; aria-label=&quot;داشبورد&quot;&gt;&lt;i data-icon=&quot;dashboard&quot;&gt;&lt;/i&gt;داشبورد&lt;span class=&quot;nav-dot&quot;&gt;&lt;/span&gt;&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#trades&quot; aria-label=&quot;معاملات&quot;&gt;&lt;i data-icon=&quot;trades&quot;&gt;&lt;/i&gt;معاملات&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#analysis-details&quot; aria-label=&quot;تحلیل&quot;&gt;&lt;i data-icon=&quot;chart&quot;&gt;&lt;/i&gt;تحلیل&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#finance&quot; aria-label=&quot;مالی&quot;&gt;&lt;i data-icon=&quot;wallet&quot;&gt;&lt;/i&gt;مالی&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#prop&quot; aria-label=&quot;پراپ&quot;&gt;&lt;i data-icon=&quot;building&quot;&gt;&lt;/i&gt;پراپ&lt;/a&gt;&lt;details class=&quot;nav-more&quot;&gt;&lt;summary aria-label=&quot;سایر بخش‌ها&quot;&gt;سایر بخش‌ها&lt;/summary&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#backtest&quot; aria-label=&quot;مقایسه&quot;&gt;&lt;i data-icon=&quot;compare&quot;&gt;&lt;/i&gt;مقایسه&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#backtest&quot; aria-label=&quot;استراتژی&quot;&gt;&lt;i data-icon=&quot;target&quot;&gt;&lt;/i&gt;استراتژی&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#trades&quot; aria-label=&quot;ژورنال&quot;&gt;&lt;i data-icon=&quot;book&quot;&gt;&lt;/i&gt;ژورنال&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#finance&quot; aria-label=&quot;برداشت‌ها&quot;&gt;&lt;i data-icon=&quot;download&quot;&gt;&lt;/i&gt;برداشت‌ها&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#finance&quot; aria-label=&quot;بروکرها&quot;&gt;&lt;i data-icon=&quot;building&quot;&gt;&lt;/i&gt;بروکرها&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#today&quot; aria-label=&quot;تقویم&quot;&gt;&lt;i data-icon=&quot;calendar&quot;&gt;&lt;/i&gt;تقویم&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#prop&quot; aria-label=&quot;مدیریت ریسک&quot;&gt;&lt;i data-icon=&quot;shield&quot;&gt;&lt;/i&gt;مدیریت ریسک&lt;/a&gt;&lt;a class=&quot;nav-item&quot; href=&quot;#trades&quot; aria-label=&quot;واردات&quot;&gt;&lt;i data-icon=&quot;download&quot;&gt;&lt;/i&gt;واردات&lt;/a&gt;&lt;/details&gt;&lt;/nav&gt;
+   &lt;div class=&quot;sidebar-foot&quot;&gt;&lt;div class=&quot;avatar&quot;&gt;M&lt;/div&gt;&lt;div&gt;فضای معاملاتی من&lt;small&gt;نسخهٔ پیش‌نمایش&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;
+  &lt;/aside&gt;
+  &lt;main id=&quot;dashboard&quot;&gt;&lt;header class=&quot;header&quot;&gt;&lt;div&gt;&lt;div class=&quot;eyebrow&quot;&gt;داشبورد معاملاتی&lt;/div&gt;&lt;h1&gt;عملکردت در یک نگاه&lt;/h1&gt;&lt;div class=&quot;subtitle&quot;&gt;&lt;span&gt;&lt;i data-icon=&quot;calendar&quot;&gt;&lt;/i&gt; شنبه، ۱۸ مهر ۱۴۰۵&lt;/span&gt;&lt;span dir=&quot;ltr&quot;&gt;۱۰:۲۴&lt;/span&gt;&lt;span class=&quot;status&quot;&gt;وضعیت بازار · نمونه&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;actions&quot;&gt;&lt;a class=&quot;action primary&quot; href=&quot;#trades&quot;&gt;&lt;i data-icon=&quot;plus&quot;&gt;&lt;/i&gt;معاملات&lt;/a&gt;&lt;a class=&quot;action&quot; href=&quot;#finance&quot;&gt;&lt;i data-icon=&quot;wallet&quot;&gt;&lt;/i&gt;امور مالی&lt;/a&gt;&lt;button class=&quot;action icon-only&quot; type=&quot;button&quot; id=&quot;refresh-preview&quot; aria-label=&quot;بازنشانی داده‌های نمونه&quot;&gt;&lt;i data-icon=&quot;refresh&quot;&gt;&lt;/i&gt;&lt;/button&gt;&lt;/div&gt;&lt;/header&gt;&lt;div class=&quot;filterbar&quot;&gt;&lt;div class=&quot;filtergroup&quot; id=&quot;range-controls&quot;&gt;&lt;span class=&quot;filter-label&quot;&gt;بازه زمانی&lt;/span&gt;&lt;button class=&quot;chip&quot; data-range=&quot;today&quot; aria-pressed=&quot;false&quot;&gt;امروز&lt;/button&gt;&lt;button class=&quot;chip&quot; data-range=&quot;week&quot; aria-pressed=&quot;false&quot;&gt;این هفته&lt;/button&gt;&lt;button class=&quot;chip&quot; data-range=&quot;month&quot; aria-pressed=&quot;false&quot;&gt;این ماه&lt;/button&gt;&lt;button class=&quot;chip&quot; data-range=&quot;all&quot; aria-pressed=&quot;true&quot;&gt;همه&lt;/button&gt;&lt;details class=&quot;filter-more&quot;&gt;&lt;summary&gt;بازه‌های بیشتر&lt;/summary&gt;&lt;div class=&quot;filter-more-body&quot;&gt;&lt;button class=&quot;chip&quot; data-range=&quot;yesterday&quot; aria-pressed=&quot;false&quot;&gt;دیروز&lt;/button&gt;&lt;button class=&quot;chip&quot; data-range=&quot;quarter&quot; aria-pressed=&quot;false&quot;&gt;این فصل&lt;/button&gt;&lt;button class=&quot;chip&quot; data-range=&quot;year&quot; aria-pressed=&quot;false&quot;&gt;امسال&lt;/button&gt;&lt;/div&gt;&lt;/details&gt;&lt;/div&gt;&lt;div class=&quot;filtergroup&quot;&gt;&lt;div class=&quot;filtergroup scope&quot; id=&quot;scope-controls&quot;&gt;&lt;button class=&quot;chip&quot; data-scope=&quot;real&quot; aria-pressed=&quot;true&quot;&gt;واقعی&lt;/button&gt;&lt;button class=&quot;chip&quot; data-scope=&quot;backtest&quot; aria-pressed=&quot;false&quot;&gt;بک‌تست&lt;/button&gt;&lt;button class=&quot;chip&quot; data-scope=&quot;forward&quot; aria-pressed=&quot;false&quot;&gt;فوروارد&lt;/button&gt;&lt;button class=&quot;chip&quot; data-scope=&quot;all&quot; aria-pressed=&quot;false&quot;&gt;همه&lt;/button&gt;&lt;/div&gt;&lt;select class=&quot;currency&quot; id=&quot;currency-select&quot; aria-label=&quot;واحد نمایش نمونه&quot;&gt;&lt;option value=&quot;USDT&quot;&gt;USDT&lt;/option&gt;&lt;option value=&quot;IRR&quot;&gt;IRR&lt;/option&gt;&lt;/select&gt;&lt;/div&gt;&lt;/div&gt;&lt;p class=&quot;filter-note&quot;&gt;فیلترهای بالا برای شاخص‌های اصلی و منحنی سرمایه هستند.&lt;/p&gt;&lt;div class=&quot;grid kpis&quot; aria-live=&quot;polite&quot;&gt;
+    &lt;article class=&quot;surface metric&quot;&gt;&lt;div class=&quot;metric-head&quot;&gt;&lt;span&gt;سود و زیان خالص&lt;/span&gt;&lt;span class=&quot;metric-icon positive&quot;&gt;&lt;i data-icon=&quot;trend&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;value positive&quot; id=&quot;kpi-pnl&quot;&gt;+2,450 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;در بازه و دامنهٔ انتخاب‌شده&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface metric&quot;&gt;&lt;div class=&quot;metric-head&quot;&gt;&lt;span&gt;نرخ برد&lt;/span&gt;&lt;span class=&quot;metric-icon&quot;&gt;&lt;i data-icon=&quot;target&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;value&quot; id=&quot;kpi-win&quot;&gt;64.8%&lt;/div&gt;&lt;div class=&quot;metric-note&quot; id=&quot;kpi-wl&quot; dir=&quot;ltr&quot; style=&quot;text-align:right&quot;&gt;81 W / 44 L&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface metric&quot;&gt;&lt;div class=&quot;metric-head&quot;&gt;&lt;span&gt;فاکتور سود&lt;/span&gt;&lt;span class=&quot;metric-icon&quot;&gt;&lt;i data-icon=&quot;compare&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;value&quot; id=&quot;kpi-pf&quot;&gt;1.86&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;نسبت سود ناخالص به زیان&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface metric&quot;&gt;&lt;div class=&quot;metric-head&quot;&gt;&lt;span&gt;افت سرمایه&lt;/span&gt;&lt;span class=&quot;metric-icon negative&quot;&gt;&lt;i data-icon=&quot;down&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;value negative&quot; id=&quot;kpi-dd&quot;&gt;−320 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;افت از قله تا کف سرمایه&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface metric&quot;&gt;&lt;div class=&quot;metric-head&quot;&gt;&lt;span&gt;معاملات بسته&lt;/span&gt;&lt;span class=&quot;metric-icon&quot;&gt;&lt;i data-icon=&quot;trades&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;value&quot; id=&quot;kpi-count&quot;&gt;125&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;تعداد معاملات بسته‌شده&lt;/div&gt;&lt;/article&gt;
+   &lt;/div&gt;&lt;div class=&quot;section-title&quot; id=&quot;analytics&quot;&gt;&lt;h2&gt;&lt;i data-icon=&quot;chart&quot;&gt;&lt;/i&gt; روند سرمایه و وضعیت امروز&lt;/h2&gt;&lt;span id=&quot;chart-caption&quot;&gt;همهٔ معاملات واقعی · نمونه&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;grid overview&quot;&gt;&lt;article class=&quot;surface panel equity-focus&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;منحنی سرمایه&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;USDT&lt;/span&gt;&lt;/div&gt;&lt;div id=&quot;equity-chart&quot;&gt;&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface today today-compact&quot; id=&quot;today&quot;&gt;&lt;div&gt;&lt;h3&gt;&lt;i data-icon=&quot;calendar&quot;&gt;&lt;/i&gt;وضعیت امروز&lt;/h3&gt;&lt;div class=&quot;value positive&quot;&gt;+180 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;today-detail&quot;&gt;&lt;span&gt;&lt;b&gt;۵&lt;/b&gt; معامله&lt;/span&gt;&lt;span&gt;نرخ برد &lt;b&gt;۶۰٪&lt;/b&gt;&lt;/span&gt;&lt;span&gt;&lt;b&gt;۲&lt;/b&gt; معامله باز&lt;/span&gt;&lt;span&gt;&lt;b&gt;۱۲۵&lt;/b&gt; کل معاملات&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;periods&quot;&gt;&lt;div class=&quot;period&quot;&gt;&lt;div class=&quot;label&quot;&gt;این ماه&lt;/div&gt;&lt;div class=&quot;amount positive&quot;&gt;+1,240 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;period&quot;&gt;&lt;div class=&quot;label&quot;&gt;این فصل&lt;/div&gt;&lt;div class=&quot;amount positive&quot;&gt;+2,450 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;period&quot;&gt;&lt;div class=&quot;label&quot;&gt;امسال&lt;/div&gt;&lt;div class=&quot;amount positive&quot;&gt;+2,450 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;section class=&quot;grid paired-cards&quot; aria-label=&quot;وضعیت پراپ و عملکرد بک‌تست&quot;&gt;&lt;article class=&quot;surface panel prop-compact&quot; id=&quot;prop&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;building&quot;&gt;&lt;/i&gt;وضعیت پراپ&lt;/h3&gt;&lt;span class=&quot;tag&quot;&gt;۱ مرحله فعال&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;prop-grid&quot;&gt;&lt;div&gt;&lt;div style=&quot;display:flex;justify-content:space-between;gap:10px&quot;&gt;&lt;span style=&quot;font-size:12px;font-weight:600&quot;&gt;حساب نمونه · مرحله ۳&lt;/span&gt;&lt;span class=&quot;sub&quot; dir=&quot;ltr&quot;&gt;10,000 USDT&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;progress-info&quot;&gt;&lt;span&gt;پیشرفت هدف سود&lt;/span&gt;&lt;b&gt;۷۲٪&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;track green&quot;&gt;&lt;span style=&quot;width:72%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;progress-info&quot;&gt;&lt;span&gt;حد ضرر مصرف‌شده&lt;/span&gt;&lt;b&gt;۲۴٪&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;track red&quot;&gt;&lt;span style=&quot;width:24%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;prop-summary&quot;&gt;&lt;div class=&quot;label&quot;&gt;روزهای باقی‌مانده&lt;/div&gt;&lt;div class=&quot;stat-number&quot;&gt;۱۲ &lt;small&gt;روز&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;sub&quot; style=&quot;margin-top:9px&quot;&gt;حد ضرر کل: ۱٬۰۰۰ USDT&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface panel&quot; id=&quot;backtest&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;compare&quot;&gt;&lt;/i&gt;عملکرد بک‌تست&lt;/h3&gt;&lt;select class=&quot;currency&quot; id=&quot;strategy-select&quot; aria-label=&quot;نسخهٔ استراتژی نمونه&quot;&gt;&lt;option value=&quot;1&quot;&gt;Strategy v1.2&lt;/option&gt;&lt;option value=&quot;2&quot;&gt;Strategy v1.1&lt;/option&gt;&lt;/select&gt;&lt;/div&gt;&lt;div class=&quot;backtest-stats&quot; id=&quot;backtest-values&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;سود خالص&lt;/div&gt;&lt;div class=&quot;stat-number positive&quot; data-bt=&quot;pnl&quot;&gt;+4,320&lt;/div&gt;&lt;span class=&quot;sub&quot;&gt;USDT&lt;/span&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;نرخ برد&lt;/div&gt;&lt;div class=&quot;stat-number&quot; data-bt=&quot;win&quot;&gt;58.3%&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;فاکتور سود&lt;/div&gt;&lt;div class=&quot;stat-number&quot; data-bt=&quot;pf&quot;&gt;1.67&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;حداکثر ضرر&lt;/div&gt;&lt;div class=&quot;stat-number negative&quot; data-bt=&quot;dd&quot;&gt;−820&lt;/div&gt;&lt;span class=&quot;sub&quot;&gt;USDT&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;نسخهٔ انتخاب‌شده · مستقل از فیلتر معاملات · نمونه&lt;/div&gt;&lt;/article&gt;&lt;/section&gt;&lt;section id=&quot;real-details&quot; class=&quot;real-performance&quot; aria-labelledby=&quot;real-title&quot;&gt;&lt;div class=&quot;section-title&quot;&gt;&lt;h2 id=&quot;real-title&quot;&gt;عملکرد پول واقعی&lt;/h2&gt;&lt;span&gt;مرحله ۳ پراپ + بروکر شخصی&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;grid realgrid&quot;&gt;
+    &lt;article class=&quot;surface real-card&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;سود خالص&lt;/div&gt;&lt;div class=&quot;value positive&quot;&gt;+1,820 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;۴۵ برد / ۲۷ باخت&lt;/div&gt;&lt;/div&gt;&lt;svg class=&quot;mini&quot; viewBox=&quot;0 0 85 55&quot; role=&quot;img&quot; aria-label=&quot;روند نمونه سود خالص&quot;&gt;&lt;path d=&quot;M0 49 9 43 17 45 26 35 35 38 45 22 54 28 64 17 74 18 85 7V55H0Z&quot; fill=&quot;#e9f7f0&quot;&gt;&lt;/path&gt;&lt;path d=&quot;M0 49 9 43 17 45 26 35 35 38 45 22 54 28 64 17 74 18 85 7&quot; fill=&quot;none&quot; stroke=&quot;#289779&quot; stroke-width=&quot;2&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface real-card&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;نرخ برد&lt;/div&gt;&lt;div class=&quot;value&quot;&gt;62.5%&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;۷۲ معاملهٔ پول واقعی&lt;/div&gt;&lt;/div&gt;&lt;svg class=&quot;mini&quot; viewBox=&quot;0 0 85 55&quot; role=&quot;img&quot; aria-label=&quot;نرخ برد نمونه ۶۲٫۵ درصد&quot;&gt;&lt;circle cx=&quot;43&quot; cy=&quot;28&quot; r=&quot;21&quot; fill=&quot;none&quot; stroke=&quot;#edf2f9&quot; stroke-width=&quot;7&quot;&gt;&lt;/circle&gt;&lt;circle cx=&quot;43&quot; cy=&quot;28&quot; r=&quot;21&quot; fill=&quot;none&quot; stroke=&quot;#6f97da&quot; stroke-width=&quot;7&quot; stroke-dasharray=&quot;82.5 132&quot; transform=&quot;rotate(-90 43 28)&quot;&gt;&lt;/circle&gt;&lt;/svg&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface real-card&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;فاکتور سود&lt;/div&gt;&lt;div class=&quot;value&quot;&gt;1.72&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;سود / زیان ناخالص&lt;/div&gt;&lt;/div&gt;&lt;svg class=&quot;mini&quot; viewBox=&quot;0 0 85 55&quot; role=&quot;img&quot; aria-label=&quot;مقایسه سود و زیان نمونه&quot;&gt;&lt;rect x=&quot;19&quot; y=&quot;8&quot; width=&quot;19&quot; height=&quot;45&quot; rx=&quot;3&quot; fill=&quot;#7ebba6&quot;&gt;&lt;/rect&gt;&lt;rect x=&quot;46&quot; y=&quot;27&quot; width=&quot;19&quot; height=&quot;26&quot; rx=&quot;3&quot; fill=&quot;#eab3bc&quot;&gt;&lt;/rect&gt;&lt;/svg&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface real-card&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;حداکثر ضرر&lt;/div&gt;&lt;div class=&quot;value negative&quot;&gt;−240 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;metric-note&quot;&gt;حداکثر افت سرمایه&lt;/div&gt;&lt;/div&gt;&lt;svg class=&quot;mini&quot; viewBox=&quot;0 0 85 55&quot; role=&quot;img&quot; aria-label=&quot;نمودار نمونه افت سرمایه&quot;&gt;&lt;path d=&quot;M1 12 12 15 22 13 33 27 44 20 55 39 66 32 76 43 85 46&quot; fill=&quot;none&quot; stroke=&quot;#d98795&quot; stroke-width=&quot;2&quot;&gt;&lt;/path&gt;&lt;path d=&quot;M1 12 12 15 22 13 33 27 44 20 55 39 66 32 76 43 85 46V55H1Z&quot; fill=&quot;#fff0f2&quot;&gt;&lt;/path&gt;&lt;/svg&gt;&lt;/article&gt;
+   &lt;/div&gt;&lt;/section&gt;&lt;div class=&quot;section-title&quot;&gt;&lt;h2&gt;جزئیات بیشتر&lt;/h2&gt;&lt;/div&gt;&lt;details class=&quot;disclosure&quot; id=&quot;analysis-details&quot;&gt;&lt;summary class=&quot;disclosure-summary&quot;&gt;&lt;span class=&quot;disclosure-label&quot;&gt;&lt;strong&gt;تحلیل تکمیلی&lt;/strong&gt;&lt;span&gt;برد و باخت، توزیع سود و زیان و اهداف&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;disclosure-chevron&quot; aria-hidden=&quot;true&quot;&gt;⌄&lt;/span&gt;&lt;/summary&gt;&lt;div class=&quot;disclosure-body&quot;&gt;&lt;div class=&quot;grid analytical-charts&quot;&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;برد / باخت&lt;/h3&gt;&lt;span class=&quot;sub&quot; id=&quot;donut-count&quot;&gt;۱۲۵ معامله&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;donut-wrap&quot;&gt;&lt;svg class=&quot;chart-svg&quot; viewBox=&quot;0 0 180 180&quot; role=&quot;img&quot; aria-label=&quot;نسبت برد و باخت نمونه&quot;&gt;&lt;circle cx=&quot;90&quot; cy=&quot;90&quot; r=&quot;69&quot; fill=&quot;none&quot; stroke=&quot;#e57e8b&quot; stroke-width=&quot;15&quot;&gt;&lt;/circle&gt;&lt;circle id=&quot;donut-win&quot; cx=&quot;90&quot; cy=&quot;90&quot; r=&quot;69&quot; fill=&quot;none&quot; stroke=&quot;#2b9b80&quot; stroke-width=&quot;15&quot; stroke-dasharray=&quot;281 434&quot; transform=&quot;rotate(-90 90 90)&quot;&gt;&lt;/circle&gt;&lt;/svg&gt;&lt;div class=&quot;donut-text&quot;&gt;&lt;b id=&quot;donut-rate&quot;&gt;64.8%&lt;/b&gt;&lt;span&gt;نرخ برد&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;legend-row&quot;&gt;&lt;span class=&quot;legend-label&quot;&gt;&lt;i class=&quot;swatch&quot;&gt;&lt;/i&gt;معاملات برنده&lt;/span&gt;&lt;b id=&quot;wins-label&quot;&gt;۸۱&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;legend-row&quot;&gt;&lt;span class=&quot;legend-label&quot;&gt;&lt;i class=&quot;swatch loss&quot;&gt;&lt;/i&gt;معاملات بازنده&lt;/span&gt;&lt;b id=&quot;losses-label&quot;&gt;۴۴&lt;/b&gt;&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;توزیع سود / زیان&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;تعداد معاملات&lt;/span&gt;&lt;/div&gt;&lt;div id=&quot;distribution-chart&quot;&gt;&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;div class=&quot;goal-detail&quot;&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;target&quot;&gt;&lt;/i&gt;پیشرفت اهداف&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;بر اساس PnL واقعی&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;goal-row&quot;&gt;&lt;span&gt;هدف ماهانه&lt;/span&gt;&lt;div class=&quot;track&quot;&gt;&lt;span style=&quot;width:83%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;b&gt;۸۳٪&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;goal-row&quot;&gt;&lt;span&gt;هدف فصلی&lt;/span&gt;&lt;div class=&quot;track&quot;&gt;&lt;span style=&quot;width:49%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;b&gt;۴۹٪&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;goal-row&quot;&gt;&lt;span&gt;هدف سالانه&lt;/span&gt;&lt;div class=&quot;track&quot;&gt;&lt;span style=&quot;width:25%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;b&gt;۲۵٪&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;هدف ماهانهٔ نمونه: ۳٬۰۰۰ USDT&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;details class=&quot;yesterday-detail&quot;&gt;&lt;summary&gt;مقایسه با روز گذشته&lt;/summary&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;moon&quot;&gt;&lt;/i&gt;روز گذشته&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;۸ معامله&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;mini-stats&quot;&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;سود خالص&lt;/div&gt;&lt;div class=&quot;stat-number positive&quot;&gt;+320 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;نرخ برد&lt;/div&gt;&lt;div class=&quot;stat-number&quot;&gt;62.5%&lt;/div&gt;&lt;/div&gt;&lt;div&gt;&lt;div class=&quot;label&quot;&gt;برد / باخت&lt;/div&gt;&lt;div class=&quot;stat-number&quot;&gt;5 / 3&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;&lt;i data-icon=&quot;calendar&quot;&gt;&lt;/i&gt;جمعه، ۱۷ مهر · دادهٔ نمونه&lt;/div&gt;&lt;/article&gt;&lt;/details&gt;&lt;/div&gt;&lt;/details&gt;&lt;details class=&quot;disclosure&quot; id=&quot;finance&quot;&gt;&lt;summary class=&quot;disclosure-summary&quot;&gt;&lt;span class=&quot;disclosure-label&quot;&gt;&lt;strong&gt;جزئیات مالی&lt;/strong&gt;&lt;span&gt;موجودی حساب‌ها، جریان نقدی و دارایی شخصی&lt;/span&gt;&lt;/span&gt;&lt;span class=&quot;disclosure-chevron&quot; aria-hidden=&quot;true&quot;&gt;⌄&lt;/span&gt;&lt;/summary&gt;&lt;div class=&quot;disclosure-body&quot;&gt;&lt;div class=&quot;grid finance&quot;&gt;
+    &lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;موجودی کل&lt;/h3&gt;&lt;i data-icon=&quot;wallet&quot;&gt;&lt;/i&gt;&lt;/div&gt;&lt;div class=&quot;label&quot;&gt;مجموع حساب‌های مالی&lt;/div&gt;&lt;div class=&quot;balance-total&quot;&gt;22,340 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;balance-line&quot; style=&quot;margin-top:22px&quot;&gt;&lt;span&gt;حساب‌های پراپ&lt;/span&gt;&lt;b&gt;14,020 USDT&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;balance-line&quot;&gt;&lt;span&gt;بروکر شخصی&lt;/span&gt;&lt;b&gt;8,320 USDT&lt;/b&gt;&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;جریان نقدی&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;۶ ماه اخیر · USDT&lt;/span&gt;&lt;/div&gt;&lt;div id=&quot;cashflow-chart&quot;&gt;&lt;/div&gt;&lt;/article&gt;
+    &lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;تفکیک حساب‌ها&lt;/h3&gt;&lt;i data-icon=&quot;building&quot;&gt;&lt;/i&gt;&lt;/div&gt;&lt;div class=&quot;account&quot;&gt;&lt;span class=&quot;account-icon&quot;&gt;&lt;i data-icon=&quot;building&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div class=&quot;account-content&quot;&gt;&lt;div class=&quot;account-top&quot;&gt;&lt;span&gt;حساب پراپ&lt;/span&gt;&lt;b&gt;14,020&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;track&quot;&gt;&lt;span style=&quot;width:63%&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;account&quot;&gt;&lt;span class=&quot;account-icon&quot;&gt;&lt;i data-icon=&quot;wallet&quot;&gt;&lt;/i&gt;&lt;/span&gt;&lt;div class=&quot;account-content&quot;&gt;&lt;div class=&quot;account-top&quot;&gt;&lt;span&gt;بروکر شخصی&lt;/span&gt;&lt;b&gt;8,320&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;track&quot;&gt;&lt;span style=&quot;width:37%;background:#99b6e8&quot;&gt;&lt;/span&gt;&lt;/div&gt;&lt;/div&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;مبالغ نمایش‌داده‌شده نمونه‌اند.&lt;/div&gt;&lt;/article&gt;
+   &lt;/div&gt;&lt;div class=&quot;grid trend-row&quot;&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;سود خالص&lt;/h3&gt;&lt;i data-icon=&quot;trend&quot;&gt;&lt;/i&gt;&lt;/div&gt;&lt;div class=&quot;value positive&quot;&gt;+1,450 &lt;small&gt;USDT&lt;/small&gt;&lt;/div&gt;&lt;div class=&quot;label&quot;&gt;سود Real منهای هزینه‌ها&lt;/div&gt;&lt;div class=&quot;profit-split&quot;&gt;&lt;div class=&quot;balance-line&quot;&gt;&lt;span&gt;سود معاملات&lt;/span&gt;&lt;b&gt;1,820 USDT&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;balance-line&quot;&gt;&lt;span&gt;هزینه‌ها&lt;/span&gt;&lt;b&gt;370 USDT&lt;/b&gt;&lt;/div&gt;&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;دارایی شخصی&lt;/h3&gt;&lt;i data-icon=&quot;wallet&quot;&gt;&lt;/i&gt;&lt;/div&gt;&lt;div class=&quot;personal-line&quot;&gt;&lt;div class=&quot;coin&quot;&gt;&lt;span&gt;₮&lt;/span&gt;&lt;div&gt;تتر&lt;small&gt;موجودی حساب‌های شخصی&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;b&gt;8,320 USDT&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;personal-line&quot;&gt;&lt;div class=&quot;coin&quot;&gt;&lt;span&gt;﷼&lt;/span&gt;&lt;div&gt;ریال&lt;small&gt;موجودی حساب‌های شخصی&lt;/small&gt;&lt;/div&gt;&lt;/div&gt;&lt;b&gt;240,000,000&lt;/b&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;موجودی به تفکیک ارز&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;روند دارایی&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;تجمعی · USDT&lt;/span&gt;&lt;/div&gt;&lt;div id=&quot;asset-chart&quot;&gt;&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;/div&gt;&lt;/details&gt;&lt;section id=&quot;trades&quot; class=&quot;trade-section&quot; aria-labelledby=&quot;trades-title&quot;&gt;&lt;div class=&quot;section-title&quot;&gt;&lt;h2 id=&quot;trades-title&quot;&gt;معاملات&lt;/h2&gt;&lt;span&gt;معاملات باز و آخرین معاملات بسته‌شده&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;grid tables&quot;&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;book&quot;&gt;&lt;/i&gt;معاملات باز&lt;/h3&gt;&lt;span class=&quot;tag&quot;&gt;۲ معامله&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;table-wrap&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;نماد&lt;/th&gt;&lt;th&gt;نوع&lt;/th&gt;&lt;th&gt;حجم&lt;/th&gt;&lt;th&gt;قیمت ورود&lt;/th&gt;&lt;th&gt;سود / زیان&lt;small class=&quot;table-unit&quot;&gt;USDT&lt;/small&gt;&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;XAUUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag green&quot;&gt;خرید&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;0.50&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;2,172.30&lt;/td&gt;&lt;td class=&quot;numeric positive&quot;&gt;+390.00&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;EURUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag red&quot;&gt;فروش&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.00&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.0842&lt;/td&gt;&lt;td class=&quot;numeric negative&quot;&gt;−210.00&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&lt;div class=&quot;footnote&quot;&gt;قیمت‌ها و سود / زیان، نمونهٔ طراحی هستند.&lt;/div&gt;&lt;/article&gt;&lt;article class=&quot;surface panel&quot;&gt;&lt;div class=&quot;panel-head&quot;&gt;&lt;h3&gt;&lt;i data-icon=&quot;trades&quot;&gt;&lt;/i&gt;آخرین معاملات&lt;/h3&gt;&lt;span class=&quot;sub&quot;&gt;۵ معاملهٔ نمونه&lt;/span&gt;&lt;/div&gt;&lt;div class=&quot;table-wrap&quot;&gt;&lt;table&gt;&lt;thead&gt;&lt;tr&gt;&lt;th&gt;نماد&lt;/th&gt;&lt;th&gt;نوع&lt;/th&gt;&lt;th&gt;حجم&lt;/th&gt;&lt;th&gt;قیمت بسته‌شدن&lt;/th&gt;&lt;th&gt;&lt;button class=&quot;table-sort&quot; id=&quot;sort-pnl&quot; aria-label=&quot;مرتب‌سازی بر اساس سود و زیان&quot;&gt;سود / زیان ↕&lt;/button&gt;&lt;small class=&quot;table-unit&quot;&gt;USDT&lt;/small&gt;&lt;/th&gt;&lt;th&gt;زمان&lt;/th&gt;&lt;/tr&gt;&lt;/thead&gt;&lt;tbody id=&quot;recent-rows&quot;&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;EURUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag green&quot;&gt;خرید&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.00&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.0834&lt;/td&gt;&lt;td class=&quot;numeric positive&quot;&gt;+120.00&lt;/td&gt;&lt;td&gt;۱۴:۲۵&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;XAUUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag red&quot;&gt;فروش&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;0.50&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;2,178.50&lt;/td&gt;&lt;td class=&quot;numeric negative&quot;&gt;−230.00&lt;/td&gt;&lt;td&gt;۱۲:۱۰&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;GBPUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag green&quot;&gt;خرید&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.00&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.2678&lt;/td&gt;&lt;td class=&quot;numeric positive&quot;&gt;+310.00&lt;/td&gt;&lt;td&gt;۱۰:۳۴&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;EURUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag red&quot;&gt;فروش&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;0.50&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;1.0812&lt;/td&gt;&lt;td class=&quot;numeric negative&quot;&gt;−120.00&lt;/td&gt;&lt;td&gt;۰۹:۱۵&lt;/td&gt;&lt;/tr&gt;&lt;tr&gt;&lt;td class=&quot;symbol&quot;&gt;XAUUSD&lt;/td&gt;&lt;td&gt;&lt;span class=&quot;tag green&quot;&gt;خرید&lt;/span&gt;&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;0.50&lt;/td&gt;&lt;td class=&quot;numeric&quot;&gt;2,170.10&lt;/td&gt;&lt;td class=&quot;numeric positive&quot;&gt;+410.00&lt;/td&gt;&lt;td&gt;۰۸:۲۲&lt;/td&gt;&lt;/tr&gt;&lt;/tbody&gt;&lt;/table&gt;&lt;/div&gt;&lt;/article&gt;&lt;/div&gt;&lt;/section&gt;&lt;footer class=&quot;footer&quot;&gt;&lt;span&gt;&lt;i data-icon=&quot;shield&quot;&gt;&lt;/i&gt;MokTradeDesk · پیش‌نمایش مستقل طراحی&lt;/span&gt;&lt;span&gt;داده‌های نمایشی · بدون اتصال به حساب‌ها&lt;/span&gt;&lt;/footer&gt;&lt;/main&gt;
+ &lt;/div&gt;
+&lt;/div&gt;
+&lt;script&gt;
+(() =&gt; {
+ const root=document.getElementById(&#x27;mok-preview&#x27;);
+ const paths={dashboard:&#x27;M3 3h7v7H3zM14 3h7v7h-7zM3 14h7v7H3zM14 14h7v7h-7z&#x27;,chart:&#x27;M4 3v17h17M8 15l4-5 4 3 5-8&#x27;,trend:&#x27;m3 17 6-6 4 3 8-10M15 4h6v6&#x27;,down:&#x27;m3 7 6 6 4-3 8 10M15 20h6v-6&#x27;,compare:&#x27;M12 3v18M5 6h14M5 6l-3 7h6zM19 6l-3 7h6zM8 21h8&#x27;,target:&#x27;M21 12a9 9 0 1 1-9-9M17 12a5 5 0 1 1-5-5M12 12l8-8M16 4h4v4&#x27;,trades:&#x27;M8 4H5v17h14V4h-3M8 3h8v4H8zM8 11h8M8 15h8&#x27;,book:&#x27;M12 5v15M12 5C9 3 5 3 2 4v15c3-1 7-1 10 1 3-2 7-2 10-1V4c-3-1-7-1-10 1&#x27;,wallet:&#x27;M20 7V4H4v16h16V7H4M20 10h-6v6h6M16 13h1&#x27;,building:&#x27;M4 21V3h12v18M16 9h4v12M2 21h20M8 7h4M8 11h4M8 15h4&#x27;,download:&#x27;M12 3v12m-5-5 5 5 5-5M4 16v5h16v-5&#x27;,calendar:&#x27;M4 5h16v16H4zM8 3v4M16 3v4M4 10h16M8 14h3&#x27;,shield:&#x27;M12 2 3 6v6c0 5 9 10 9 10s9-5 9-10V6zM8 12l3 3 5-6&#x27;,plus:&#x27;M12 5v14M5 12h14&#x27;,refresh:&#x27;M20 7A9 9 0 1 0 21 14M20 2v5h-5&#x27;,moon:&#x27;M20 15A8 8 0 0 1 9 4a9 9 0 1 0 11 11&#x27;};
+ root.querySelectorAll(&#x27;[data-icon]&#x27;).forEach(el=&gt;{const svg=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;svg&#x27;);svg.setAttribute(&#x27;viewBox&#x27;,&#x27;0 0 24 24&#x27;);svg.setAttribute(&#x27;class&#x27;,&#x27;icon&#x27;);svg.setAttribute(&#x27;aria-hidden&#x27;,&#x27;true&#x27;);const p=document.createElementNS(&#x27;http://www.w3.org/2000/svg&#x27;,&#x27;path&#x27;);p.setAttribute(&#x27;d&#x27;,paths[el.dataset.icon]||paths.chart);svg.appendChild(p);el.replaceWith(svg)});
+ const q=id=&gt;root.querySelector(&#x27;#&#x27;+id),fa=n=&gt;n.toLocaleString(&#x27;fa-IR&#x27;),en=n=&gt;n.toLocaleString(&#x27;en-US&#x27;);
+ const months=[&#x27;مهر&#x27;,&#x27;آبان&#x27;,&#x27;آذر&#x27;,&#x27;دی&#x27;,&#x27;بهمن&#x27;,&#x27;اسفند&#x27;];
+ function lineChart(id,points,label,green=true){const w=440,h=174,l=42,r=10,t=16,b=26,peak=Math.max(...points),scale=10**Math.floor(Math.log10(Math.max(peak,1))),max=Math.ceil(peak/scale)*scale,min=0;const xx=i=&gt;l+i*(w-l-r)/(points.length-1),yy=v=&gt;h-b-(v-min)/(max-min)*(h-t-b);const axis=v=&gt;v&gt;=1e9?(v/1e9).toFixed(1)+&#x27;B&#x27;:v&gt;=1e6?(v/1e6).toFixed(1)+&#x27;M&#x27;:en(Math.round(v));const coords=points.map((v,i)=&gt;`${xx(i).toFixed(1)},${yy(v).toFixed(1)}`);const color=green?&#x27;#268e77&#x27;:&#x27;#487ed2&#x27;;const grid=Array.from({length:4},(_,i)=&gt;{const v=max*i/3,y=yy(v);return `&lt;line class=&quot;chart-grid&quot; x1=&quot;${l}&quot; y1=&quot;${y}&quot; x2=&quot;${w-r}&quot; y2=&quot;${y}&quot;/&gt;&lt;text x=&quot;${l-7}&quot; y=&quot;${y+4}&quot; text-anchor=&quot;end&quot;&gt;${axis(v)}&lt;/text&gt;`}).join(&#x27;&#x27;);q(id).innerHTML=`&lt;svg class=&quot;chart-svg&quot; viewBox=&quot;0 0 ${w} ${h}&quot; role=&quot;img&quot; aria-label=&quot;${label}&quot;&gt;&lt;defs&gt;&lt;linearGradient id=&quot;fill-${id}&quot; x1=&quot;0&quot; x2=&quot;0&quot; y1=&quot;0&quot; y2=&quot;1&quot;&gt;&lt;stop offset=&quot;0&quot; stop-color=&quot;${color}&quot; stop-opacity=&quot;.18&quot;/&gt;&lt;stop offset=&quot;1&quot; stop-color=&quot;${color}&quot; stop-opacity=&quot;.015&quot;/&gt;&lt;/linearGradient&gt;&lt;/defs&gt;${grid}&lt;path d=&quot;M${coords.join(&#x27; L&#x27;)} L${w-r},${h-b} L${l},${h-b}Z&quot; fill=&quot;url(#fill-${id})&quot;/&gt;&lt;polyline points=&quot;${coords.join(&#x27; &#x27;)}&quot; stroke=&quot;${color}&quot; stroke-width=&quot;2.3&quot; fill=&quot;none&quot; stroke-linejoin=&quot;round&quot;/&gt;${months.map((m,i)=&gt;`&lt;text x=&quot;${l+i*(w-l-r)/5}&quot; y=&quot;${h-5}&quot; text-anchor=&quot;${i===0?&#x27;start&#x27;:i===5?&#x27;end&#x27;:&#x27;middle&#x27;}&quot;&gt;${m}&lt;/text&gt;`).join(&#x27;&#x27;)}&lt;circle cx=&quot;${xx(points.length-1)}&quot; cy=&quot;${yy(points.at(-1))}&quot; r=&quot;3&quot; fill=&quot;${color}&quot;/&gt;&lt;/svg&gt;`}
+ function bars(id,values,labels,cash=false){const w=300,h=190,l=35,r=12,t=14,b=36,zero=cash?125:h-b,unit=cash?.022:3.6,step=(w-l-r)/values.length;const ticks=cash?[4000,2000,0,-2000]:[30,20,10,0];q(id).innerHTML=`&lt;svg class=&quot;chart-svg&quot; viewBox=&quot;0 0 ${w} ${h}&quot; role=&quot;img&quot; aria-label=&quot;${cash?&#x27;جریان نقدی نمونه در شش ماه&#x27;:&#x27;توزیع نمونه معاملات بر اساس سود و زیان&#x27;}&quot;&gt;${ticks.map(v=&gt;`&lt;line class=&quot;chart-grid&quot; x1=&quot;${l}&quot; y1=&quot;${zero-v*unit}&quot; x2=&quot;${w-r}&quot; y2=&quot;${zero-v*unit}&quot;/&gt;&lt;text x=&quot;${l-7}&quot; y=&quot;${zero-v*unit+4}&quot; text-anchor=&quot;end&quot;&gt;${en(v)}&lt;/text&gt;`).join(&#x27;&#x27;)}${values.map((v,i)=&gt;{const x=l+i*step+step*.24,bh=Math.abs(v)*unit,y=v&gt;=0?zero-bh:zero;return `&lt;rect x=&quot;${x}&quot; y=&quot;${y}&quot; width=&quot;${step*.5}&quot; height=&quot;${bh}&quot; rx=&quot;2&quot; fill=&quot;${cash?(v&gt;=0?&#x27;#4d9e89&#x27;:&#x27;#e795a0&#x27;):(i&lt;3?&#x27;#e795a0&#x27;:&#x27;#5ca990&#x27;)}&quot;&gt;&lt;title&gt;${labels[i]}: ${en(v)}&lt;/title&gt;&lt;/rect&gt;&lt;text x=&quot;${x+step*.25}&quot; y=&quot;${h-13}&quot; text-anchor=&quot;middle&quot;&gt;${labels[i]}&lt;/text&gt;`}).join(&#x27;&#x27;)}&lt;/svg&gt;`}
+ const curve=[200,280,350,520,480,660,710,830,800,1040,1150,1110,1380,1460,1390,1610,1790,1700,1860,1810,2020,2190,2080,2310,2450];
+ const baseData={all:{pnl:2450,wins:81,losses:44,pf:1.86,dd:320},today:{pnl:180,wins:3,losses:2,pf:1.64,dd:65},yesterday:{pnl:320,wins:5,losses:3,pf:1.72,dd:110},week:{pnl:680,wins:14,losses:8,pf:1.81,dd:160},month:{pnl:1240,wins:28,losses:17,pf:1.75,dd:240},quarter:{pnl:2450,wins:81,losses:44,pf:1.86,dd:320},year:{pnl:2450,wins:81,losses:44,pf:1.86,dd:320}};
+ let range=&#x27;all&#x27;,scope=&#x27;real&#x27;;
+ function update(){const d={...baseData[range]},mult=scope===&#x27;backtest&#x27;?1.76:scope===&#x27;forward&#x27;?.63:scope===&#x27;all&#x27;?2.4:1;d.pnl=Math.round(d.pnl*mult);d.dd=Math.round(d.dd*mult);d.wins=Math.round(d.wins*mult);d.losses=Math.max(1,Math.round(d.losses*mult));const total=d.wins+d.losses,rate=(d.wins/total*100).toFixed(1),currency=q(&#x27;currency-select&#x27;).value,exchange=currency===&#x27;IRR&#x27;?600000:1;root.querySelectorAll(&#x27;[data-range]&#x27;).forEach(b=&gt;b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.range===range)));root.querySelectorAll(&#x27;[data-scope]&#x27;).forEach(b=&gt;b.setAttribute(&#x27;aria-pressed&#x27;,String(b.dataset.scope===scope)));q(&#x27;kpi-pnl&#x27;).innerHTML=`+${en(d.pnl*exchange)} &lt;small&gt;${currency}&lt;/small&gt;`;q(&#x27;kpi-dd&#x27;).innerHTML=`−${en(d.dd*exchange)} &lt;small&gt;${currency}&lt;/small&gt;`;q(&#x27;kpi-pnl&#x27;).style.fontSize=currency===&#x27;IRR&#x27;?&#x27;clamp(12px,1.1vw,18px)&#x27;:&#x27;&#x27;;q(&#x27;kpi-dd&#x27;).style.fontSize=currency===&#x27;IRR&#x27;?&#x27;clamp(12px,1.1vw,18px)&#x27;:&#x27;&#x27;;q(&#x27;kpi-win&#x27;).textContent=rate+&#x27;%&#x27;;q(&#x27;kpi-pf&#x27;).textContent=d.pf.toFixed(2);q(&#x27;kpi-wl&#x27;).textContent=`${d.wins} W / ${d.losses} L`;q(&#x27;kpi-count&#x27;).textContent=en(total);q(&#x27;donut-rate&#x27;).textContent=rate+&#x27;%&#x27;;q(&#x27;donut-win&#x27;).setAttribute(&#x27;stroke-dasharray&#x27;,`${Number(rate)*4.335} 434`);q(&#x27;donut-count&#x27;).textContent=fa(total)+&#x27; معامله&#x27;;q(&#x27;wins-label&#x27;).textContent=fa(d.wins);q(&#x27;losses-label&#x27;).textContent=fa(d.losses);q(&#x27;chart-caption&#x27;).textContent=root.querySelector(`[data-range=&quot;${range}&quot;]`).textContent+&#x27; · &#x27;+root.querySelector(`[data-scope=&quot;${scope}&quot;]`).textContent+&#x27; · نمونه&#x27;;lineChart(&#x27;equity-chart&#x27;,curve.map(v=&gt;Math.round(v*d.pnl/2450*exchange)),`منحنی سرمایه نمونه با سود نهایی ${en(d.pnl*exchange)} ${currency}`)}
+ root.querySelectorAll(&#x27;[data-range]&#x27;).forEach(b=&gt;b.addEventListener(&#x27;click&#x27;,()=&gt;{range=b.dataset.range;update()}));root.querySelectorAll(&#x27;[data-scope]&#x27;).forEach(b=&gt;b.addEventListener(&#x27;click&#x27;,()=&gt;{scope=b.dataset.scope;update()}));q(&#x27;currency-select&#x27;).addEventListener(&#x27;change&#x27;,update);
+ const shadows={soft:&#x27;0 2px 5px rgba(27,58,107,.03),0 6px 12px -6px rgba(27,58,107,.12)&#x27;,medium:&#x27;0 3px 6px rgba(27,58,107,.035),0 12px 26px -9px rgba(27,58,107,.17)&#x27;,strong:&#x27;0 4px 8px rgba(27,58,107,.055),0 18px 34px -10px rgba(27,58,107,.25)&#x27;};root.querySelectorAll(&#x27;[data-depth]&#x27;).forEach(b=&gt;b.addEventListener(&#x27;click&#x27;,()=&gt;{root.style.setProperty(&#x27;--shadow&#x27;,shadows[b.dataset.depth]);root.querySelectorAll(&#x27;[data-depth]&#x27;).forEach(x=&gt;x.setAttribute(&#x27;aria-pressed&#x27;,String(x===b)))}));
+ q(&#x27;refresh-preview&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{range=&#x27;all&#x27;;scope=&#x27;real&#x27;;q(&#x27;currency-select&#x27;).value=&#x27;USDT&#x27;;update()});
+ q(&#x27;strategy-select&#x27;).addEventListener(&#x27;change&#x27;,e=&gt;{const data=e.target.value===&#x27;1&#x27;?[&#x27;+4,320&#x27;,&#x27;58.3%&#x27;,&#x27;1.67&#x27;,&#x27;−820&#x27;]:[&#x27;+3,140&#x27;,&#x27;55.1%&#x27;,&#x27;1.42&#x27;,&#x27;−960&#x27;];root.querySelectorAll(&#x27;[data-bt]&#x27;).forEach((el,i)=&gt;el.textContent=data[i])});
+ let descending=true;q(&#x27;sort-pnl&#x27;).addEventListener(&#x27;click&#x27;,()=&gt;{const rows=Array.from(q(&#x27;recent-rows&#x27;).children);rows.sort((a,b)=&gt;{const n=r=&gt;Number(r.children[4].textContent.replace(&#x27;−&#x27;,&#x27;-&#x27;).replaceAll(&#x27;,&#x27;,&#x27;&#x27;));return descending?n(b)-n(a):n(a)-n(b)});rows.forEach(r=&gt;q(&#x27;recent-rows&#x27;).appendChild(r));q(&#x27;sort-pnl&#x27;).textContent=&#x27;سود / زیان &#x27;+(descending?&#x27;↓&#x27;:&#x27;↑&#x27;);descending=!descending});
+ lineChart(&#x27;asset-chart&#x27;,[11000,11800,11600,12400,13800,13300,14800,15500,15700,16800,16200,17700,18500,18100,19700,20400,21300,20700,22340],&#x27;روند نمونه دارایی از ۱۱٬۰۰۰ تا ۲۲٬۳۴۰ تتر&#x27;,false);bars(&#x27;cashflow-chart&#x27;,[1800,2900,-1100,1400,900,2200],months,true);bars(&#x27;distribution-chart&#x27;,[5,10,16,29,24,15,8],[&#x27;−500&#x27;,&#x27;−300&#x27;,&#x27;−100&#x27;,&#x27;0&#x27;,&#x27;100&#x27;,&#x27;300&#x27;,&#x27;500&#x27;]);update();
+})();
+&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+ const root=document.getElementById(&#x27;mok-preview&#x27;);
+ function reveal(hash){if(!hash||hash.length&lt;2)return;const target=document.getElementById(hash.slice(1));if(!target)return;let node=target;while(node&amp;&amp;node!==root){if(node.tagName===&#x27;DETAILS&#x27;)node.open=true;node=node.parentElement;}}
+ root.querySelectorAll(&#x27;a[href^=&quot;#&quot;]&#x27;).forEach(a=&gt;a.addEventListener(&#x27;click&#x27;,()=&gt;reveal(a.hash)));
+ reveal(window.location.hash);
+})();&lt;/script&gt;&lt;script&gt;
+(() =&gt; {
+ const root=document.getElementById(&#x27;mok-preview&#x27;);
+ root.querySelectorAll(&#x27;a[href^=&quot;#&quot;]&#x27;).forEach(a=&gt;a.addEventListener(&#x27;click&#x27;,()=&gt;{
+   const nav=root.querySelector(&#x27;.sidebar nav&#x27;);
+   const selected=Array.from(nav.querySelectorAll(&#x27;a&#x27;)).find(link=&gt;link.hash===a.hash);
+   if(!selected)return;
+   nav.querySelectorAll(&#x27;a&#x27;).forEach(link=&gt;{link.classList.remove(&#x27;active&#x27;);link.removeAttribute(&#x27;aria-current&#x27;)});
+   selected.classList.add(&#x27;active&#x27;);selected.setAttribute(&#x27;aria-current&#x27;,&#x27;location&#x27;);
+ }));
+})();&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/core@1.7.3/dist/floating-ui.core.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script src=&quot;https://unpkg.com/@floating-ui/dom@1.7.4/dist/floating-ui.dom.umd.min.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  if (window.FloatingUIDOM == null) {
+    return;
+  }
+  const { autoUpdate, computePosition, flip, offset, shift, size } =
+    window.FloatingUIDOM;
+  const tooltipPlacements = new Set([&quot;top&quot;, &quot;right&quot;, &quot;bottom&quot;, &quot;left&quot;]);
+  const tooltipId = `codex-visualization-tooltip-${
+    window.crypto?.randomUUID?.() ?? Date.now().toString(36)
+  }`;
+  const tooltipGap = 5;
+  const hoverDelay = 700;
+  const skipDelay = 300;
+  let activeTrigger = null;
+  let pendingTrigger = null;
+  let tooltip = null;
+  let openTimeout = null;
+  let autoUpdateCleanup = null;
+  let positionRequest = 0;
+  let skipDelayUntil = 0;
+
+  const getTrigger = (target) =&gt;
+    target?.nodeType === Node.ELEMENT_NODE
+      ? target.closest(&quot;[data-tooltip]&quot;)
+      : null;
+  const containsTarget = (trigger, target) =&gt;
+    target?.nodeType != null &amp;&amp; trigger.contains(target);
+  const getContent = (trigger) =&gt;
+    trigger.getAttribute(&quot;data-tooltip&quot;)?.trim() ?? &quot;&quot;;
+  const getPlacement = (trigger) =&gt; {
+    const placement = trigger.getAttribute(&quot;data-tooltip-placement&quot;);
+    return tooltipPlacements.has(placement) ? placement : &quot;top&quot;;
+  };
+  const getTooltip = () =&gt; {
+    if (tooltip == null) {
+      tooltip = document.createElement(&quot;div&quot;);
+      tooltip.id = tooltipId;
+      tooltip.className = &quot;tooltip&quot;;
+      tooltip.setAttribute(&quot;role&quot;, &quot;tooltip&quot;);
+    }
+    return tooltip;
+  };
+  const setDescribedBy = (trigger, described) =&gt; {
+    const ids = new Set(
+      (trigger.getAttribute(&quot;aria-describedby&quot;) ?? &quot;&quot;)
+        .split(/\s+/)
+        .filter(Boolean),
+    );
+    if (described) {
+      ids.add(tooltipId);
+    } else {
+      ids.delete(tooltipId);
+    }
+    if (ids.size === 0) {
+      trigger.removeAttribute(&quot;aria-describedby&quot;);
+    } else {
+      trigger.setAttribute(&quot;aria-describedby&quot;, [...ids].join(&quot; &quot;));
+    }
+  };
+  const clearOpenTimeout = () =&gt; {
+    if (openTimeout != null) {
+      window.clearTimeout(openTimeout);
+      openTimeout = null;
+    }
+    pendingTrigger = null;
+  };
+  const closeTooltip = (activateSkipDelay = true) =&gt; {
+    clearOpenTimeout();
+    positionRequest += 1;
+    autoUpdateCleanup?.();
+    autoUpdateCleanup = null;
+    if (activeTrigger == null) {
+      return;
+    }
+    setDescribedBy(activeTrigger, false);
+    activeTrigger = null;
+    tooltip?.remove();
+    if (activateSkipDelay) {
+      skipDelayUntil = Date.now() + skipDelay;
+    }
+  };
+  const updatePosition = (trigger, floating) =&gt; {
+    const request = ++positionRequest;
+    void computePosition(trigger, floating, {
+      middleware: [
+        offset(tooltipGap),
+        flip({ padding: tooltipGap }),
+        shift({ padding: tooltipGap }),
+        size({
+          padding: tooltipGap,
+          apply({ availableHeight, availableWidth, elements }) {
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-width&quot;,
+              `${Math.max(0, availableWidth)}px`,
+            );
+            elements.floating.style.setProperty(
+              &quot;--tooltip-available-height&quot;,
+              `${Math.max(0, availableHeight)}px`,
+            );
+          },
+        }),
+      ],
+      placement: getPlacement(trigger),
+      strategy: &quot;fixed&quot;,
+    })
+      .then(({ x, y }) =&gt; {
+        if (activeTrigger !== trigger || request !== positionRequest) {
+          return;
+        }
+        const scale = window.devicePixelRatio || 1;
+        floating.style.transform = `translate(${Math.round(x * scale) / scale}px, ${Math.round(y * scale) / scale}px)`;
+        floating.style.visibility = &quot;visible&quot;;
+      })
+      .catch(() =&gt; {
+        if (activeTrigger === trigger &amp;&amp; request === positionRequest) {
+          closeTooltip(false);
+        }
+      });
+  };
+  const openTooltip = (trigger) =&gt; {
+    const content = getContent(trigger);
+    if (!trigger.isConnected || content.length === 0) {
+      return;
+    }
+    clearOpenTimeout();
+    if (activeTrigger === trigger) {
+      return;
+    }
+    closeTooltip();
+    const floating = getTooltip();
+    floating.textContent = content;
+    floating.style.visibility = &quot;hidden&quot;;
+    floating.style.transform = &quot;translate(0, 0)&quot;;
+    document.body.appendChild(floating);
+    activeTrigger = trigger;
+    setDescribedBy(trigger, true);
+    autoUpdateCleanup = autoUpdate(trigger, floating, () =&gt; {
+      updatePosition(trigger, floating);
+    });
+  };
+  const requestOpen = (trigger, immediate = false) =&gt; {
+    if (
+      getContent(trigger).length === 0 ||
+      activeTrigger === trigger ||
+      pendingTrigger === trigger
+    ) {
+      return;
+    }
+    clearOpenTimeout();
+    pendingTrigger = trigger;
+    const delay =
+      immediate || activeTrigger != null || Date.now() &lt; skipDelayUntil
+        ? 0
+        : hoverDelay;
+    if (delay === 0) {
+      openTooltip(trigger);
+      return;
+    }
+    openTimeout = window.setTimeout(() =&gt; {
+      openTimeout = null;
+      pendingTrigger = null;
+      openTooltip(trigger);
+    }, delay);
+  };
+  const handlePointerOpen = (event) =&gt; {
+    if (event.pointerType === &quot;touch&quot;) {
+      return;
+    }
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    requestOpen(trigger);
+  };
+  const handleLeave = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger == null || containsTarget(trigger, event.relatedTarget)) {
+      return;
+    }
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const handleFocusIn = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (trigger?.matches(&quot;:focus-visible&quot;)) {
+      requestOpen(trigger, true);
+    }
+  };
+  const handleKeyDown = (event) =&gt; {
+    if (event.key === &quot;Escape&quot;) {
+      closeTooltip();
+    }
+  };
+  const handleContextMenu = (event) =&gt; {
+    const trigger = getTrigger(event.target);
+    if (activeTrigger === trigger || pendingTrigger === trigger) {
+      closeTooltip();
+    }
+  };
+  const destroy = () =&gt; {
+    closeTooltip(false);
+    document.removeEventListener(&quot;pointerover&quot;, handlePointerOpen);
+    document.removeEventListener(&quot;pointerout&quot;, handleLeave);
+    document.removeEventListener(&quot;focusin&quot;, handleFocusIn);
+    document.removeEventListener(&quot;focusout&quot;, handleLeave);
+    document.removeEventListener(&quot;keydown&quot;, handleKeyDown);
+    document.removeEventListener(&quot;contextmenu&quot;, handleContextMenu);
+    tooltip = null;
+  };
+
+  document.addEventListener(&quot;pointerover&quot;, handlePointerOpen);
+  document.addEventListener(&quot;pointerout&quot;, handleLeave);
+  document.addEventListener(&quot;focusin&quot;, handleFocusIn);
+  document.addEventListener(&quot;focusout&quot;, handleLeave);
+  document.addEventListener(&quot;keydown&quot;, handleKeyDown);
+  document.addEventListener(&quot;contextmenu&quot;, handleContextMenu);
+  window.addEventListener(&quot;pagehide&quot;, destroy, { once: true });
+})();
+&lt;/script&gt;
+&lt;script id=&quot;codex-visualization-lucide&quot; async src=&quot;https://unpkg.com/lucide@1.17.0/dist/umd/lucide.js&quot;&gt;&lt;/script&gt;
+&lt;script&gt;
+(() =&gt; {
+  const initialize = () =&gt; {
+    globalThis.lucide?.createIcons({ attrs: { width: 16, height: 16 } });
+  };
+  if (globalThis.lucide != null) {
+    initialize();
+    return;
+  }
+  document
+    .getElementById(&quot;codex-visualization-lucide&quot;)
+    ?.addEventListener(&quot;load&quot;, initialize, { once: true });
+})();
+&lt;/script&gt;
+
+&lt;/body&gt;
+&lt;/html&gt;
+"></iframe>
+</body>
+</html>

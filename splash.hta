@@ -1,0 +1,148 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta http-equiv="Content-Type" content="text/html; charset=utf-8">
+<title>MokTradeDesk</title>
+<HTA:APPLICATION
+  ID="MokSplash"
+  APPLICATIONNAME="MokTradeDeskSplash"
+  BORDER="none"
+  CAPTION="no"
+  SHOWINTASKBAR="yes"
+  SINGLEINSTANCE="yes"
+  SCROLL="no"
+  SYSMENU="no"
+  MAXIMIZEBUTTON="no"
+  MINIMIZEBUTTON="no"
+  CONTEXTMENU="no"
+  SELECTION="no"
+  INNERBORDER="no"
+  WINDOWSTATE="normal"
+/>
+<style type="text/css">
+  html, body { margin:0; padding:0; overflow:hidden; width:100%; height:100%;
+               font-family:'Segoe UI', Tahoma, sans-serif; background:#0B1120; color:#E8EDF7; }
+  .bg { position:absolute; left:0; top:0; right:0; bottom:0;
+        background-color:#0E1526;
+        background-image:linear-gradient(160deg,#0B1120 0%,#141C33 60%,#1B1630 100%); }
+  .wrap { position:absolute; left:0; top:0; right:0; bottom:0; padding:20px 24px; }
+  .close { position:absolute; top:10px; right:12px; width:26px; height:26px; line-height:24px;
+           border-radius:8px; border:1px solid #2A3A5C; background-color:#18213A;
+           color:#9FB0CC; font-size:12px; cursor:pointer; text-align:center; }
+  .close:hover { background-color:#3A2233; color:#E45D72; border-color:#5C2A3A; }
+  .hdr { padding-right:34px; }
+  .logo { float:left; width:54px; height:54px; line-height:54px; text-align:center;
+          font-size:26px; border-radius:16px; margin-right:14px; color:#FFFFFF;
+          background-color:#4A6BE0;
+          background-image:linear-gradient(135deg,#3F7CFF,#7959D6); }
+  .title { font-size:20px; font-weight:bold; padding-top:7px; }
+  .subtitle { font-size:12px; color:#8FA0BE; margin-top:4px; }
+  .bottom { position:absolute; left:24px; right:24px; bottom:18px; }
+  .status { font-size:13px; color:#C6D2E6; height:20px; margin-bottom:10px; }
+  .dot { display:inline-block; width:8px; height:8px; border-radius:50%;
+         background:#3F7CFF; margin-right:8px; }
+  .bar { height:12px; border-radius:99px; background-color:#1A2540;
+         border:1px solid #223055; overflow:hidden; }
+  .fill { height:12px; width:0%; border-radius:99px; background-color:#4C86FF;
+          background-image:linear-gradient(90deg,#3F7CFF 0%,#7959D6 55%,#13AE81 100%); }
+  .meta { margin-top:9px; font-size:11px; color:#7C8CA8; }
+  .meta .l { float:left; } .meta .r { float:right; }
+  .clear { clear:both; }
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div class="wrap">
+  <div class="close" id="closeBtn">&times;</div>
+  <div class="hdr">
+    <div class="logo">&#128200;</div>
+    <div class="title">MokTradeDesk</div>
+    <div class="subtitle">سیستم مدیریت و تحلیل معاملات</div>
+    <div class="clear"></div>
+  </div>
+  <div class="bottom">
+    <div class="status" id="statusText"><span class="dot"></span>در حال آماده‌سازی...</div>
+    <div class="bar"><div class="fill" id="barFill"></div></div>
+    <div class="meta">
+      <span class="l" id="pctText">0%</span>
+      <span class="r" id="codeText">starting</span>
+      <div class="clear"></div>
+    </div>
+  </div>
+</div>
+
+<script language="VBScript">
+Option Explicit
+Dim fso, sh, statusPath, timerId, closing
+
+Sub Window_OnLoad
+    Set fso = CreateObject("Scripting.FileSystemObject")
+    Set sh  = CreateObject("WScript.Shell")
+    statusPath = sh.ExpandEnvironmentStrings("%TEMP%") & "\moktrade_launch_status.txt"
+    closing = False
+    document.getElementById("closeBtn").onclick = GetRef("CloseMe")
+    window.resizeTo 480, 300
+    window.moveTo (screen.availWidth - 480) \ 2, (screen.availHeight - 300) \ 2
+    timerId = window.setInterval("PollStatus", 250)
+    Call PollStatus
+End Sub
+
+Sub PollStatus
+    Dim raw, parts, pct, code, step
+    If closing Then Exit Sub
+    raw = ""
+    If Not fso.FileExists(statusPath) Then Exit Sub
+    On Error Resume Next
+    raw = fso.OpenTextFile(statusPath, 1).ReadAll
+    On Error Goto 0
+    If Len(raw) = 0 Then Exit Sub
+    parts = Split(raw, "|")
+    pct = Trim(parts(0))
+    If UBound(parts) >= 1 Then code = Trim(parts(1)) Else code = ""
+    If Not IsNumeric(pct) Then Exit Sub
+    step = CLng(pct)
+    If step < 0 Then step = 0
+    If step > 100 Then step = 100
+    document.getElementById("barFill").style.width = step & "%"
+    document.getElementById("pctText").innerHTML = step & "%"
+    document.getElementById("codeText").innerHTML = code
+    document.getElementById("statusText").innerHTML = "<span class='dot'></span>" & MapMessage(code)
+    If step >= 100 Then
+        closing = True
+        window.setTimeout "CloseMe", 1600
+    End If
+End Sub
+
+Function MapMessage(code)
+    Select Case LCase(code)
+        Case "init"           : MapMessage = "در حال آماده‌سازی محیط اجرا..."
+        Case "migrate"        : MapMessage = "اجرای Migration دیتابیس..."
+        Case "migrate_done"   : MapMessage = "دیتابیس به‌روزرسانی شد"
+        Case "backend"        : MapMessage = "راه‌اندازی Backend..."
+        Case "backend_wait"   : MapMessage = "انتظار برای Backend (پورت ۸۰۰۰)..."
+        Case "backend_ready"  : MapMessage = "Backend آماده است"
+        Case "frontend"       : MapMessage = "راه‌اندازی Frontend..."
+        Case "frontend_wait"  : MapMessage = "انتظار برای Frontend (پورت ۵۱۷۳)..."
+        Case "frontend_ready" : MapMessage = "Frontend آماده است"
+        Case "browser"        : MapMessage = "باز کردن مرورگر..."
+        Case "done"           : MapMessage = "آماده است! خوش آمدید"
+        Case "error_backend"  : MapMessage = "خطا: Backend بالا نیامد (logs را ببینید)"
+        Case "error_frontend" : MapMessage = "خطا: Frontend بالا نیامد (logs را ببینید)"
+        Case Else
+            If LCase(Left(code, 7)) = "custom:" Then
+                MapMessage = Mid(code, 8)
+            Else
+                MapMessage = code
+            End If
+    End Select
+End Function
+
+Sub CloseMe
+    On Error Resume Next
+    window.clearInterval timerId
+    window.close
+End Sub
+</script>
+</body>
+</html>
+

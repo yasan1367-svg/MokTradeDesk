@@ -1,0 +1,277 @@
+"""تست‌های فاز ۵۳.۲ — Sharpe/Sortino (بدون سالانه‌سازی) + مبنای سرمایهٔ scope.
+
+باگ #۴: Sharpe/Sortino روی سود دلاری هر معامله با ضریب √252 محاسبه می‌شد
+(ضریب دادهٔ روزانه) ⇒ نسبت گمراه‌کننده.
+باگ #۵: `avg_b` از همهٔ حساب‌ها گرفته می‌شد، بی‌توجه به scope.
+
+هر دو endpoint (`/risk-metrics` و `/risk-advanced`) پوشش داده شده‌اند.
+"""
+from datetime import datetime, timezone
+
+from app.models.finance import Currency
+from app.models.prop import PropAccount, PropFirm, PropStage, StageStatus, StageType
+from app.models.strategy import Strategy, StrategyVersion, TestType, Trade, TradeSource
+from app.models.trading import Broker, PersonalTradingAccount
+from app.api.analytics import _apply_scope
+
+
+def _version(db):
+    s = Strategy(name="S53r")
+    db.add(s)
+    db.flush()
+    v = StrategyVersion(strategy_id=s.id, version_name="v53r")
+    db.add(v)
+    db.commit()
+    db.refresh(v)
+    return v
+
+
+def _pta(db, label="R53", balance=10000.0):
+    b = Broker(name=f"B-{label}")
+    db.add(b)
+    db.flush()
+    a = PersonalTradingAccount(
+        broker_id=b.id, account_number=f"ACC-{label}", account_label=label,
+        currency=Currency.USDT, initial_balance=balance, current_balance=balance,
+    )
+    db.add(a)
+    db.commit()
+    db.refresh(a)
+    return a
+
+
+def _trade(db, version_id, pnl, *, day, pta_id=None, prop_stage_id=None, test_type=TestType.REAL_PERSONAL):
+    t = Trade(
+        version_id=version_id,
+        personal_trading_account_id=pta_id,
+        prop_stage_id=prop_stage_id,
+        symbol="XAUUSD",
+        direction="buy",
+        open_time=datetime(2025, 7, day, 9, 0, tzinfo=timezone.utc),
+        close_time=datetime(2025, 7, day, 10, 0, tzinfo=timezone.utc),
+        open_price=2000.0,
+        close_price=2010.0,
+        size=1.0,
+        pnl=pnl,
+        commission=0.0,
+        swap=0.0,
+        source=TradeSource.MANUAL,
+        test_type=test_type,
+    )
+    db.add(t)
+    return t
+
+
+def _seed_daily(db):
+    """۳ معامله در ۳ روزِ متفاوت با pnlهای 100 / -100 / 300 (بازده روزانه)."""
+    v = _version(db)
+    pta = _pta(db)
+    for day, pnl in [(1, 100.0), (2, -100.0), (3, 300.0)]:
+        _trade(db, v.id, pnl, day=day, pta_id=pta.id)
+    db.commit()
+    return v, pta
+
+
+# مقادیر مرجع بازده درصدی روزانه برای PnLهای [100, -100, 300] روی equity آغازین 10000.
+_DAILY = [100.0 / 10000.0, -100.0 / 10100.0, 300.0 / 10000.0]
+_MEAN = sum(_DAILY) / len(_DAILY)
+_STD = (sum((x - _MEAN) ** 2 for x in _DAILY) / len(_DAILY)) ** 0.5
+_DDEV = (sum(x ** 2 for x in _DAILY if x < 0) / len(_DAILY)) ** 0.5
+
+
+def test_sharpe_no_annualization(client, db_session):
+    """Sharpe = mean/std بازده درصدی روزانه، **بدون** √252 — در هر دو endpoint."""
+    _seed_daily(db_session)
+    expected = round(_MEAN / _STD, 2)
+
+    rm = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
+    sharpe_rm = rm["performance_ratios"]["sharpe_ratio"]
+    assert abs(sharpe_rm - expected) < 0.011
+    assert sharpe_rm < 5   # اگر سالانه‌سازی می‌بود ≈ mean/std*√252 ≈ 9.7
+
+    ra = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+    assert abs(ra["sharpe_ratio"] - round(_MEAN / _STD, 3)) < 0.011
+    assert ra["sharpe_ratio"] < 5
+
+
+def test_sortino_no_annualization(client, db_session):
+    """Sortino = mean/downside-deviation بازده درصدی روزانه، **بدون** √252 — هر دو endpoint."""
+    _seed_daily(db_session)
+    expected = round(_MEAN / _DDEV, 2)
+
+    rm = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
+    sortino_rm = rm["performance_ratios"]["sortino_ratio"]
+    assert abs(sortino_rm - expected) < 0.011
+    assert sortino_rm < 5   # با √252 می‌شد ≈ 27.5
+
+    ra = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+    assert abs(ra["sortino_ratio"] - round(_MEAN / _DDEV, 3)) < 0.011
+    assert ra["sortino_ratio"] < 5
+
+
+def test_risk_metrics_uses_scope(client, db_session):
+    """scope=real ⇒ فقط حساب‌های ارجاع‌شده در سرمایه (نه همهٔ حساب‌ها)."""
+    v = _version(db_session)
+    used = _pta(db_session, label="used", balance=20000.0)
+    _pta(db_session, label="unused", balance=1000.0)   # بدون معامله ⇒ نباید شمرده شود
+    for day, pnl in [(1, 100.0), (2, -100.0), (3, 300.0)]:
+        _trade(db_session, v.id, pnl, day=day, pta_id=used.id)
+    db_session.commit()
+
+    body = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
+    # توازن scope همچنان در محاسبات ریسک استفاده می‌شود، اما دیگر به‌عنوان sizing افشا نمی‌شود.
+    assert "position_sizing" not in body
+    assert "suggested_lots" not in str(body)
+    assert "risk_of_ruin" in body["risk_metrics"]
+    assert "open_risk_percent" in body["risk_metrics"]
+
+
+def test_risk_metrics_backtest_assumed_balance(client, db_session):
+    """scope=backtest/forward ⇒ سرمایهٔ فرضی ۱۰۰۰۰ (حساب واقعی ندارد)."""
+    v = _version(db_session)
+    _pta(db_session, label="exists", balance=20000.0)   # حساب موجود ولی نامرتبط
+    for day, pnl in [(1, 100.0), (2, -100.0), (3, 300.0)]:
+        _trade(db_session, v.id, pnl, day=day, pta_id=None, test_type=TestType.BACKTEST)
+    db_session.commit()
+
+    body = client.get("/api/analytics/risk-metrics", params={"scope": "backtest"}).json()
+    assert "position_sizing" not in body
+    assert "suggested_lots" not in str(body)
+    assert "risk_of_ruin" in body["risk_metrics"]
+
+
+def test_real_scope_excludes_challenge_stages(db_session):
+    version = _version(db_session)
+    personal = _pta(db_session, label="real-scope-personal")
+    firm = PropFirm(name="Real Scope Firm")
+    db_session.add(firm)
+    db_session.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label="Real Scope Account")
+    db_session.add(account)
+    db_session.flush()
+
+    stages = {}
+    for stage_type in (StageType.STAGE_1, StageType.STAGE_2, StageType.FUNDED_REAL):
+        stage = PropStage(
+            prop_account_id=account.id,
+            stage_type=stage_type,
+            status=StageStatus.ACTIVE,
+            initial_balance=10000.0,
+        )
+        db_session.add(stage)
+        db_session.flush()
+        stages[stage_type] = stage
+
+    personal_trade = _trade(db_session, version.id, 10.0, day=8, pta_id=personal.id)
+    stage_1_trade = _trade(
+        db_session, version.id, 20.0, day=9,
+        prop_stage_id=stages[StageType.STAGE_1].id, test_type=TestType.REAL_PROP,
+    )
+    stage_2_trade = _trade(
+        db_session, version.id, 30.0, day=10,
+        prop_stage_id=stages[StageType.STAGE_2].id, test_type=TestType.REAL_PROP,
+    )
+    funded_trade = _trade(
+        db_session, version.id, 40.0, day=11,
+        prop_stage_id=stages[StageType.FUNDED_REAL].id, test_type=TestType.REAL_PROP,
+    )
+    db_session.commit()
+
+    scoped_ids = {
+        trade.id for trade in _apply_scope(db_session.query(Trade), "real").all()
+    }
+    assert personal_trade.id in scoped_ids
+    assert funded_trade.id in scoped_ids
+    assert stage_1_trade.id not in scoped_ids
+    assert stage_2_trade.id not in scoped_ids
+
+
+def test_analytics_drawdown_uses_account_initial_balance(client, db_session):
+    """Analytics drawdown starts at the referenced account's opening balance."""
+    version = _version(db_session)
+    account = _pta(db_session, label="equity-base", balance=20000.0)
+    _trade(db_session, version.id, 1000.0, day=4, pta_id=account.id)
+    _trade(db_session, version.id, -1500.0, day=5, pta_id=account.id)
+    db_session.commit()
+
+    risk = client.get("/api/analytics/risk-metrics", params={"scope": "real"}).json()
+    advanced = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+    dashboard = client.get(
+        "/api/analytics/dashboard", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    assert risk["risk_metrics"]["max_drawdown_depth"] == 1500.0
+    assert advanced["max_drawdown"] == 1500.0
+    assert advanced["drawdown_curve"][-1]["drawdown_pct"] == 7.14
+    assert dashboard["summary"]["max_dd"] == 1500.0
+    # Dashboard curve is the same initial-balance curve used to calculate max_dd.
+    assert dashboard["equity_curve"] == [
+        {"date": None, "equity": 20000.0},
+        {"date": "2025-07-04T10:00:00+00:00", "equity": 21000.0},
+        {"date": "2025-07-05T10:00:00+00:00", "equity": 19500.0},
+    ]
+    assert dashboard["summary"]["max_dd"] == max(
+        max(point["equity"] for point in dashboard["equity_curve"])
+        - min(point["equity"] for point in dashboard["equity_curve"]),
+        20000.0 - min(point["equity"] for point in dashboard["equity_curve"]),
+        0.0,
+    )
+
+
+def test_equity_curve_and_max_dd_share_the_same_curve(client, db_session):
+    version = _version(db_session)
+    account = _pta(db_session, label="shared-equity-curve", balance=20000.0)
+    _trade(db_session, version.id, 1000.0, day=12, pta_id=account.id)
+    _trade(db_session, version.id, -1500.0, day=13, pta_id=account.id)
+    db_session.commit()
+
+    dashboard = client.get(
+        "/api/analytics/dashboard", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    points = dashboard["equity_curve"]
+    peak_to_trough = max(
+        max(points[:index + 1], key=lambda point: point["equity"])["equity"] - point["equity"]
+        for index, point in enumerate(points)
+    )
+    static = max(0.0, 20000.0 - min(point["equity"] for point in points))
+    assert dashboard["summary"]["max_dd"] == max(peak_to_trough, static)
+    assert points == [
+        {"date": None, "equity": 20000.0},
+        {"date": "2025-07-12T10:00:00+00:00", "equity": 21000.0},
+        {"date": "2025-07-13T10:00:00+00:00", "equity": 19500.0},
+    ]
+
+
+def test_risk_advanced_drawdown_uses_prop_stage_initial_balance(client, db_session):
+    version = _version(db_session)
+    firm = PropFirm(name="Equity Prop Firm")
+    db_session.add(firm)
+    db_session.flush()
+    account = PropAccount(prop_firm_id=firm.id, account_label="Equity Prop")
+    db_session.add(account)
+    db_session.flush()
+    stage = PropStage(
+        prop_account_id=account.id,
+        stage_type=StageType.FUNDED_REAL,
+        status=StageStatus.ACTIVE,
+        initial_balance=20000.0,
+    )
+    db_session.add(stage)
+    db_session.flush()
+    _trade(db_session, version.id, 1000.0, day=6, prop_stage_id=stage.id, test_type=TestType.REAL_PROP)
+    _trade(db_session, version.id, -1500.0, day=7, prop_stage_id=stage.id, test_type=TestType.REAL_PROP)
+    db_session.commit()
+
+    advanced = client.get(
+        "/api/analytics/risk-advanced", params={"scope": "real", "currency": "USDT"}
+    ).json()
+
+    assert advanced["max_drawdown"] == 1500.0
+    assert advanced["drawdown_curve"][-1]["drawdown_pct"] == 7.14
