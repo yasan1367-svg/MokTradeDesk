@@ -74,35 +74,37 @@
 
 /* ── Dark Mode (فاز ۱۰-الف: پالت  فیگما — مشکی با ته‌رنگ سبز) ── */
 .dark {
-  --bg-base: #0A0E0F;
-  --bg-card: #1A2224;
-  --bg-card-translucent: rgba(17, 23, 24, 0.7);
-  --bg-elevated: #222B2D;
-  --bg-input: #161D1F;
+  --bg-base: #0B0F10;
+  --bg-card: #182022;
+  --bg-card-translucent: rgba(24, 32, 34, 0.82);
+  --bg-elevated: #20292B;
+  --bg-input: #131A1C;
   --bg-sidebar: #080B0C;
   --bg-sidebar-hover: #141B1D;
-  --sidebar-gradient: linear-gradient(160deg, #10191F, #080B0C);
+  --sidebar-gradient: linear-gradient(160deg, #111A1E, #080B0C);
   --sidebar-active: #14282B;
   --sidebar-active-border: #254347;
 
-  --text-primary: #E8EDEE;
-  --text-secondary: #A8B2B5;
-  --text-muted: #6E787C;
+  --text-primary: #EBF1F2;
+  --text-secondary: #A6B4B8;
+  --text-muted: #849397;
 
-  --accent: #00E5A0;
-  --accent-alpha-12: rgba(0, 229, 160, 0.12);
-  --accent-soft: rgba(0, 229, 160, 0.12);
-  --accent-dim: #00B37D;
-  --accent-strong: #00CCA0;
-  --accent-light: rgba(0, 229, 160, 0.20);
+  /* Accent آبی متالیک — تفکیک هویت اکشن‌ها و دکمه‌ها از سود سبز */
+  --accent: #38BDF8;
+  --accent-alpha-12: rgba(56, 189, 248, 0.12);
+  --accent-soft: rgba(56, 189, 248, 0.12);
+  --accent-dim: #0284C7;
+  --accent-strong: #0EA5E9;
+  --accent-light: rgba(56, 189, 248, 0.20);
 
+  /* Profit سبز فسفری زمردی تریدینگ برای نمایش سود و تریدهای برنده */
   --profit: #00E5A0;
-  --profit-soft: rgba(0, 229, 160, 0.10);
-  --profit-border: rgba(0, 229, 160, 0.25);
+  --profit-soft: rgba(0, 229, 160, 0.12);
+  --profit-border: rgba(0, 229, 160, 0.28);
 
   --loss: #FF5C5C;
-  --loss-soft: rgba(255, 92, 92, 0.10);
-  --loss-border: rgba(255, 92, 92, 0.25);
+  --loss-soft: rgba(255, 92, 92, 0.12);
+  --loss-border: rgba(255, 92, 92, 0.28);
 
   --warning: #F5B942;
   --warning-soft: rgba(245, 185, 66, 0.12);
@@ -118,13 +120,13 @@
   --sidebar-text: #B9C8DE;
   --sidebar-text-muted: #7A8488;
 
-  --border-subtle: rgba(255, 255, 255, 0.10);
-  --border-medium: rgba(255, 255, 255, 0.16);
-  --border-accent: rgba(0, 229, 160, 0.30);
+  --border-subtle: rgba(255, 255, 255, 0.11);
+  --border-medium: rgba(255, 255, 255, 0.18);
+  --border-accent: rgba(56, 189, 248, 0.35);
 
-  --shadow-card: 0 4px 16px rgba(0, 0, 0, 0.6), 0 1px 3px rgba(0, 0, 0, 0.4);
-  --shadow-md: 0 6px 16px rgba(0, 0, 0, 0.6), 0 2px 4px rgba(0, 0, 0, 0.4);
-  --card-border-bottom: rgba(255, 255, 255, 0.04);
+  --shadow-card: 0 4px 20px rgba(0, 0, 0, 0.55), 0 1px 3px rgba(0, 0, 0, 0.35);
+  --shadow-md: 0 8px 24px rgba(0, 0, 0, 0.65), 0 2px 6px rgba(0, 0, 0, 0.45);
+  --card-border-bottom: rgba(255, 255, 255, 0.06);
 
   --kpi-profit-tone: #34D399;
   --kpi-profit-tint: rgba(52,211,153,0.15);
@@ -479,4 +481,49 @@ body, #root {
     opacity: 1;
     transform: translateY(0);
   }
+}
+
+/* ── بهینه‌سازی و هماهنگی ساختاری تم تاریک (Dark Mode Symmetrical Enhancements) ── */
+.dark .dashboard-root { --kpi-gradient-angle: 150deg; --kpi-gradient-stop: 65%; }
+.dark .dashboard-root :is(.app-card, .dashboard-card) { padding: 21px 23px; border-color: var(--border-subtle); }
+.dark .dashboard-root .kpi-card { padding: 18px 20px 16px; }
+.dark .dashboard-kpis { gap: 23px; margin-top: 0; }
+.dark .dashboard-kpis .kpi-value { font-size: 2rem; line-height: 1.4; margin-top: 13px; }
+.dark .dashboard-kpis .kpi-card > div:first-child > span:first-child { font-size: .9231rem; }
+.dark .dashboard-filter-note { display: block; color: var(--text-secondary); font-size: .8462rem; margin-top: 8px; }
+.dark .dashboard-filter-group[aria-label='نوع معامله'] { background: #131A1C; border: 1px solid var(--border-subtle); padding: 3px; border-radius: 8px; }
+.dark .dashboard-filter-group[aria-label='نوع معامله'] [aria-pressed='true'] { background: #20292B; border-color: var(--border-accent); box-shadow: 0 2px 6px rgba(0,0,0,0.4); color: var(--accent); }
+.dark .dashboard-pair { align-items: stretch; }
+.dark .dashboard-pair > .dashboard-card { padding: 22px 24px; }
+.dark .dashboard-pair .dashboard-card-header { min-height: 30px; margin-bottom: 17px; }
+.dark .dashboard-today { padding: 22px 24px; background: linear-gradient(115deg, var(--bg-card) 60%, rgba(56, 189, 248, 0.08)); }
+.dark .dashboard-today::before { content: ''; position: absolute; inset-block: 24px; right: 0; width: 3px; border-radius: 3px; background: var(--accent); box-shadow: 0 0 10px rgba(56, 189, 248, 0.5); }
+.dark .dashboard-today > .absolute { display: none; }
+.dark .dashboard-detail { border-color: var(--border-subtle); background: var(--bg-card-translucent); }
+.dark .dashboard-detail[open] { background: var(--bg-card); }
+.dark .dashboard-detail > summary:hover { background: var(--bg-elevated); border-radius: 12px; }
+.dark .dashboard-real-stats { gap: 23px; }
+.dark .dashboard-real-stats .stat-card { padding: 19px 20px; grid-template-columns: minmax(0, 1fr) 58px; background: linear-gradient(135deg, var(--bg-card) 50%, var(--stat-tint)); }
+.dark .dashboard-real-stats .stat-card > div:nth-child(3) { font-size: 1.7692rem; }
+.dark .dashboard-trade-tables { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 23px; }
+.dark .dashboard-root th { background: var(--bg-elevated); padding: 11px 9px; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); }
+.dark .dashboard-root td { padding: 14px 9px; }
+.dark .sidebar-item.is-active {
+  background: linear-gradient(135deg, rgba(56, 189, 248, 0.18), rgba(56, 189, 248, 0.06));
+  border: 1px solid rgba(56, 189, 248, 0.35);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,0.08), 0 4px 12px rgba(0, 0, 0, 0.4);
+  color: #ffffff;
+  font-weight: 600;
+  position: relative;
+}
+.dark .sidebar-item.is-active::before {
+  content: '';
+  position: absolute;
+  right: -1px;
+  top: 25%;
+  bottom: 25%;
+  width: 3px;
+  background: var(--accent);
+  border-radius: 3px 0 0 3px;
+  box-shadow: 0 0 10px rgba(56, 189, 248, 0.6);
 }

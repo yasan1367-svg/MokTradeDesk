@@ -187,10 +187,37 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
   const [alerts, setAlerts] = useState<any[]>([]);
 
-  // ── گزارشهای فاز ۲۲ ──
+  // ── گزارشهای فاز ۲۲ (بارگذاری تنبل / Lazy-Loading برای بهینه‌سازی سرعت و رم) ──
   const [spendable, setSpendable] = useState<any>(null);
   const [netProfit, setNetProfit] = useState<any>(null);
   const [assetTrend, setAssetTrend] = useState<any[]>([]);
+  const financeLoadedRef = useRef(false);
+  const [financeLoading, setFinanceLoading] = useState(false);
+
+  // بارگذاری داده‌های مالی فقط در صورت نیاز (وقتی کاربر آکاردئون مالی را باز می‌کند)
+  const loadFinanceData = useCallback(async () => {
+    if (financeLoading) return;
+    setFinanceLoading(true);
+    try {
+      const [sum, flow, accs, spendRes, npRes, trendRes] = await Promise.all([
+        getFinanceSummary(),
+        getFinanceCashflow({ currency }),
+        getFinanceAccounts(),
+        getSpendableAssets(),
+        getNetProfit({ currency }),
+        getAssetTrend(),
+      ]);
+      setFinance({ summary: sum.data, cashflow: flow.data, accounts: accs.data });
+      setSpendable(spendRes.data);
+      setNetProfit(npRes.data);
+      setAssetTrend(trendRes.data.trend || []);
+      financeLoadedRef.current = true;
+    } catch {
+      // غیربحرانی — عدم توقف داشبورد در صورت بروز خطای ماژول مالی
+    } finally {
+      setFinanceLoading(false);
+    }
+  }, [currency, financeLoading]);
 
   // بارگذاری نسخه‌های استراتژی برای خلاصهٔ Backtest
   useEffect(() => {
@@ -207,34 +234,29 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       const r = computeRange(rangeKey, customFrom, customTo);
       setRefreshing(true);
       try {
-        const [dash, yest, realSum, sum, flow, accs, closed, open, alertsRes, spendRes, npRes, trendRes] = await Promise.all([
+        const [dash, yest, realSum, closed, open, alertsRes] = await Promise.all([
           getDashboardData({ date_from: r.from, date_to: r.to, scope, currency }),
           getYesterdayData({ scope, currency }),
           getRealSummary({ currency, date_from: r.from, date_to: r.to }),
-          getFinanceSummary(),
-          getFinanceCashflow({ currency }),
-          getFinanceAccounts(),
           getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc', currency,
             date_from: r.from, date_to: r.to, scope, date_field: 'close_time' }),
           getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc', currency }),
           getPropAlerts({ unread_only: true }),
-          getSpendableAssets(),
-          getNetProfit({ currency }),
-          getAssetTrend(),
         ]);
         if (myId !== loadIdRef.current) return;
         setData(dash.data);
         setYesterday(yest.data);
         setRealSummary(realSum.data);
-        setFinance({ summary: sum.data, cashflow: flow.data, accounts: accs.data });
         setRecentTrades(closed.data.trades || []);
         setOpenTrades(open.data.trades || []);
         setAlerts(alertsRes.data);
-        setSpendable(spendRes.data);
-        setNetProfit(npRes.data);
-        setAssetTrend(trendRes.data.trend || []);
         setError(null);
         if (showToast) toast.success('داشبورد به‌روزرسانی شد');
+
+        // اگر آکاردئون مالی قبلاً باز شده باشد، آن را هم به‌روز می‌کنیم
+        if (financeLoadedRef.current) {
+          loadFinanceData();
+        }
       } catch (err: any) {
         if (myId !== loadIdRef.current) return;
         const msg = err?.response?.data?.detail || 'خطا در بارگذاری داشبورد';
@@ -247,7 +269,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         }
       }
     },
-    [rangeKey, customFrom, customTo, scope, currency, toast],
+    [rangeKey, customFrom, customTo, scope, currency, toast, loadFinanceData],
   );
 
   useEffect(() => {
@@ -434,7 +456,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
       <p className="dashboard-filter-note">شاخص‌های اصلی، منحنی سرمایه و آخرین معاملات تابع فیلترها هستند؛ عملکرد پول واقعی از بازه و ارز، و بک‌تست از نسخهٔ انتخاب‌شده استفاده می‌کند.</p>
 
-      {/* ۵ KPI اصلی */}
+      {/* ۵ KPI اصلی با متریک‌های کوانت و امید ریاضی */}
       {data && (
         <div className="dashboard-kpis">
           <KpiCard
@@ -443,6 +465,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             label="سود و زیان خالص"
             value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
             valueColor="profit"
+            subtitle={data.summary?.expectancy != null ? `امید ریاضی: ${Number(data.summary.expectancy) >= 0 ? '+' : ''}${Number(data.summary.expectancy).toFixed(2)} ${currency}` : undefined}
           />
           <KpiCard
             index={1}
@@ -465,6 +488,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             }
             valueColor="purple"
             hint={data.summary?.profit_factor_status}
+            subtitle={data.summary?.avg_r_multiple != null ? `میانگین R: ${Number(data.summary.avg_r_multiple) >= 0 ? '+' : ''}${Number(data.summary.avg_r_multiple).toFixed(2)} R` : undefined}
           />
           <KpiCard
             index={3}
@@ -473,6 +497,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
             valueColor="loss"
             hint={data.equity_metadata?.dd_definition || 'peak_to_trough'}
+            subtitle={data.summary?.largest_loss ? `بزرگترین ضرر: -${Number(data.summary.largest_loss).toFixed(2)} ${currency}` : undefined}
           />
           <KpiCard
             index={4}
@@ -480,6 +505,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             label="معاملات بسته"
             value={data.summary?.closed_trades || 0}
             valueColor="warning"
+            subtitle={data.summary?.breakeven_trades ? `${data.summary.breakeven_trades} سر‌به‌سر` : (data.summary?.total_trades ? `${data.summary.total_trades} کل ثبت‌شده` : undefined)}
           />
         </div>
       )}
@@ -999,7 +1025,15 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       </ErrorBoundary></div></details>
         </div>
       </details>
-      <details className="dashboard-detail" data-testid="dashboard-finance-details">
+      <details
+        className="dashboard-detail"
+        data-testid="dashboard-finance-details"
+        onToggle={(e) => {
+          if (e.currentTarget.open && !financeLoadedRef.current) {
+            loadFinanceData();
+          }
+        }}
+      >
         <summary>جزئیات مالی <span className="text-xs font-normal text-[var(--text-secondary)]">موجودی، جریان نقدی و دارایی شخصی</span></summary>
         <div className="dashboard-detail-body"><ErrorBoundary label="Finance"><div><div className="space-y-4">
           <div className="text-sm font-bold text-[var(--text-secondary)] pb-2 border-b border-[var(--border-subtle)] mt-5">وضعیت حال</div>
