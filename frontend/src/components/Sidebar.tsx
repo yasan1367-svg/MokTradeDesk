@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LayoutDashboard, ChartLine, Scale, Target, ClipboardList, BookOpen, Wallet, Building2, ArrowDownToLine, CalendarDays, Shield, Upload, Menu, X, Zap, ChevronDown } from 'lucide-react';
+import { LayoutDashboard, ChartLine, Scale, Target, ClipboardList, BookOpen, Wallet, Building2, ArrowDownToLine, CalendarDays, Shield, Upload, Menu, X, Zap, ChevronDown, Award } from 'lucide-react';
 import type { LucideIcon } from 'lucide-react';
 
 interface SidebarProps {
@@ -22,6 +22,7 @@ const OTHER_GROUPS = [
     { key: 'journal', icon: BookOpen, label: 'ژورنال' },
   ] },
   { label: 'حساب‌ها', items: [
+    { key: 'statement', icon: Award, label: 'استیتمنت رسمی' },
     { key: 'payouts', icon: ArrowDownToLine, label: 'برداشت‌ها' },
     { key: 'brokers', icon: Building2, label: 'بروکرها' },
   ] },

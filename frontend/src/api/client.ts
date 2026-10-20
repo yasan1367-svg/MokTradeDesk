@@ -225,6 +225,25 @@ export const exportDashboardPdf = (params?: {
   currency?: CurrencyCode;
   version_id?: number;
 }) => api.get('/api/export/dashboard/pdf', { params, responseType: 'blob' });
+
+export interface StatementParams {
+  trader_name?: string;
+  account_id?: string;
+  initial_balance?: number;
+  currency?: string;
+  scope?: string;
+  date_from?: string;
+  date_to?: string;
+  version_id?: number;
+  broker_id?: number;
+  lang?: 'en' | 'fa';
+}
+
+export const getStatementData = (params?: StatementParams) =>
+  api.get('/api/statement/data', { params });
+
+export const exportStatementPdf = (params?: StatementParams) =>
+  api.get('/api/statement/pdf', { params, responseType: 'blob' });
 // ─────────────────────────────────────────────
 // Import
 // ─────────────────────────────────────────────

@@ -25,11 +25,12 @@ const FinancePage = lazy(() => import('./pages/FinancePage'));
 const SettingsPage = lazy(() => import('./pages/SettingsPage'));
 const PayoutHistoryPage = lazy(() => import('./pages/PayoutHistoryPage'));
 const BrokersPage = lazy(() => import('./pages/BrokersPage'));
+const StatementPage = lazy(() => import('./pages/StatementPage'));
 
 // preload صفحهٔ پیش‌فرض (Dashboard) — فاز ۱۵.۴
 const preloadDashboard = () => { void import('./pages/DashboardPage'); };
 
-type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'payouts' | 'brokers' | 'settings';
+type Page = 'dashboard' | 'analysis' | 'comparison' | 'strategy' | 'trades' | 'journal' | 'prop' | 'calendar' | 'risk' | 'import' | 'finance' | 'payouts' | 'brokers' | 'statement' | 'settings';
 
 const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   dashboard: { title: '📊 داشبورد', subtitle: 'نمای کلی عملکرد معاملاتی' },
@@ -45,6 +46,7 @@ const PAGE_TITLES: Record<Page, { title: string; subtitle: string }> = {
   finance: { title: '💰 مالی', subtitle: 'مدیریت حساب‌ها و تراکنش‌های مالی' },
   payouts: { title: '💸 برداشت‌ها', subtitle: 'تاریخچهٔ برداشت‌های پراپ و بروکر' },
   brokers: { title: '🏢 بروکرها', subtitle: 'مدیریت بروکرها و حساب‌های معاملاتی شخصی' },
+  statement: { title: '📜 استیتمنت رسمی', subtitle: 'شناسنامه و تاییدیه عملکرد نهادی معاملاتی' },
   settings: { title: '⚙️ تنظیمات', subtitle: 'تنظیمات نرم‌افزار' },
 };
 
@@ -250,6 +252,7 @@ export default function App() {
             {page === 'finance' && <ErrorBoundary label="مالی"><FinancePage /></ErrorBoundary>}
             {page === 'payouts' && <ErrorBoundary label="برداشت‌ها"><PayoutHistoryPage /></ErrorBoundary>}
             {page === 'brokers' && <ErrorBoundary label="بروکرها"><BrokersPage /></ErrorBoundary>}
+            {page === 'statement' && <ErrorBoundary label="استیتمنت رسمی"><StatementPage /></ErrorBoundary>}
             {page === 'settings' && <ErrorBoundary label="تنظیمات"><SettingsPage /></ErrorBoundary>}
           </Suspense>
         </div>
