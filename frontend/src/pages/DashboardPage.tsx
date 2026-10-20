@@ -291,9 +291,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
     localStorage.setItem('mok_dashboard_currency', currency);
   }, [rangeKey, customFrom, customTo, scope, currency]);
 
-  // ساعت زنده
+  // ساعت زنده (به‌روزرسانی هر ۱ دقیقه برای حذف بار پردازشی و ثانیه‌شمار)
   useEffect(() => {
-    const timer = setInterval(() => setNow(new Date()), 1000);
+    const timer = setInterval(() => setNow(new Date()), 60000);
     return () => clearInterval(timer);
   }, []);
 
@@ -317,7 +317,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
   const [jy, jm, jd] = gregorianToJalali(now.getFullYear(), now.getMonth() + 1, now.getDate());
   const jalaliDate = `${jy}/${String(jm).padStart(2, '0')}/${String(jd).padStart(2, '0')}`;
   const weekday = JALALI_WEEKDAYS[now.getDay()];
-  const clock = now.toLocaleTimeString('fa-IR');
+  const clock = now.toLocaleTimeString('fa-IR', { hour: '2-digit', minute: '2-digit' });
   const greeting = getGreeting(now.getHours());
 
   const handleNewTrade = () => {
@@ -450,7 +450,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             label="نرخ برد"
             value={`${data.summary?.win_rate?.toFixed(1) || 0}%`}
             valueColor="accent"
-            subtitle={`${data.summary?.wins || 0}W / ${data.summary?.losses || 0}L`}
+            subtitle={`${data.summary?.wins ?? data.win_loss?.wins ?? data.summary?.winning_trades ?? 0}W / ${data.summary?.losses ?? data.win_loss?.losses ?? data.summary?.losing_trades ?? 0}L`}
           />
           <KpiCard
             index={2}
@@ -621,14 +621,22 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                       <div className="text-xl font-extrabold text-[var(--text-primary)]">
                         سود فعلی: {Number(stage.current_profit || 0).toLocaleString('en-US')} {currency}
                       </div>
-                      <div className="text-xs text-[var(--text-secondary)] mt-1">
-                        هدف: {Number(stage.profit_target || 0).toLocaleString('en-US')} {currency} · {Number(stage.profit_progress_percent || 0).toFixed(1)}٪
-                      </div>
+                      {stage.stage_type === 'funded_real' ? (
+                        <div className="text-xs text-[var(--profit)] mt-1 font-semibold">
+                          حساب فعال فاندد (بدون محدودیت تارگت سود)
+                        </div>
+                      ) : (
+                        <div className="text-xs text-[var(--text-secondary)] mt-1">
+                          هدف: {Number(stage.profit_target || 0).toLocaleString('en-US')} {currency} · {Number(stage.profit_progress_percent || 0).toFixed(1)}٪
+                        </div>
+                      )}
                     </div>
 
-                    <div className="mt-3">
-                      <ProgressBar value={Math.min(Math.max(stage.profit_progress_percent || 0, 0), 100)} variant="profit" />
-                    </div>
+                    {stage.stage_type !== 'funded_real' && (
+                      <div className="mt-3">
+                        <ProgressBar value={Math.min(Math.max(stage.profit_progress_percent || 0, 0), 100)} variant="profit" />
+                      </div>
+                    )}
                     <div className="text-xs text-[var(--text-secondary)] mt-2">
                       {stage.trading_days || 0} / {stage.min_trading_days || 0} روز
                     </div>
@@ -700,7 +708,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                 <StatCard
                   icon={<Trophy size={17} aria-hidden="true" />}
                   label="Profit Factor"
-                  value={Number(backtestSummary.summary?.profit_factor || 0) >= 999 ? '∞' : Number(backtestSummary.summary?.profit_factor || 0).toFixed(2)}
+                  value={
+                    backtestSummary.summary?.profit_factor_status === 'no_data'
+                      ? '—'
+                      : backtestSummary.summary?.profit_factor_status === 'no_losses' || Number(backtestSummary.summary?.profit_factor || 0) >= 999
+                        ? 'بدون زیان'
+                        : Number(backtestSummary.summary?.profit_factor || 0).toFixed(2)
+                  }
                   color="purple"
                   sparkData={[0]}
                 />
@@ -885,13 +899,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                 </span>
               </div>
               <ProgressBar
-                value={Math.min(Math.abs(periods.quarter.pnl / (periods.month.pnl || 1) * 100), 100)}
+                value={periods.quarter.pnl !== 0 ? Math.min(Math.max((Math.abs(periods.quarter.pnl) / (Math.abs(data.summary?.net_pnl) || Math.abs(periods.quarter.pnl) || 1)) * 100, 15), 100) : 0}
                 variant={periods.quarter.pnl >= 0 ? 'accent' : 'loss'}
               />
               <div className="flex justify-between mt-1.5">
-                <span className="text-xs text-[var(--text-secondary)]">از ابتدای فصل</span>
+                <span className="text-xs text-[var(--text-secondary)]">وضعیت فصل</span>
                 <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                  {periods.quarter.pnl >= 0 ? 'سودده 🟢' : 'زیان‌ده 🔴'}
                 </span>
               </div>
             </div>
@@ -904,13 +918,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                 </span>
               </div>
               <ProgressBar
-                value={Math.min(Math.abs(periods.year.pnl / (periods.month.pnl || 1) * 100), 100)}
+                value={periods.year.pnl !== 0 ? Math.min(Math.max((Math.abs(periods.year.pnl) / (Math.abs(data.summary?.net_pnl) || Math.abs(periods.year.pnl) || 1)) * 100, 15), 100) : 0}
                 variant={periods.year.pnl >= 0 ? 'warning' : 'loss'}
               />
               <div className="flex justify-between mt-1.5">
-                <span className="text-xs text-[var(--text-secondary)]">از ابتدای سال</span>
+                <span className="text-xs text-[var(--text-secondary)]">وضعیت سالانه</span>
                 <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                  {periods.year.pnl >= 0 ? 'سودده 🟢' : 'زیان‌ده 🔴'}
                 </span>
               </div>
             </div>
@@ -1170,6 +1184,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                     <th className="text-right py-2.5 px-2">نوع</th>
                     <th className="text-right py-2.5 px-2">استراتژی</th>
                     <th className="text-right py-2.5 px-2">سود/زیان</th>
+                    <th className="text-right py-2.5 px-2">ضریب R</th>
                     <th className="text-right py-2.5 px-2">تاریخ</th>
                   </tr>
                 </thead>
@@ -1183,6 +1198,15 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                         <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
                         <td className={`py-2.5 px-2 font-bold ${pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
                           {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} {currency}
+                        </td>
+                        <td className="py-2.5 px-2 text-xs font-semibold dir-ltr text-right">
+                          {t.r_multiple != null ? (
+                            <span className={t.r_multiple >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}>
+                              {t.r_multiple >= 0 ? '+' : ''}{Number(t.r_multiple).toFixed(2)} R
+                            </span>
+                          ) : (
+                            <span className="text-[var(--text-secondary)]">—</span>
+                          )}
                         </td>
                         <td className="py-2.5 px-2 text-xs text-[var(--text-secondary)]">
                           {t.close_time ? new Date(t.close_time).toLocaleDateString('fa-IR') : '—'}
