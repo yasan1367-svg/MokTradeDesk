@@ -49,9 +49,15 @@ def _pdate(dt=None):
               "مهر", "آبان", "آذر", "دی", "بهمن", "اسفند"]
     return f"{j.day} {months[j.month - 1]} {j.year}"
 def _fa(text):
-    """Reshape Persian/Arabic text for correct rendering in reportlab"""
-    reshaped = arabic_reshaper.reshape(text)
-    return get_display(reshaped)
+    """Reshape Persian/Arabic text for correct rendering in reportlab (idempotent)"""
+    if not text:
+        return ""
+    text_str = str(text)
+    try:
+        reshaped = arabic_reshaper.reshape(text_str)
+        return get_display(reshaped)
+    except Exception:
+        return text_str
 router = APIRouter()
 def _add_chart_image(chart_buf: io.BytesIO, width=400, height=160):
     """تبدیل BytesIO نمودار به Image flowable برای درج در PDF"""
@@ -154,7 +160,7 @@ def _draw_table(elements, data, col_widths, title):
     h3 = styles["Heading3"]
     h3.fontName = _PERSIAN_FONT
     if title:
-        elements.append(Paragraph(_fa(title), h3))
+        elements.append(Paragraph(_fa(title) if not str(title).startswith("<") else title, h3))
     td = [data[0]] + [[str(c) if c is not None else "" for c in r] for r in data[1:]]
     t = Table(td, colWidths=col_widths, repeatRows=1)
     t.setStyle(TableStyle([
@@ -216,9 +222,10 @@ def export_trades_csv(
             t.test_type.value if t.test_type else "", sn, vn, t.note or ""])
     output.seek(0)
     fn = f"trades_{datetime.now(timezone.utc).strftime('%Y%m%d_%H%M%S')}.csv"
+    # \ufeff ensures Microsoft Excel opens Persian characters without encoding issues
     return StreamingResponse(
-        iter([output.getvalue()]),
-        media_type="text/csv",
+        iter(["\ufeff" + output.getvalue()]),
+        media_type="text/csv; charset=utf-8",
         headers={"Content-Disposition": f"attachment; filename={fn}"},
     )
 # ═════════════════════════════════════════════
@@ -301,10 +308,11 @@ def export_trades_pdf(
             t.commission or 0, t.swap or 0,
             round(t.r_multiple, 2) if t.r_multiple is not None else "",
         ])
-    _draw_table(els, rows, [30, 50, 40, 35, 55, 55, 100, 100, 50, 40, 40, 50], _fa("لیست معاملات"))
+    # 13 column widths matching the 13 headers: ID, Symbol, Dir, Size, Open, Close, Open Time, Close Time, Net PnL, Gross, Comm., Swap, R
+    _draw_table(els, rows, [25, 45, 35, 30, 50, 50, 85, 85, 45, 40, 35, 35, 35], "لیست معاملات")
     # Summary
-    els.append(Spacer(1, 30))
-    els.append(Paragraph(_fa("خلاصه آماری"), styles["Heading2"]))
+    els.append(Spacer(1, 20))
+    els.append(Paragraph(_fa("خلاصه آماری معاملات"), styles["Heading2"]))
     styles["Heading2"].fontName = _PERSIAN_FONT
     closed = [t for t in trades if t.close_time]
     if closed:
@@ -319,13 +327,19 @@ def export_trades_pdf(
         pf = gp / gl if gl > 0 else (100.0 if gp > 0 else 0.0)
     else:
         net = wr = pf = 0
-    _draw_table(els, [
+
+    summary_data = [
         [_fa("شاخص"), _fa("مقدار")],
         [_fa("سود خالص"), f"{net:.2f} USDT "],
         [_fa("نرخ برد"), f"{wr:.1f}%"],
         [_fa("فاکتور سود"), f"{pf:.2f}"],
-        [_fa("کل معاملات"), str(len(closed))],
-    ], [150, 150], "")
+        [_fa("کل معاملات بسته"), str(len(closed))],
+    ]
+    closed_r = [t.r_multiple for t in closed if t.r_multiple is not None]
+    if closed_r:
+        summary_data.append([_fa("میانگین ضریب R"), f"{sum(closed_r) / len(closed_r):+.2f} R"])
+        summary_data.append([_fa("مجموع ضریب R"), f"{sum(closed_r):+.2f} R"])
+    _draw_table(els, summary_data, [150, 150], "")
     doc.build(els, onFirstPage=_draw_header_footer, onLaterPages=_draw_header_footer)
     return _build_pdf_response(buffer, "trades")
 # ═════════════════════════════════════════════
@@ -417,7 +431,24 @@ def export_analysis_pdf(
         [_fa("بزرگ‌ترین باخت"), f"{metrics.largest_loss:.2f} USDT "],
         [_fa("بیشترین باخت متوالی"), str(metrics.max_consecutive_losses)],
     ], [200, 200], "")
-    els.append(Spacer(1, 30))
+    # جدول تحلیل سشن‌ها و بازه‌های زمانی پورصمدی در صورت وجود
+    cta = getattr(metrics, "custom_time_analysis", None) or (metrics.get("custom_time_analysis") if isinstance(metrics, dict) else None)
+    if cta:
+        els.append(Spacer(1, 15))
+        els.append(Paragraph(_fa("تحلیل بازه‌های زمانی (پورصمدی)"), styles["Heading2"]))
+        ct_rows = [[_fa("بازه زمانی"), _fa("تعداد"), _fa("وین‌ریت"), _fa("PF"), _fa("سود خالص"), _fa("نتیجه R")]]
+        for name, stat in cta.items():
+            ct_rows.append([
+                _fa(str(name)),
+                str(stat.get("total", 0)),
+                f"{stat.get('win_rate', 0):.1f}%",
+                f"{stat.get('profit_factor', 0):.2f}" if stat.get('profit_factor') is not None else "-",
+                f"{stat.get('net_pnl', 0):+.2f} $",
+                f"{stat.get('net_r', 0):+.2f} R" if stat.get('net_r') is not None else "-",
+            ])
+        _draw_table(els, ct_rows, [160, 40, 50, 45, 65, 55], "")
+
+    els.append(Spacer(1, 20))
     if trades_list:
         els.append(Paragraph(_fa("معاملات"), styles["Heading2"]))
         td = [["ID", _fa("نماد"), _fa("جهت"), _fa("حجم"), _fa("سود خالص"), _fa("سود ناخالص")]]
@@ -501,13 +532,18 @@ def export_dashboard_pdf(
         else:
             pf_display = "—"
         els.append(Paragraph(_fa("خلاصه وضعیت"), styles["Heading2"]))
-        _draw_table(els, [
+        summary_rows = [
             [_fa("شاخص"), _fa("مقدار")],
             [_fa("سود خالص"), f"{s.get('net_pnl', 0):.2f} {currency.value} "],
             [_fa("نرخ برد"), f"{s.get('win_rate', 0):.1f}%"],
             [_fa("فاکتور سود"), _fa(pf_display)],
             [_fa("حداکثر ضرر"), f"{s.get('max_dd', 0):.2f} {currency.value} "],
-        ], [200, 200], "")
+        ]
+        if s.get("avg_r_multiple") is not None:
+            summary_rows.append([_fa("میانگین ضریب R"), f"{s.get('avg_r_multiple'):+.2f} R"])
+        if s.get("expectancy") is not None:
+            summary_rows.append([_fa("امید ریاضی"), f"{s.get('expectancy'):+.2f} {currency.value} "])
+        _draw_table(els, summary_rows, [200, 200], "")
         els.append(Spacer(1, 15))
         t = dashboard_data.get("today", {})
         els.append(Paragraph(_fa("عملکرد امروز"), styles["Heading2"]))
