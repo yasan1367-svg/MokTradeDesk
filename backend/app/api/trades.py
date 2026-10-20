@@ -556,8 +556,8 @@ def update_trade(trade_id: int, data: TradeUpdate, db: Session = Depends(get_db)
             setattr(trade, field, payload[field])
     if "commission" in payload:
         comm = payload["commission"]
-        if comm is not None and comm > 0:
-            comm = -comm
+        if comm is not None:
+            comm = -abs(float(comm))
         trade.commission = comm
     if "direction" in payload:
         trade.direction = payload["direction"].lower()
@@ -788,9 +788,11 @@ def create_manual_trade(data: ManualTradeCreate, db: Session = Depends(get_db)):
         elif direction == "sell":
             pnl = round((data.open_price - data.close_price) * data.size, 2)
 
-    commission = data.commission or 0.0
-    if commission > 0:
-        commission = -commission
+    commission = data.commission
+    if commission is not None:
+        commission = -abs(float(commission))
+    else:
+        commission = 0.0
 
     trade = Trade(
         symbol=data.symbol,

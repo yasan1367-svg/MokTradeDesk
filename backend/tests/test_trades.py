@@ -762,3 +762,77 @@ def test_batch_hard_delete(client, db_session):
     from sqlalchemy import select, func
     count = db_session.execute(select(func.count()).select_from(Trade)).scalar()
     assert count == 0
+
+
+# ═════════════════════════════════════════════
+# فاز ۱ (گزینه ۱): تست‌های کمیسیون منفی و محاسبه خودکار PnL
+# ═════════════════════════════════════════════
+def test_manual_trade_commission_normalized_to_negative(client, db_session):
+    """کمیسیون چه مثبت چه منفی وارد شود، باید در دیتابیس به صورت منفی ذخیره شود."""
+    v = _mk_version(db_session, name="v-comm")
+    # ارسال کمیسیون به صورت مثبت
+    payload_pos = {
+        "symbol": "XAUUSD",
+        "direction": "buy",
+        "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
+        "open_price": 2000.0,
+        "close_price": 2010.0,
+        "size": 1.0,
+        "commission": 5.5,
+        "swap": -0.5,
+        "test_type": "backtest",
+        "version_id": v.id,
+    }
+    r = client.post("/api/trades/manual", json=payload_pos)
+    assert r.status_code == 200, r.text
+    trade_id = r.json()["id"]
+
+    detail = client.get(f"/api/trades/{trade_id}").json()
+    assert detail["commission"] == -5.5
+    assert detail["swap"] == -0.5
+
+    # بروزرسانی کمیسیون با مقدار مثبت
+    r_up = client.patch(f"/api/trades/{trade_id}", json={"commission": 7.2})
+    assert r_up.status_code == 200, r_up.text
+    detail_up = client.get(f"/api/trades/{trade_id}").json()
+    assert detail_up["commission"] == -7.2
+
+
+def test_manual_trade_auto_calculate_pnl(client, db_session):
+    """اگر pnl در فرم ثبت دستی ارسال نشود، باید خودکار طبق جهت و قیمت ورود/خروج محاسبه شود."""
+    v = _mk_version(db_session, name="v-autopnl")
+    
+    # 1. خرید (Buy): (close - open) * size = (2015 - 2000) * 0.5 = +7.5
+    payload_buy = {
+        "symbol": "XAUUSD",
+        "direction": "buy",
+        "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
+        "open_price": 2000.0,
+        "close_price": 2015.0,
+        "size": 0.5,
+        "test_type": "backtest",
+        "version_id": v.id,
+    }
+    r_buy = client.post("/api/trades/manual", json=payload_buy)
+    assert r_buy.status_code == 200, r_buy.text
+    trade_buy = client.get(f"/api/trades/{r_buy.json()['id']}").json()
+    assert trade_buy["pnl"] == 7.5
+
+    # 2. فروش (Sell): (open - close) * size = (2000 - 1980) * 0.2 = +4.0
+    payload_sell = {
+        "symbol": "XAUUSD",
+        "direction": "sell",
+        "open_time": "2025-01-01T10:00:00Z",
+        "close_time": "2025-01-01T11:00:00Z",
+        "open_price": 2000.0,
+        "close_price": 1980.0,
+        "size": 0.2,
+        "test_type": "backtest",
+        "version_id": v.id,
+    }
+    r_sell = client.post("/api/trades/manual", json=payload_sell)
+    assert r_sell.status_code == 200, r_sell.text
+    trade_sell = client.get(f"/api/trades/{r_sell.json()['id']}").json()
+    assert trade_sell["pnl"] == 4.0

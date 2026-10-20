@@ -96,6 +96,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
     sl: '',
     tp: '',
     pnl: '',
+    commission: '',
+    swap: '',
     test_type: 'backtest' as TradeTestType,
     note: '',
     version_id: '',
@@ -106,6 +108,40 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
   // فاز ۳۸.۵ — نمایش و اعتبارسنجی شرطی دامنه، طبق قرارداد فاز ۲۷
   const isRealPersonal = manualTrade.test_type === 'real_personal';
   const isRealProp = manualTrade.test_type === 'real_prop';
+
+  // محاسبات پیش‌نمایش زنده برای فرم ثبت دستی معامله (گزینه ۱)
+  const parsedOpenPrice = parseFloat(manualTrade.open_price);
+  const parsedClosePrice = parseFloat(manualTrade.close_price);
+  const parsedSize = parseFloat(manualTrade.size);
+  const parsedSl = parseFloat(manualTrade.sl);
+  const parsedManualPnl = manualTrade.pnl.trim() !== '' ? parseFloat(manualTrade.pnl) : NaN;
+  const parsedCommission = manualTrade.commission.trim() !== '' ? parseFloat(manualTrade.commission) : NaN;
+  const parsedSwap = manualTrade.swap.trim() !== '' ? parseFloat(manualTrade.swap) : NaN;
+
+  const canComputePnl = !isNaN(parsedOpenPrice) && !isNaN(parsedClosePrice) && !isNaN(parsedSize) && parsedSize > 0;
+  const autoCalculatedGrossPnl = canComputePnl
+    ? (manualTrade.direction === 'buy'
+        ? (parsedClosePrice - parsedOpenPrice) * parsedSize
+        : (parsedOpenPrice - parsedClosePrice) * parsedSize)
+    : null;
+
+  const effectiveGrossPnl = !isNaN(parsedManualPnl)
+    ? parsedManualPnl
+    : autoCalculatedGrossPnl;
+
+  const effectiveCommission = !isNaN(parsedCommission) ? -Math.abs(parsedCommission) : 0;
+  const effectiveSwap = !isNaN(parsedSwap) ? parsedSwap : 0;
+
+  const effectiveNetPnl = effectiveGrossPnl !== null
+    ? effectiveGrossPnl + effectiveCommission + effectiveSwap
+    : null;
+
+  const canComputeR = !isNaN(parsedOpenPrice) && !isNaN(parsedClosePrice) && !isNaN(parsedSl) && Math.abs(parsedOpenPrice - parsedSl) > 1e-6;
+  const autoCalculatedR = canComputeR
+    ? ((manualTrade.direction === 'buy'
+        ? (parsedClosePrice - parsedOpenPrice)
+        : (parsedOpenPrice - parsedClosePrice)) / Math.abs(parsedOpenPrice - parsedSl))
+    : null;
 
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -352,6 +388,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       sl: '',
       tp: '',
       pnl: '',
+      commission: '',
+      swap: '',
       test_type: 'backtest',
       note: '',
       version_id: '',
@@ -401,6 +439,13 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
       }
     }
 
+    const finalGrossPnl = !isNaN(parsedManualPnl)
+      ? parsedManualPnl
+      : (autoCalculatedGrossPnl !== null ? Math.round(autoCalculatedGrossPnl * 100) / 100 : undefined);
+
+    const finalCommission = !isNaN(parsedCommission) ? -Math.abs(parsedCommission) : undefined;
+    const finalSwap = !isNaN(parsedSwap) ? parsedSwap : undefined;
+
     try {
       await createManualTrade({
         symbol: manualTrade.symbol,
@@ -412,7 +457,9 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
         size: parseFloat(manualTrade.size),
         sl: manualTrade.sl ? parseFloat(manualTrade.sl) : undefined,
         tp: manualTrade.tp ? parseFloat(manualTrade.tp) : undefined,
-        pnl: manualTrade.pnl ? parseFloat(manualTrade.pnl) : undefined,
+        pnl: finalGrossPnl !== undefined ? Math.round(finalGrossPnl * 100) / 100 : undefined,
+        commission: finalCommission,
+        swap: finalSwap,
         test_type: manualTrade.test_type,
         note: manualTrade.note || undefined,
         version_id: parseInt(manualTrade.version_id),
@@ -975,8 +1022,8 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                   onChange={(e) => setManualTrade({ ...manualTrade, direction: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 >
-                  <option value="buy">خرید</option>
-                  <option value="sell">فروش</option>
+                  <option value="buy">خرید (Buy / Long)</option>
+                  <option value="sell">فروش (Sell / Short)</option>
                 </select>
               </div>
 
@@ -985,6 +1032,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 <input
                   type="number"
                   step="0.01"
+                  placeholder="مثال: 0.10"
                   value={manualTrade.size}
                   onChange={(e) => setManualTrade({ ...manualTrade, size: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
@@ -996,6 +1044,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 <input
                   type="number"
                   step="0.01"
+                  placeholder="قیمت ورود"
                   value={manualTrade.open_price}
                   onChange={(e) => setManualTrade({ ...manualTrade, open_price: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
@@ -1007,6 +1056,7 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                 <input
                   type="number"
                   step="0.01"
+                  placeholder="قیمت خروج"
                   value={manualTrade.close_price}
                   onChange={(e) => setManualTrade({ ...manualTrade, close_price: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
@@ -1014,10 +1064,11 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">سود/زیان (USDT )</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">سود/زیان ناخالص (USDT)</label>
                 <input
                   type="number"
                   step="0.01"
+                  placeholder={autoCalculatedGrossPnl !== null ? `خودکار: ${autoCalculatedGrossPnl >= 0 ? '+' : ''}${autoCalculatedGrossPnl.toFixed(2)}` : 'اختیاری (محاسبه خودکار)'}
                   value={manualTrade.pnl}
                   onChange={(e) => setManualTrade({ ...manualTrade, pnl: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
@@ -1025,23 +1076,25 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
               </div>
 
               <div>
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد ضرر</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">کارمزد / کمیسیون (USDT)</label>
                 <input
                   type="number"
                   step="0.01"
-                  value={manualTrade.sl}
-                  onChange={(e) => setManualTrade({ ...manualTrade, sl: e.target.value })}
+                  placeholder="مثال: 3.50 (یا -3.50)"
+                  value={manualTrade.commission}
+                  onChange={(e) => setManualTrade({ ...manualTrade, commission: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
 
               <div>
-                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد سود</label>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">سوآپ (USDT)</label>
                 <input
                   type="number"
                   step="0.01"
-                  value={manualTrade.tp}
-                  onChange={(e) => setManualTrade({ ...manualTrade, tp: e.target.value })}
+                  placeholder="مثال: 0.00"
+                  value={manualTrade.swap}
+                  onChange={(e) => setManualTrade({ ...manualTrade, swap: e.target.value })}
                   className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
                 />
               </div>
@@ -1059,7 +1112,71 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                   <option value="real_prop">🏢 رییل پراپ</option>
                 </select>
               </div>
+
+              <div>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد ضرر (SL)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Stop Loss"
+                  value={manualTrade.sl}
+                  onChange={(e) => setManualTrade({ ...manualTrade, sl: e.target.value })}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
+                />
+              </div>
+
+              <div>
+                <label className="text-[var(--text-secondary)] text-xs block mb-1">حد سود (TP)</label>
+                <input
+                  type="number"
+                  step="0.01"
+                  placeholder="Take Profit"
+                  value={manualTrade.tp}
+                  onChange={(e) => setManualTrade({ ...manualTrade, tp: e.target.value })}
+                  className="w-full bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-xl px-3 py-2 text-[var(--text-primary)]"
+                />
+              </div>
             </div>
+
+            {/* کارت پیش‌نمایش زنده محاسبات ترید */}
+            {(effectiveGrossPnl !== null || autoCalculatedR !== null) && (
+              <div className="mb-4 p-3.5 rounded-xl border border-[var(--border-subtle)] bg-[var(--bg-card)]/70 backdrop-blur-sm">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-semibold text-[var(--text-secondary)] flex items-center gap-1.5">
+                    ⚡ پیش‌نمایش زنده محاسبات
+                  </span>
+                  <span className="text-[10px] px-2 py-0.5 rounded-full bg-[var(--accent-glow)]/15 text-[var(--text-secondary)]">
+                    {!isNaN(parsedManualPnl) ? 'سود ناخالص: دستی' : 'سود ناخالص: خودکار تتری'}
+                  </span>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 text-center">
+                  <div className="p-2 rounded-lg bg-[var(--bg-card)]/40 border border-[var(--border-subtle)]/50">
+                    <div className="text-[10px] text-[var(--text-secondary)] mb-0.5">سود/زیان ناخالص</div>
+                    <div className={`text-sm font-bold dir-ltr ${effectiveGrossPnl !== null ? (effectiveGrossPnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]') : 'text-[var(--text-secondary)]'}`}>
+                      {effectiveGrossPnl !== null ? `${effectiveGrossPnl >= 0 ? '+' : ''}${effectiveGrossPnl.toFixed(2)} $` : '—'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[var(--bg-card)]/40 border border-[var(--border-subtle)]/50">
+                    <div className="text-[10px] text-[var(--text-secondary)] mb-0.5">کارمزد + سوآپ</div>
+                    <div className="text-sm font-bold text-[var(--loss)] dir-ltr">
+                      {((effectiveCommission + effectiveSwap) !== 0 ? `${(effectiveCommission + effectiveSwap) > 0 ? '+' : ''}${(effectiveCommission + effectiveSwap).toFixed(2)} $` : '0.00 $')}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[var(--bg-card)]/40 border border-[var(--border-subtle)]/50">
+                    <div className="text-[10px] text-[var(--text-secondary)] mb-0.5">سود/زیان خالص</div>
+                    <div className={`text-sm font-extrabold dir-ltr ${effectiveNetPnl !== null ? (effectiveNetPnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]') : 'text-[var(--text-secondary)]'}`}>
+                      {effectiveNetPnl !== null ? `${effectiveNetPnl >= 0 ? '+' : ''}${effectiveNetPnl.toFixed(2)} $` : '—'}
+                    </div>
+                  </div>
+                  <div className="p-2 rounded-lg bg-[var(--bg-card)]/40 border border-[var(--border-subtle)]/50">
+                    <div className="text-[10px] text-[var(--text-secondary)] mb-0.5">ضریب R</div>
+                    <div className={`text-sm font-bold dir-ltr ${autoCalculatedR !== null ? (autoCalculatedR >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]') : 'text-[var(--text-secondary)]'}`}>
+                      {autoCalculatedR !== null ? `${autoCalculatedR >= 0 ? '+' : ''}${autoCalculatedR.toFixed(2)} R` : 'نیاز به SL'}
+                    </div>
+                  </div>
+                </div>
+              </div>
+            )}
 
             <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
               <div>
