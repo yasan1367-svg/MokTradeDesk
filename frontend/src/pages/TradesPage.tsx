@@ -774,7 +774,9 @@ const [galleryScreenshots, setGalleryScreenshots] = useState<any[]>([]);
                     </td>
                     <td className="py-2 text-[var(--text-primary)]">{t.size}</td>
                     <td className={`py-2 font-bold ${(t.net_pnl || 0) >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                      {(t.net_pnl || 0) >= 0 ? '+' : ''}{t.net_pnl?.toFixed(2)} USDT
+                      <span dir="ltr" className="inline-block dir-ltr">
+                        {(t.net_pnl || 0) >= 0 ? '+' : ''}{t.net_pnl?.toFixed(2)} USDT
+                      </span>
                     </td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getSourceLabel(t.source)}</td>
                     <td className="py-2 text-[var(--text-secondary)] text-xs">{getTestTypeLabel(t.test_type)}</td>

@@ -182,7 +182,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
 
   // جدول‌های معاملات
   const [recentTrades, setRecentTrades] = useState<any[]>([]);
-  const [openTrades, setOpenTrades] = useState<any[]>([]);
+
   const [refreshing, setRefreshing] = useState(false);
 
   const [alerts, setAlerts] = useState<any[]>([]);
@@ -234,13 +234,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       const r = computeRange(rangeKey, customFrom, customTo);
       setRefreshing(true);
       try {
-        const [dash, yest, realSum, closed, open, alertsRes] = await Promise.all([
+        const [dash, yest, realSum, closed, alertsRes] = await Promise.all([
           getDashboardData({ date_from: r.from, date_to: r.to, scope, currency }),
           getYesterdayData({ scope, currency }),
           getRealSummary({ currency, date_from: r.from, date_to: r.to }),
           getTrades({ status: 'closed', limit: 10, sort_by: 'close_time', sort_order: 'desc', currency,
             date_from: r.from, date_to: r.to, scope, date_field: 'close_time' }),
-          getTrades({ status: 'open', sort_by: 'open_time', sort_order: 'desc', currency }),
+
           getPropAlerts({ unread_only: true }),
         ]);
         if (myId !== loadIdRef.current) return;
@@ -248,7 +248,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         setYesterday(yest.data);
         setRealSummary(realSum.data);
         setRecentTrades(closed.data.trades || []);
-        setOpenTrades(open.data.trades || []);
+
         setAlerts(alertsRes.data);
         setError(null);
         if (showToast) toast.success('داشبورد به‌روزرسانی شد');
@@ -463,9 +463,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             index={0}
             icon={<Wallet size={17} aria-hidden="true" />}
             label="سود و زیان خالص"
-            value={`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}
+            value={<span dir="ltr" className="inline-block dir-ltr">{`${data.summary?.net_pnl >= 0 ? '+' : ''}${data.summary?.net_pnl?.toLocaleString() || 0} ${currency}`}</span>}
             valueColor="profit"
-            subtitle={data.summary?.expectancy != null ? `امید ریاضی: ${Number(data.summary.expectancy) >= 0 ? '+' : ''}${Number(data.summary.expectancy).toFixed(2)} ${currency}` : undefined}
+            subtitle={data.summary?.expectancy != null ? <span>امید ریاضی: <span dir="ltr" className="inline-block dir-ltr">{Number(data.summary.expectancy) >= 0 ? '+' : ''}{Number(data.summary.expectancy).toFixed(2)} {currency}</span></span> : undefined}
           />
           <KpiCard
             index={1}
@@ -488,7 +488,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             }
             valueColor="purple"
             hint={data.summary?.profit_factor_status}
-            subtitle={data.summary?.avg_r_multiple != null ? `میانگین R: ${Number(data.summary.avg_r_multiple) >= 0 ? '+' : ''}${Number(data.summary.avg_r_multiple).toFixed(2)} R` : undefined}
+            subtitle={data.summary?.avg_r_multiple != null ? <span>میانگین R: <span dir="ltr" className="inline-block dir-ltr">{Number(data.summary.avg_r_multiple) >= 0 ? '+' : ''}{Number(data.summary.avg_r_multiple).toFixed(2)} R</span></span> : undefined}
           />
           <KpiCard
             index={3}
@@ -497,7 +497,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
             value={`${data.summary?.max_dd?.toLocaleString() || 0} ${currency}`}
             valueColor="loss"
             hint={data.equity_metadata?.dd_definition || 'peak_to_trough'}
-            subtitle={data.summary?.largest_loss ? `بزرگترین ضرر: -${Number(data.summary.largest_loss).toFixed(2)} ${currency}` : undefined}
+            subtitle={data.summary?.largest_loss ? <span>بزرگترین ضرر: <span dir="ltr" className="inline-block dir-ltr">-{Number(data.summary.largest_loss).toFixed(2)} {currency}</span></span> : undefined}
           />
           <KpiCard
             index={4}
@@ -543,7 +543,9 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           <div
             className={`text-4xl font-extrabold ${today.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}
           >
-                  {today.pnl >= 0 ? '+' : ''}{today.pnl} {currency}
+            <span dir="ltr" className="inline-block dir-ltr">
+              {today.pnl >= 0 ? '+' : ''}{today.pnl} {currency}
+            </span>
           </div>
           <div className="flex items-center gap-4 mt-3 flex-wrap">
             <div className="text-sm text-[var(--text-secondary)]">
@@ -553,7 +555,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               نرخ برد امروز: <span className="font-bold">{today.win_rate.toFixed(1)}٪</span>
             </div>
             <div className="text-sm text-[var(--text-secondary)]">
-              <span className="font-bold">{summary.open_trades}</span> معامله باز
+              <span className="font-bold">{summary.closed_trades ?? today.trades_count}</span> معامله بسته
             </div>
             <div className="text-sm text-[var(--text-secondary)]">
               <span className="font-bold">{summary.total_trades}</span> کل معاملات
@@ -565,19 +567,19 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">این ماه</div>
             <div className={`text-lg font-extrabold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
+              <span dir="ltr" className="inline-block dir-ltr">{periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}</span>
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">این فصل</div>
             <div className={`text-lg font-extrabold ${periods.quarter.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+              <span dir="ltr" className="inline-block dir-ltr">{periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}</span>
             </div>
           </div>
           <div className="text-center bg-[var(--bg-card-translucent)] backdrop-blur rounded-[16px] px-5 py-3 border border-[var(--border-subtle)] min-w-0">
             <div className="text-xs text-[var(--text-secondary)] font-bold">امسال</div>
             <div className={`text-lg font-extrabold ${periods.year.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-              {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+              <span dir="ltr" className="inline-block dir-ltr">{periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}</span>
             </div>
           </div>
         </div>
@@ -827,7 +829,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
         <StatCard
           icon={<Wallet size={17} aria-hidden="true" />}
           label="سود خالص"
-          value={`${realSummary.net_pnl >= 0 ? '+' : ''}${realSummary.net_pnl} ${currency} `}
+          value={<span dir="ltr" className="inline-block dir-ltr">{`${realSummary.net_pnl >= 0 ? '+' : ''}${realSummary.net_pnl} ${currency}`}</span>}
           change={`${realSummary.winning_trades}W / ${realSummary.losing_trades}L`}
           changeType={realSummary.net_pnl >= 0 ? 'up' : 'down'}
           color="profit"
@@ -902,7 +904,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد ماه جاری</span>
                 <span className={`text-xs font-bold ${periods.month.pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                  {periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}
+                  <span dir="ltr" className="inline-block dir-ltr">{periods.month.pnl >= 0 ? '+' : ''}{periods.month.pnl} {currency}</span>
                 </span>
               </div>
               <ProgressBar
@@ -921,7 +923,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد فصل جاری</span>
                 <span className={`text-xs font-bold ${periods.quarter.pnl >= 0 ? 'text-[var(--accent)]' : 'text-[var(--loss)]'}`}>
-                  {periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}
+                  <span dir="ltr" className="inline-block dir-ltr">{periods.quarter.pnl >= 0 ? '+' : ''}{periods.quarter.pnl} {currency}</span>
                 </span>
               </div>
               <ProgressBar
@@ -940,7 +942,7 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               <div className="flex justify-between mb-2">
                 <span className="text-xs text-[var(--text-secondary)]">عملکرد سال جاری</span>
                 <span className={`text-xs font-bold ${periods.year.pnl >= 0 ? 'text-[var(--warning)]' : 'text-[var(--loss)]'}`}>
-                  {periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}
+                  <span dir="ltr" className="inline-block dir-ltr">{periods.year.pnl >= 0 ? '+' : ''}{periods.year.pnl} {currency}</span>
                 </span>
               </div>
               <ProgressBar
@@ -1156,45 +1158,8 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
       </details>
 
       <section aria-labelledby="dashboard-trades-title" data-testid="dashboard-trades-section">
-        <div className="dashboard-section-heading"><h2 id="dashboard-trades-title">معاملات</h2><p>معاملات باز و آخرین معاملات بسته‌شده</p></div>
-        <ErrorBoundary label="معاملات"><div className="dashboard-trade-tables grid grid-cols-1 xl:grid-cols-2 gap-5"><Card>
-          <CardHeader
-            title="📂 معاملات باز"
-            subtitle={openTrades.length > 0 ? `${openTrades.length} معامله` : undefined}
-          />
-          {openTrades.length === 0 ? (
-            <EmptyState icon="📂" title="معاملهٔ بازی وجود ندارد" description="همهٔ معاملات بسته شده‌اند" />
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full text-sm">
-                <thead>
-                  <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
-                    <th className="text-right py-2.5 px-2">نماد</th>
-                    <th className="text-right py-2.5 px-2">نوع</th>
-                    <th className="text-right py-2.5 px-2">استراتژی</th>
-                    <th className="text-right py-2.5 px-2">سود/زیان لحظه‌ای</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {openTrades.map((t) => {
-                    const pnl = (t.pnl || 0) + (t.commission || 0) + (t.swap || 0);
-                    const hasPnl = t.pnl !== null && t.pnl !== undefined;
-                    return (
-                      <tr key={t.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
-                        <td className="py-2.5 px-2 font-bold text-[var(--text-primary)]">{t.symbol}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
-                        <td className={`py-2.5 px-2 font-bold ${!hasPnl ? 'text-[var(--text-secondary)]' : pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {hasPnl ? `${pnl >= 0 ? '+' : ''}${pnl.toFixed(2)} ${currency} ` : '—'}
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </Card><Card>
+        <div className="dashboard-section-heading"><h2 id="dashboard-trades-title">آخرین معاملات</h2><p>فهرست ۱۰ معاملهٔ اخیر ثبت و بسته‌شده</p></div>
+        <ErrorBoundary label="معاملات"><div className="dashboard-trade-tables w-full"><Card>
           <CardHeader
             title="🧾 آخرین معاملات"
             subtitle={recentTrades.length > 0 ? `${recentTrades.length} معامله` : undefined}
@@ -1214,12 +1179,13 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
               <table className="w-full text-sm">
                 <thead>
                   <tr className="border-b border-[var(--border-subtle)] text-[var(--text-secondary)]">
-                    <th className="text-right py-2.5 px-2">نماد</th>
-                    <th className="text-right py-2.5 px-2">نوع</th>
-                    <th className="text-right py-2.5 px-2">استراتژی</th>
-                    <th className="text-right py-2.5 px-2">سود/زیان</th>
-                    <th className="text-right py-2.5 px-2">ضریب R</th>
-                    <th className="text-right py-2.5 px-2">تاریخ</th>
+                    <th className="text-right py-2.5 px-3">نماد</th>
+                    <th className="text-right py-2.5 px-3">نوع</th>
+                    <th className="text-right py-2.5 px-3">حجم</th>
+                    <th className="text-right py-2.5 px-3">استراتژی</th>
+                    <th className="text-right py-2.5 px-3">سود/زیان</th>
+                    <th className="text-right py-2.5 px-3">ضریب R</th>
+                    <th className="text-right py-2.5 px-3">تاریخ</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -1227,23 +1193,26 @@ export default function DashboardPage({ onNavigate }: { onNavigate?: (page: stri
                     const pnl = (t.pnl || 0) + (t.commission || 0) + (t.swap || 0);
                     return (
                       <tr key={t.id} className="border-b border-[var(--border-subtle)]/50 hover:bg-[var(--accent-soft)]/30 transition-colors">
-                        <td className="py-2.5 px-2 font-bold text-[var(--text-primary)]">{t.symbol}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)]">{t.direction === 'buy' ? '🟢 خرید' : '🔴 فروش'}</td>
-                        <td className="py-2.5 px-2 text-[var(--text-secondary)] truncate max-w-[120px]">{t.strategy_name || '—'}</td>
-                        <td className={`py-2.5 px-2 font-bold ${pnl >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}`}>
-                          {pnl >= 0 ? '+' : ''}{pnl.toFixed(2)} {currency}
+                        <td className="py-2.5 px-3 font-bold text-[var(--text-primary)]">{t.symbol}</td>
+                        <td className="py-2.5 px-3 text-[var(--text-secondary)]">{t.direction === "buy" ? "🟢 خرید" : "🔴 فروش"}</td>
+                        <td className="py-2.5 px-3 text-[var(--text-secondary)] font-mono text-xs">{t.size ?? "—"}</td>
+                        <td className="py-2.5 px-3 text-[var(--text-secondary)] truncate max-w-[140px]">{t.strategy_name || "—"}</td>
+                        <td className={`py-2.5 px-3 font-bold ${pnl >= 0 ? "text-[var(--profit)]" : "text-[var(--loss)]"}`}>
+                          <span dir="ltr" className="inline-block dir-ltr">
+                            {pnl >= 0 ? "+" : ""}{pnl.toFixed(2)} {currency}
+                          </span>
                         </td>
-                        <td className="py-2.5 px-2 text-xs font-semibold dir-ltr text-right">
+                        <td className="py-2.5 px-3 text-xs font-semibold text-right">
                           {t.r_multiple != null ? (
-                            <span className={t.r_multiple >= 0 ? 'text-[var(--profit)]' : 'text-[var(--loss)]'}>
-                              {t.r_multiple >= 0 ? '+' : ''}{Number(t.r_multiple).toFixed(2)} R
+                            <span dir="ltr" className={`inline-block dir-ltr ${t.r_multiple >= 0 ? "text-[var(--profit)]" : "text-[var(--loss)]"}`}>
+                              {t.r_multiple >= 0 ? "+" : ""}{Number(t.r_multiple).toFixed(2)} R
                             </span>
                           ) : (
                             <span className="text-[var(--text-secondary)]">—</span>
                           )}
                         </td>
-                        <td className="py-2.5 px-2 text-xs text-[var(--text-secondary)]">
-                          {t.close_time ? new Date(t.close_time).toLocaleDateString('fa-IR') : '—'}
+                        <td className="py-2.5 px-3 text-xs text-[var(--text-secondary)]">
+                          {t.close_time ? new Date(t.close_time).toLocaleDateString("fa-IR") : "—"}
                         </td>
                       </tr>
                     );

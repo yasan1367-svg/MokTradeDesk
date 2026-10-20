@@ -3,9 +3,9 @@ import type { ReactNode } from 'react';
 interface KpiCardProps {
   icon: ReactNode;
   label: string;
-  value: string | number;
+  value: ReactNode;
   valueColor?: 'profit' | 'loss' | 'neutral' | 'accent' | 'purple' | 'warning';
-  subtitle?: string;
+  subtitle?: ReactNode;
   hint?: string;
   index?: number;
 }

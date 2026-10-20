@@ -208,7 +208,7 @@ describe('DashboardPage', () => {
     } } as never);
     vi.mocked(getTrades)
       .mockResolvedValueOnce({ data: { trades: [{ id: 10, symbol: 'EURUSD', direction: 'buy', pnl: 100, commission: -2, swap: -3 }] } } as never)
-      .mockResolvedValueOnce({ data: { trades: [{ id: 11, symbol: 'XAUUSD', direction: 'sell', pnl: null }] } } as never);
+;
     vi.mocked(getPropAlerts).mockResolvedValueOnce({ data: [{ id: 5, message: '⚠️ هشدار واقعی پراپ' }] } as never);
     const onNavigate = vi.fn();
     const { container } = render(<ToastProvider><DashboardPage onNavigate={onNavigate} /></ToastProvider>);
@@ -225,8 +225,8 @@ describe('DashboardPage', () => {
     expect(screen.getByText('⚠️ هشدار واقعی پراپ').closest('details')).toBeNull();
     expect(within(real).getByText(/700 IRR/)).toBeInTheDocument();
     expect(within(trades).getByText('+95.00 IRR')).toBeInTheDocument();
-    const openCard = within(trades).getByText('📂 معاملات باز').closest('.app-card')!;
-    expect(openCard.querySelector('tbody tr td:last-child')).toHaveTextContent('—');
+    expect(within(trades).queryByText(/معاملات باز/)).not.toBeInTheDocument();
+
     expect(screen.getByTestId('dashboard-finance-details')).not.toHaveAttribute('open');
     fireEvent.click(within(trades).getByRole('button', { name: /مشاهده همه/ }));
     expect(onNavigate).toHaveBeenCalledWith('trades');

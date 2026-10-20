@@ -3,7 +3,7 @@ import type { CSSProperties, ReactNode } from 'react';
 interface StatCardProps {
   icon: ReactNode;
   label: string;
-  value: string | number;
+  value: ReactNode;
   change?: string;
   changeType?: 'up' | 'down' | 'neutral';
   color?: 'profit' | 'loss' | 'accent' | 'purple' | 'warning';

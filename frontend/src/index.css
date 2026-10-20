@@ -417,7 +417,13 @@ body, #root {
 :root:not(.dark) .dashboard-real-stats { gap: 23px; }
 :root:not(.dark) .dashboard-real-stats .stat-card { padding: 19px 20px; grid-template-columns: minmax(0, 1fr) 58px; background: linear-gradient(135deg, #fff 50%, var(--stat-tint)); }
 :root:not(.dark) .dashboard-real-stats .stat-card > div:nth-child(3) { font-size: 1.7692rem; }
-:root:not(.dark) .dashboard-trade-tables { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 23px; }
+/* جهت‌دهی دقیق متن‌های عددی و ارزها برای جلوگیری از جابجایی علامت مثبت/منفی در متون راست‌به‌چپ (RTL) */
+.dir-ltr, [dir="ltr"] {
+  direction: ltr !important;
+  unicode-bidi: isolate;
+}
+
+:root:not(.dark) .dashboard-trade-tables { grid-template-columns: 1fr; width: 100%; }
 :root:not(.dark) .dashboard-root th { background: #f7f9fd; padding: 11px 9px; }
 :root:not(.dark) .dashboard-root td { padding: 14px 9px; }
 :root:not(.dark) .sidebar-desktop { padding: 30px 17px 24px; box-shadow: -7px 0 22px #06112720; }
@@ -505,7 +511,7 @@ body, #root {
 .dark .dashboard-real-stats { gap: 23px; }
 .dark .dashboard-real-stats .stat-card { padding: 19px 20px; grid-template-columns: minmax(0, 1fr) 58px; background: linear-gradient(135deg, var(--bg-card) 50%, var(--stat-tint)); }
 .dark .dashboard-real-stats .stat-card > div:nth-child(3) { font-size: 1.7692rem; }
-.dark .dashboard-trade-tables { grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 23px; }
+.dark .dashboard-trade-tables { grid-template-columns: 1fr; width: 100%; }
 .dark .dashboard-root th { background: var(--bg-elevated); padding: 11px 9px; color: var(--text-secondary); border-bottom: 1px solid var(--border-subtle); }
 .dark .dashboard-root td { padding: 14px 9px; }
 .dark .sidebar-item.is-active {
