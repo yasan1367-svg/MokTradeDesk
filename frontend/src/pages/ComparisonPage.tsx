@@ -273,7 +273,7 @@ export default function ComparisonPage() {
     new Set(
       (result?.comparison ?? [])
         .filter((i) => !i.error && i.metrics?.custom_time_analysis)
-        .flatMap((i) => Object.keys(i.metrics.custom_time_analysis || {}))
+        .flatMap((i) => Object.keys(i.metrics?.custom_time_analysis || {}))
     )
   );
 
